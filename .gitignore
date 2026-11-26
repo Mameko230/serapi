@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+.memodesk/
+*.tmp
+.DS_Store
+Thumbs.db
+*_preview.png
+# 本地探针（抓 memoQ 接口用，不入库）
+/probe*.js

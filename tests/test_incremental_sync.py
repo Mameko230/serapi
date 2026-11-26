@@ -1,0 +1,115 @@
+# -*- coding: utf-8 -*-
+"""多人同步的段模型差量更新回归。"""
+import os
+import sys
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QTableView
+from app.mainwindow import MainWindow, SegModel
+
+app = QApplication([])
+rows = [
+    {"rowNo": 1, "src": "甲", "tgt": "A", "status": "edited"},
+    {"rowNo": 2, "src": "乙", "tgt": "B", "status": "confirmed"},
+]
+model = SegModel()
+model.set_rows(rows)
+changes = []
+resets = []
+model.dataChanged.connect(lambda top, bottom, roles=None: changes.append((top.row(), bottom.row())))
+model.modelReset.connect(lambda: resets.append(True))
+
+# 相同快照不触发任何界面重绘。
+assert model.update_rows(rows) == 0
+assert changes == [] and resets == []
+
+# 文本变化即时落地；状态需两次一致才更新，避免单次快照造成跳色。
+updated = [dict(rows[0]), dict(rows[1], tgt="B2", status="reviewer1")]
+assert model.update_rows(updated) == 1
+assert changes == [(1, 1)] and resets == []
+assert model.index(1, 2).data() == "B2"
+assert "译者已确认" in model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
+assert model.update_rows(updated) == 1
+assert "审校者 1" in model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
+assert changes == [(1, 1), (1, 1)]
+
+# 缓存扩容属于结构变化，仍走完整重置并保留已查询 TM 率。
+expanded = updated + [{"rowNo": 3, "src": "丙", "tgt": "", "status": "untranslated"}]
+assert model.update_rows(expanded, {1: 85}) == 3
+assert len(resets) == 1 and model.rowCount() == 3
+assert model.index(0, 3).data() == "85%"
+
+# 保存/确认前发出的旧 listRows 响应不得回落地状态；新同步仍正常更新。
+class SyncHost:
+    refresh_seg_list = MainWindow.refresh_seg_list
+
+    def __init__(self):
+        self._seg_sync_busy = False
+        self._seg_sync_seq = 0
+        self._editor_pid = 1
+        self._editor_url = "doc-A"
+        self._cur_row = 1
+        self._total_rows = 2
+        self._auto_loading_more = False
+        self._tm_rates = {}
+        self.seg_model = SegModel()
+        self.seg_model.set_rows(rows)
+        self.seg_table = QTableView()
+        self.seg_table.setModel(self.seg_model)
+        self.callbacks = []
+        self.scheduled = []
+        self.logs = []
+
+    def call_js(self, expr, callback=None):
+        assert "listRows" in expr
+        self.callbacks.append(callback)
+
+    def _schedule_seg_refresh(self, delay, background=True):
+        self.scheduled.append((delay, background))
+
+    def refresh_doc_stats(self):
+        pass
+
+    def _on_seg_scroll(self, _value):
+        pass
+
+    def log(self, text):
+        self.logs.append(text)
+
+
+host = SyncHost()
+host.refresh_seg_list(background=True)
+assert len(host.callbacks) == 1 and host._seg_sync_busy
+host._seg_sync_seq += 1  # 模拟写回成功，使请求代际 1 失效
+host.callbacks[0]({"ok": True, "total": 2,
+                   "rows": [dict(rows[0]), dict(rows[1], status="edited")]})
+assert host.seg_model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole).find("已编辑") < 0
+assert host.scheduled == [(100, True)]
+assert not host._seg_sync_busy
+host.refresh_seg_list(background=True)
+host.callbacks[1]({"ok": True, "total": 2, "rows": updated})
+assert host.seg_model.index(1, 2).data() == "B2"
+assert "译者已确认" in host.seg_model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
+host.refresh_seg_list(background=True)
+host.callbacks[2]({"ok": True, "total": 2, "rows": updated})
+assert "审校者 1" in host.seg_model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
+
+# 已确认状态在 edited/reviewer2 之间交替的旧快照永远不落地。
+stable = SegModel()
+stable.set_rows([{"rowNo": 1350, "src": "甲", "tgt": "A", "status": "reviewer2"},
+                 {"rowNo": 1351, "src": "乙", "tgt": "B", "status": "confirmed"}])
+for i in range(6):
+    snapshot = [
+        {"rowNo": 1350, "src": "甲", "tgt": "A",
+         "status": "edited" if i % 2 == 0 else "reviewer2"},
+        {"rowNo": 1351, "src": "乙", "tgt": "B",
+         "status": "edited" if i % 2 == 0 else "confirmed"},
+    ]
+    stable.update_rows(snapshot)
+    assert stable.index(0, 0).data() == "1350  R2"
+    assert "译者已确认" in stable.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
+
+print("INCREMENTAL_SYNC_TEST: PASS")
