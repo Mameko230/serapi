@@ -1,5 +1,70 @@
 # 更新记录
 
+## 1.0.5（2026-11-27）
+
+### 修复
+
+- Windows 上默认关闭 QtWebEngine sandbox，修复部分账户下引擎页白屏、状态一直“未连接 memoQ”的问题；需要恢复沙箱时设置 `SERAPI_ENABLE_WEBENGINE_SANDBOX=1`。
+
+### 优化
+
+- Tag 胶囊编号改用 memoQ 的 `attrs.output`（旧版仍用 NumID），不再把 `displayText` 当编号；短显 `#n`，长显 `#n 值`。
+- 长 tag 改为值优先（`#n ${itemName}`），按像素省略并在 tooltip 展示完整名称/属性；不再拼完整 attrs 后按字符硬截断。
+- 已配置 tag 规则时按规则预览：换行 tag 直接换行、颜色 tag 显示 `#n C`、粗/斜/下划线显示 `#n B/I/U`、占位符 `■`；未进规则的 tag 回退到 `#n 值`。
+- 编辑框字号可调：12–28，默认 16，设置面板即时生效并记忆；原文/译文同步。
+- 空编辑器 placeholder 改为两行短文案，避免窄窗口裁切。
+
+### 架构
+
+- 段列表视图/模型/状态代理拆到 `app/seg_model.py`；右栏/引擎区 UI 拆到 `app/res_panel.py`、`app/concordance_overlay.py`、`app/engine_overlay.py`、`app/engine_view.py`、`app/widgets.py`，mainwindow 只保留组合与入口。
+- 已知限制从 README 移到 `docs/LIMITATIONS.md`，README 只保留摘要与链接。
+- 拆出 `app/segment_info.js`（段信息/注释）与 `app/concordance_api.js`（语词检索）；bridge 降到 2491 行，上限收紧到 2520 行。
+- 拆出 `app/row_ops.js`（confirm/reject/lock/split/join/刷新/跳行）；bridge 降到 2341 行，上限收紧到 2360 行。
+- 拆出 `app/tm_hits.js`（TM/TB 命中请求）；bridge 降到 2242 行，上限收紧到 2260 行。
+- 拆出 `app/segment_api.js`（当前段读取/写回入口）；bridge 降到 2180 行，上限收紧到 2200 行。
+- 拆出 `app/old_editor.js`（旧版活动编辑器、DOM token 提取、旧版读段）；bridge 降到 2049 行，上限收紧到 2070 行。
+- 拆出 `app/segment_view.js`（新版 view 查找、token、PUT、写回）；bridge 降到 1877 行，上限收紧到 1900 行。
+- 拆出 `app/editor_detect.js`（编辑器类型/版本/edit flags）；bridge 降到 1823 行，上限收紧到 1845 行。
+- 拆出 `app/capabilities.js`（能力探测/结构指纹）；bridge 降到 1663 行，上限收紧到 1685 行。
+- 拆出 `app/new_rows.js`（新版段列表读取/聚焦/滚动）；bridge 降到 1594 行，上限收紧到 1615 行。
+- 拆出 `app/row_focus.js`（expandRows/activateRow/focusSegment）；bridge 降到 1468 行，上限收紧到 1490 行。
+- 拆出 `app/old_rows.js`（旧版行缓存/行号/tag 解析）；bridge 降到 1406 行，上限收紧到 1430 行。
+- 拆出 `app/page_info.js`（ping/detect/documentStats）；bridge 降到 1377 行，上限收紧到 1400 行。
+- 拆出 `app/page_api.js`（readSource/debugState/selectorSnapshot/editorState）；bridge 降到 1339 行，上限收紧到 1360 行。
+- 拆出 `app/tags_api.js`（listTags/parseEditorString）；bridge 降到 1322 行，上限收紧到 1345 行。
+- 拆出 `app/terms_add.js`（旧版术语添加/条目读取）；bridge 降到 1178 行，上限收紧到 1200 行。
+- 拆出 `app/row_list_old.js`（旧版段列表读取）；bridge 降到 1067 行，上限收紧到 1090 行。
+- 拆出 `app/filter_workflow.js`（过滤请求工作流）；bridge 降到 1006 行，上限收紧到 1030 行。
+- 拆出 `app/new_rows_dom.js`（新版段网格 DOM 读取辅助）；bridge 降到 940 行，上限收紧到 960 行。
+- 拆出 `app/page_helpers.js`（页面选择器/基础查询）；bridge 降到 920 行，上限收紧到 940 行。
+- 拆出 `app/hits_api.js`（新版命中 API）；bridge 降到 897 行，上限收紧到 920 行。
+- 拆出 `app/rows_runtime.js`（行数据/过滤/文档 API 基础运行时）；bridge 降到 815 行，上限收紧到 835 行。
+- 拆出 `app/window_background.py`（亚克力背景/浮层尺寸同步）；mainwindow 降到 3679 行，上限收紧到 3700 行。
+- 拆出 `app/engine_lifecycle.py`（引擎浮层显示/停放生命周期）；mainwindow 降到 3597 行，上限收紧到 3620 行。
+- 拆出 `app/ui_state.py`（轻量 UI 状态持久化）；mainwindow 降到 3575 行，上限收紧到 3600 行。
+- 拆出 `app/editor_view.py`（编辑器视图开关/重渲染）；mainwindow 降到 3534 行，上限收紧到 3560 行。
+- 拆出 `app/concordance_workflow.py`（语词检索工作流）；mainwindow 降到 3431 行，上限收紧到 3460 行。
+- 拆出 `app/tag_insert.py`（Tag 顺序插入/行跳转/命中快捷键）；mainwindow 降到 3365 行，上限收紧到 3390 行。
+- 拆出 `app/theme_lifecycle.py`（主题应用/段信息高度同步）；mainwindow 降到 3277 行，上限收紧到 3300 行。
+- 拆出 `app/theme_panel.py`（主题面板显隐/主题切换）；mainwindow 降到 3220 行，上限收紧到 3250 行。
+- 拆出 `app/settings_panel.py`（设置面板/快捷键浮窗/编辑器偏好）；mainwindow 降到 3119 行，上限收紧到 3140 行。
+- 拆出 `app/account_panel.py`（账号浮层/服务器历史）；mainwindow 降到 3038 行，上限收紧到 3060 行。
+- 拆出 `app/update_lifecycle.py`（检查更新/提示/跳过版本）；mainwindow 降到 2936 行，上限收紧到 2960 行。
+- 拆出 `app/ui_style.py`（全局 QSS）；mainwindow 降到 2901 行，上限收紧到 2930 行。
+- 拆出 `app/tag_rules_ui.py`（Tag 规则页显隐/保存）；mainwindow 降到 2862 行，上限收紧到 2890 行。
+- 拆出 `app/tab_management.py`（引擎标签页标题/关闭）；mainwindow 降到 2831 行，上限收紧到 2850 行。
+- 拆出 `app/capabilities_ui.py`（能力探测结果应用/编辑器 flags）；mainwindow 降到 2699 行，上限收紧到 2720 行。
+- 拆出 `app/bridge_events.py`（Qt 侧桥接事件分发）；mainwindow 降到 2539 行，上限收紧到 2560 行。
+- 拆出 `app/resource_ports.py`（TM/TB 资源端口）；mainwindow 降到 2482 行，上限收紧到 2500 行。
+- 拆出 `app/segment_info_ports.py`（段信息/术语详情端口）；mainwindow 降到 2369 行，上限收紧到 2390 行。
+- 拆出 `app/hit_ports.py`（命中渲染/映射/插入）；mainwindow 降到 2170 行，上限收紧到 2190 行。
+- 拆出 `app/term_ports.py`（术语编辑/快捷添加端口）；mainwindow 降到 1959 行，上限收紧到 1980 行。
+- 拆出 `app/segment_sync_ports.py`（段读取/草稿/后台同步端口）；mainwindow 降到 1780 行，上限收紧到 1800 行。
+- 拆出 `app/editor_ports.py`（编辑区装载/保存/写回端口）；mainwindow 降到 1536 行，上限收紧到 1550 行。
+- 拆出 `app/runtime_selftest.py`（引擎页/JS/探针/自检生命周期）；mainwindow 降到 1113 行，上限收紧到 1150 行。
+- 拆出 `app/window_init.py`（窗口/工具栏/浮层构建）；mainwindow 降到 485 行，上限收紧到 550 行。
+- 最终结构：`mainwindow.py` 486 行、`bridge.js` 815 行；全量测试 61/61。
+
 ## 1.0.4
 
 

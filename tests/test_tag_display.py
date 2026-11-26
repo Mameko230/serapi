@@ -40,26 +40,34 @@ ed.show()
 ed.load_tokens([{"t": "text", "v": "A"}, NEW_TAG, {"t": "text", "v": "B"}])
 app.processEvents()
 assert not ed.grab().isNull()
-# 长显：名称 + 属性，且绝不能抛异常
+# 长显：序号取 attrs.output，值优先（不再拼完整 attrs）
 h = TagObject(lambda: cfg)
 long_label = h._label(NEW_TAG)
-assert "mq:rxt" in long_label and 'val="x"' in long_label, long_label
-assert "displaytext=" in long_label, long_label
+assert long_label == "#1 x", long_label
 assert "'type'" not in long_label and "{" not in long_label, long_label
 assert not long_label.startswith("{"), long_label
-# 悬停提示同样不能把 dict 直接打印成 Python repr
+# 悬停提示保留完整信息，但绝不能把 dict 直接打印成 Python repr
 tips = [ed.tag_tooltip_at(p) for p in range(0, 5)]
 tip = next((x for x in tips if x), "")
 assert "mq:rxt" in tip and "{" not in tip.splitlines()[0], tips
 assert 'val="x"' in tip, tips
 
-# 短显：没有 NumID 时退化为 displayText（"2"），不能是 "?"
+# 短显：编号取 attrs.output，不能继续用 displayText，也不能是 "?"
 cfg["tagDisplay"] = "short"
 ed.set_cfg(cfg)
 ed.load_tokens(ed.to_tokens())   # 等价于“切换 tag 长短”的重新渲染路径
 app.processEvents()
 assert not ed.grab().isNull()
-assert h._label(NEW_TAG) == "2", h._label(NEW_TAG)
+assert h._label(NEW_TAG) == "#1", h._label(NEW_TAG)
+
+# 规则 tag：颜色/加粗只显示序号 + 语义标记，不显示 val
+cfg["colorTags"] = ["mq:rxt"]
+cfg["tagDisplay"] = "long"
+assert h._label(NEW_TAG) == "#1 C", h._label(NEW_TAG)
+cfg["colorTags"] = []
+cfg["boldTags"] = ["mq:rxt"]
+assert h._label(NEW_TAG) == "#1 B", h._label(NEW_TAG)
+cfg["boldTags"] = []
 
 # 旧版 token（带 tagKind/id/字符串 attrs）不能被改坏
 old_tag = {"t": "tag", "id": "7", "tagKind": "open", "name": "b",

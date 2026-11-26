@@ -10,8 +10,8 @@ BRIDGE = ROOT / "app" / "bridge.js"
 README = ROOT / "README.md"
 
 # 上限只允许在“拆分”时下调，不允许随功能增加上调。
-MAIN_MAX_LINES = 5550
-BRIDGE_MAX_LINES = 2760
+MAIN_MAX_LINES = 550
+BRIDGE_MAX_LINES = 835
 
 main_lines = len(MAIN.read_text(encoding="utf-8").splitlines())
 bridge_lines = len(BRIDGE.read_text(encoding="utf-8").splitlines())
@@ -28,9 +28,14 @@ assert "fetch(base" not in bridge and "fetch(packed.base" not in bridge, \
     "bridge.js 新版 REST 仍有手写 fetch，请改为 newApiFetch"
 
 # 新页面模块必须被注入与打包，且 README 明确结构红线。
-for name in ("api_client.js", "editor_state.js", "row_status.js", "symbols.js",
+for name in ("api_client.js", "editor_state.js", "editor_detect.js", "row_status.js", "symbols.js",
              "comments.js", "hits.js", "rows_store.js", "rows_api.js",
-             "filter_api.js", "legacy_api.js", "terms_model.js", "terms_api.js"):
+             "filter_api.js", "legacy_api.js", "terms_model.js", "terms_api.js",
+             "segment_info.js", "concordance_api.js", "row_ops.js", "tm_hits.js",
+             "segment_api.js", "old_editor.js", "segment_view.js", "capabilities.js",
+             "new_rows.js", "row_focus.js", "old_rows.js", "page_info.js", "page_api.js",
+             "tags_api.js", "terms_add.js", "row_list_old.js", "filter_workflow.js",
+             "new_rows_dom.js", "page_helpers.js", "hits_api.js", "rows_runtime.js"):
     assert (ROOT / "app" / name).exists(), name
     assert name in (ROOT / "app" / "bridge.py").read_text(encoding="utf-8"), f"{name} 未注入"
     assert name in (ROOT / "Serapi.spec").read_text(encoding="utf-8"), f"{name} 未打包"

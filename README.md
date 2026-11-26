@@ -30,7 +30,8 @@ Serapi 不替代 memoQ，而是把"正在编辑的这一段"放大成一个干�
 ## 主要功能
 
 - **三栏工作区**：段列表 / 原文·译文 / TM·TB 与详情；段列表自动同步（多人协作、后台校准）。
-- **Tag 胶囊**：换行、标色、加粗、斜体、下划线、占位符、隐藏 Tag 图形化显示；长短两种显示；按顺序插入缺失 Tag（F9）。
+- **Tag 胶囊**：换行、标色、加粗、斜体、下划线、占位符、隐藏 Tag 图形化显示；长短两种显示；按顺序插入缺失 Tag（F9）。编号取 memoQ 的 `attrs.output`；长显优先显示 tag 值，规则 tag 按规则预览。
+- **编辑区字号**：设置面板可调 12–28，默认 16，原文/译文同步并记住。
 - **字数与行数控制**：每行 / 行数上限、逐行对比原文、原文最长行统一上限；超限只做视觉提醒。
 - **TM/TB**：排序（TM 优先 / 术语优先）、详情、双击或 Ctrl+1…9 插入；术语高亮与数量不一致提醒（按最长匹配，不会把「短术语」算进「长术语」）。
 - **语词检索**：Ctrl+K 按原文/译文方向检索 memoQ TM，支持部分或整条插入。
@@ -115,6 +116,7 @@ python -u tests/render_main_ui.py main_ui_preview.png
 memoQ 网页（QWebEngineView）
   ├─ api_client.js      新版 REST 客户端：base path / CSRF / Bearer / fetch·JSON
   ├─ editor_state.js    文档状态：跟踪修改 / 只读 / 锁定 / 作者 / rowRef
+  ├─ editor_detect.js   编辑器类型/版本/编辑 flags
   ├─ row_status.js      行状态枚举 → 状态列（纯函数）
   ├─ symbols.js         memoQ symbols ↔ 文本/token（纯函数）
   ├─ comments.js        注释文本 / 锚点范围（纯函数）
@@ -126,6 +128,27 @@ memoQ 网页（QWebEngineView）
   ├─ legacy_api.js      旧版 /memoqweb/api 服务调用
   ├─ terms_model.js     术语条目 MetaInfo / 语言 / 示例映射
   ├─ terms_api.js       术语服务编排：TB 列表 / 空模板 / 快捷添加
+  ├─ segment_info.js    段信息 / 注释
+  ├─ concordance_api.js 语词检索
+  ├─ row_ops.js         行操作（confirm/reject/lock/split/join/刷新/跳行）
+  ├─ tm_hits.js         TM/TB 命中请求
+  ├─ segment_api.js     当前段读取/写回入口
+  ├─ old_editor.js      旧版编辑器适配
+  ├─ segment_view.js    新版 ProseMirror 视图/token/PUT/写回
+  ├─ capabilities.js    能力探测/结构指纹
+  ├─ new_rows.js        新版段列表读取/聚焦/滚动
+  ├─ row_focus.js       行激活/聚焦/加载更多
+  ├─ old_rows.js        旧版行缓存/行号/tag 解析
+  ├─ page_info.js       ping / detect / documentStats
+  ├─ page_api.js        readSource / debugState / selectorSnapshot / editorState
+  ├─ tags_api.js        listTags / parseEditorString
+  ├─ terms_add.js       旧版术语添加/条目读取
+  ├─ row_list_old.js    旧版段列表读取
+  ├─ filter_workflow.js 过滤请求工作流
+  ├─ new_rows_dom.js    新版段网格 DOM 读取辅助
+  ├─ page_helpers.js    页面选择器/基础查询
+  ├─ hits_api.js        新版命中 API
+  ├─ rows_runtime.js    行数据/过滤/文档 API 基础运行时
   └─ bridge.js          页面适配层：能力探测 / 读写段 / 段列表 / TM·TB / 术语
        ↕ QWebChannel
 app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（token ↔ QTextDocument）
@@ -142,6 +165,36 @@ app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（tok
                         ├─ app/row_workflow.py         确认/拒绝/行操作回执与跳行工作流
                         ├─ app/read_workflow.py        读取/激活/装载工作流（草稿保护、兜底读取）
                         ├─ app/stats_filter_workflow.py 文档统计 / 段列表 / 过滤栏 / 选择工作流
+                        ├─ app/seg_model.py            段列表视图/模型/状态代理
+                        ├─ app/res_panel.py            右栏 TM/TB 面板
+                        ├─ app/concordance_overlay.py  语词检索浮层
+                        ├─ app/engine_overlay.py       引擎浮层
+                        ├─ app/engine_view.py          引擎 WebEngineView
+                        ├─ app/widgets.py              段列表/资源面板通用小部件
+                        ├─ app/window_background.py    亚克力背景/浮层尺寸同步
+                        ├─ app/engine_lifecycle.py     引擎浮层显示/停放生命周期
+                        ├─ app/ui_state.py             轻量 UI 状态持久化
+                        ├─ app/editor_view.py          编辑器视图开关/重渲染
+                        ├─ app/concordance_workflow.py 语词检索工作流
+                        ├─ app/tag_insert.py           Tag 顺序插入/行跳转/命中快捷键
+                        ├─ app/theme_lifecycle.py      主题应用/段信息高度同步
+                        ├─ app/theme_panel.py          主题面板显隐/主题切换
+                        ├─ app/settings_panel.py       设置面板/快捷键浮窗/编辑器偏好
+                        ├─ app/account_panel.py        账号浮层/服务器历史
+                        ├─ app/update_lifecycle.py     检查更新/提示/跳过版本
+                        ├─ app/ui_style.py             全局 QSS
+                        ├─ app/tag_rules_ui.py         Tag 规则页显隐/保存
+                        ├─ app/tab_management.py       引擎标签页标题/关闭
+                        ├─ app/capabilities_ui.py      能力探测结果应用/编辑器 flags
+                        ├─ app/bridge_events.py        Qt 侧桥接事件分发
+                        ├─ app/resource_ports.py       TM/TB 资源端口
+                        ├─ app/segment_info_ports.py   段信息/术语详情端口
+                        ├─ app/hit_ports.py            命中渲染/映射/插入
+                        ├─ app/term_ports.py           术语编辑/快捷添加端口
+                        ├─ app/segment_sync_ports.py   段读取/草稿/后台同步端口
+                        ├─ app/editor_ports.py         编辑区装载/保存/写回端口
+                        ├─ app/runtime_selftest.py     引擎页/JS/探针/自检生命周期
+                        ├─ app/window_init.py          窗口/工具栏/浮层构建
                         └─ app/write_policy.py         写意图分类与落地前拦截
 ```
 
@@ -181,12 +234,13 @@ app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（tok
 
 ## 已知限制
 
-- 桥接依赖 memoQ WebTrans 的页面结构，memoQ 升级后可能需要适配。
-- 启动时会探测当前编辑器能力：新版编辑器已支持当前段读写（有改动时先 PUT 落库再确认，状态和左栏译文同步更新）、按行数据 API 分页的段列表（长文档行号连续、无缺口；长跳先滚动编辑器、列表窗口并行补；打开文档时自动跟随 memoQ 上次编辑行；表头可按行状态过滤；行高加大提升可读性）、TM/TB 命中查看（TB 条目详情含定义/示例/字段）、TB 术语编辑（复用 QTermService，只改主术语/定义/示例，只读库拒绝写入）、Ctrl+Q 快捷添加术语（单库直加；多库弹选择浮窗并可记住，设置面板可恢复每次询问）、Ctrl+K 语词检索（新版 concordance 接口，详情区原文/译文均高亮查询词）、Ctrl+H 打开 memoQ 原生查找替换、段信息（注释，只读；上下文/原始 ID 新版不提供）、原文/译文“包含”过滤（支持正则模式搜索符号；Ctrl+Shift+F 开关过滤栏）、TM 命中插入（tag 按名字映射，原文没有的 tag 会略过；已离线验证，真机待冒烟）；Ctrl+Enter 确认 / Shift+Enter 拒绝走 memoQ 行接口（显式 rowId，避免错行），状态立即落表，确认后用快速路径切到下一行；真机已确认新版页面不响应 JS 合成的 Ctrl/Shift+Enter，因此不使用合成快捷键；Ctrl+Shift+S 把原文复制到译文（不自动保存）；工具条左侧显示 memoQ 原生字数进度；顶栏功能改为图标按钮，悬停显示名称与快捷键；“快捷键”图标可查看全部快捷键；中间编辑框字号 16、行距 1.7，行视觉可在设置中选 A 浅色斑马或 B 聚焦行（B 不压暗相邻行，避免中日文合并句误读）。写回前统一经过写策略：跟踪修改开启、文档只读、行锁定或缺少 rowId 时阻止整段写入。术语“添加”浮层（Ctrl+E）仍只支持旧版编辑器。编辑器就绪/选中行后是否自动关闭引擎浮层可在设置里开关，引擎浮层也支持右上角 ×/Esc 关闭。新编辑器能力全部就绪时不再显示冗长能力清单；不支持的能力会置灰或明确提示，不会静默写错数据。
-- 新版编辑器的 React 页面在被隐藏时不渲染网格与编辑器，因此新版下引擎页会被“停放”到窗口可视区之外（保持渲染、不占屏），而不是真正隐藏；这是新版接入的必要条件。
-- 术语编辑仅旧版编辑器支持；只读术语库会明确提示且不会提交。
-- 新版确认/拒绝走 memoQ 行接口（显式 rowId）；真机确认新版页面不响应 JS 合成的 Ctrl/Shift+Enter，所以不用合成快捷键。确认后的跳转由 Serapi 用快速路径补到下一行。
-- 只在 Windows + 上述固定依赖组合上验证过，其他环境需自行实测。
+完整能力边界与限制见 [docs/LIMITATIONS.md](docs/LIMITATIONS.md)。要点：
+
+- 只在 Windows 10/11 + README 依赖组合上验证；memoQ 升级可能需要更新 `app/page_rules.json`。
+- Windows 默认关闭 QtWebEngine sandbox；需要恢复时设置 `SERAPI_ENABLE_WEBENGINE_SANDBOX=1`。
+- 跟踪修改只做识别与写保护，不支持在 Serapi 内接受/拒绝修订。
+- 结构操作 API 已有，但 UI 入口尚未开放。
+- 术语“添加”浮层（Ctrl+E）仍只支持旧版编辑器。
 
 ## 发版前流程（固定）
 

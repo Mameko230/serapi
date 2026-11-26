@@ -31,6 +31,7 @@ assert cfg["server_names"] == {}    # 旧配置兼容：没有名称键时给空
 assert "jump_mode" not in cfg
 assert cfg["engine_auto_close"] is True
 assert cfg["editor_line_style"] == "zebra"
+assert cfg["editor_font_size"] == 16
 assert cfg["quick_term_tb"] == "" and cfg["quick_term_tb_name"] == ""
 cfg.update({"memoq_url": "https://x/memoqweb",
             "server_history": ["https://x/memoqweb", "https://y/memoqweb"],

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from qfluentwidgets import (
     PrimaryPushButton, PushButton, ComboBox as FComboBox, LineEdit as FLineEdit,
-    CheckBox,
+    CheckBox, SpinBox,
 )
 
 from .qtedit import MqEditor
@@ -899,6 +899,7 @@ class SettingsPanel(QWidget):
     """悬浮「设置」面板。确认/拒绝后的跳转完全跟随 memoQ 自身设置。"""
     engineAutoCloseChanged = pyqtSignal(bool)
     editorLineStyleChanged = pyqtSignal(str)
+    editorFontSizeChanged = pyqtSignal(int)
     clearQuickTermRequested = pyqtSignal()
     closed = pyqtSignal()
 
@@ -953,6 +954,16 @@ class SettingsPanel(QWidget):
             "A 用极淡隔行底色建立节奏；B 只标记当前行，不降低其他行对比度")
         self.cmb_line_style.currentIndexChanged.connect(self._pick_line_style)
         lay.addWidget(self.cmb_line_style)
+        font_label = QLabel("编辑区字号")
+        font_label.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
+        lay.addWidget(font_label)
+        self.spin_font_size = SpinBox()
+        self.spin_font_size.setRange(12, 28)
+        self.spin_font_size.setSingleStep(1)
+        self.spin_font_size.setValue(16)
+        self.spin_font_size.setToolTip("中间原文/译文编辑框字号，12–28；修改后立即生效")
+        self.spin_font_size.valueChanged.connect(self._pick_font_size)
+        lay.addWidget(self.spin_font_size)
         lay.addWidget(self._sep())
         quick_label = QLabel("Ctrl+Q 快捷添加术语")
         quick_label.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
@@ -982,6 +993,23 @@ class SettingsPanel(QWidget):
         if style in ("zebra", "focus"):
             self.editorLineStyleChanged.emit(style)
 
+    def _pick_font_size(self, value):
+        try:
+            size = int(value)
+        except (TypeError, ValueError):
+            return
+        if 12 <= size <= 28:
+            self.editorFontSizeChanged.emit(size)
+
+    def set_font_size(self, size):
+        try:
+            size = max(12, min(28, int(size)))
+        except (TypeError, ValueError):
+            size = 16
+        self.spin_font_size.blockSignals(True)
+        self.spin_font_size.setValue(size)
+        self.spin_font_size.blockSignals(False)
+
     def set_line_style(self, style):
         style = {"bplus": "zebra", "cells": "focus"}.get(style, style)
         style = style if style in ("zebra", "focus") else "zebra"
@@ -990,11 +1018,13 @@ class SettingsPanel(QWidget):
         self.cmb_line_style.setCurrentIndex(max(0, idx))
         self.cmb_line_style.blockSignals(False)
 
-    def open(self, engine_auto_close=True, quick_term_name="", line_style="bplus"):
+    def open(self, engine_auto_close=True, quick_term_name="", line_style="bplus",
+             font_size=16):
         self.chk_engine_close.blockSignals(True)
         self.chk_engine_close.setChecked(bool(engine_auto_close))
         self.chk_engine_close.blockSignals(False)
         self.set_line_style(line_style)
+        self.set_font_size(font_size)
         name = str(quick_term_name or "").strip()
         self.quick_term_label.setText(
             f"术语库：{name}（已记住）" if name else "术语库：每次询问")

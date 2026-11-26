@@ -117,6 +117,60 @@ def _name_hue(name: str) -> int:
     return h
 
 
+def tag_value(attrs) -> str:
+    """取 tag 的人类价值字段：优先 attributes.val，其次 displaytext。"""
+    if not isinstance(attrs, dict):
+        return ''
+    raw = attrs.get('attributes')
+    items = []
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, dict):
+        items = [raw[k] for k in raw]
+    val, disp = '', ''
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get('name') or '').strip().lower()
+        value = item.get('value')
+        if isinstance(value, dict):
+            value = value.get('value')
+        text = '' if value is None else str(value)
+        if not text:
+            continue
+        if name == 'val' and not val:
+            val = text
+        elif name == 'displaytext' and not disp:
+            disp = text
+    return val or disp
+
+
+def tag_output(payload) -> str:
+    """memoQ 显示的 tag 编号：新版 attrs.output；旧版 NumID。"""
+    if not isinstance(payload, dict):
+        return ''
+    attrs = payload.get('attrs')
+    for box in (attrs, payload):
+        if not isinstance(box, dict):
+            continue
+        for key in ('output', 'id'):
+            value = box.get(key)
+            if value is not None and str(value).strip() != '':
+                return str(value).strip()
+    return ''
+
+
+def _escape_tag_value(value: str) -> str:
+    value = str(value or '')
+    if value == '\r\n' or value == '\n':
+        return '↵'
+    if value == ' ':
+        return '␠'
+    if value == '\t':
+        return '⇥'
+    return value
+
+
 def tag_attrs_text(attrs) -> str:
     """tag 属性展示：旧版是字符串；新版是 PM attrs dict。
 
@@ -172,13 +226,13 @@ class TagObject(QTextObjectInterface, QObject):
             return QSizeF(20, 15)
         f = QFont("Microsoft YaHei", 7)
         w = QFontMetricsF(f).horizontalAdvance(text) + 8
-        return QSizeF(w, 15)
+        return QSizeF(min(w, 180), 15)
 
     @staticmethod
     def _attrs_text(attrs) -> str:
         return tag_attrs_text(attrs)
 
-    def _label(self, p: dict) -> str:
+    def _label(self, p: dict, max_px: int = 0) -> str:
         try:
             kind = p.get('tagKind')
             if not kind:
@@ -188,31 +242,61 @@ class TagObject(QTextObjectInterface, QObject):
                     kind = 'empty'
                 else:
                     kind = 'close' if is_close_tag(p.get('name', ''), p.get('display', '')) else 'open'
-            mode = (self.cfg_get() or {}).get('tagDisplay', 'long')
-            if p.get('ph'):
-                core = "■"
+            cfg = self.cfg_get() or {}
+            mode = cfg.get('tagDisplay', 'long')
+            attrs = p.get('attrs')
+            name = re.sub(r'^\[|\]$', '', str(p.get('name') or '?'))
+            name = re.sub(r'^/', '', name).strip() or '?'
+            no = tag_output(p)
+            no_txt = ('#' + no) if no else ''
+
+            def matches(key):
+                pats = cfg.get(key) or []
+                disp = str(p.get('display') or '')
+                return any(tag_match(pat, name, disp) for pat in pats)
+
+            is_new = isinstance(attrs, dict)
+            if p.get('ph') or (is_new and matches('placeholderTags')):
+                core = (no_txt + ' ■').strip() if no_txt else '■'
+            elif is_new:
+                if matches('newlineTags'):
+                    core = '↵'
+                elif matches('colorTags'):
+                    core = (no_txt + ' C').strip() if no_txt else 'C'
+                elif matches('boldTags'):
+                    core = (no_txt + ' B').strip() if no_txt else 'B'
+                elif matches('italicTags'):
+                    core = (no_txt + ' I').strip() if no_txt else 'I'
+                elif matches('underlineTags'):
+                    core = (no_txt + ' U').strip() if no_txt else 'U'
+                elif mode == 'short':
+                    core = no_txt or str(p.get('display') or name)[:8]
+                else:
+                    value = _escape_tag_value(tag_value(attrs))
+                    tail = value or name
+                    core = (no_txt + ' ' + tail).strip()
             else:
-                name = re.sub(r'^\[|\]$', '', str(p.get('name') or '?'))
-                name = re.sub(r'^/', '', name).strip() or '?'
+                # 旧版 token：字符串 attrs / NumID，保持原有长短显语义。
                 if mode == 'short':
-                    # 旧版用 NumID；新版 tag token 没有 id，退化为 memoQ 的 displayText
-                    # （就是段内看到的 tag 显示文本，例如 "1"/"2"），不能显示成 "?"。
                     core = str(p.get('id') or p.get('display') or '?')
                     if len(core) > 8:
                         core = core[:7] + '…'
                 else:
-                    # memoQ 长显风格：名称 + 完整属性（mq:ch val=" "）
-                    attrs = self._attrs_text(p.get('attrs'))
+                    attrs_text = self._attrs_text(attrs)
                     disp = str(p.get('display') or '').strip()
-                    core = f"{name} {attrs}" if attrs else f"{name} {disp}".strip()
-                    if len(core) > 36:
-                        core = core[:35] + '…'
+                    core = f"{name} {attrs_text}" if attrs_text else f"{name} {disp}".strip()
             if p.get('nl'):
                 return core
             if kind == 'open':
-                return "{" + core
-            if kind == 'close':
-                return core + "}"
+                core = "{" + core
+            elif kind == 'close':
+                core = core + "}"
+            if max_px and core:
+                try:
+                    fm = QFontMetricsF(QFont("Microsoft YaHei", 7))
+                    core = fm.elidedText(core, Qt.TextElideMode.ElideRight, max_px)
+                except Exception:
+                    pass
             return core
         except Exception:
             # 绘制期异常在 Qt 里会直接 fail-fast 闪退，宁可退化成文本也不能抛。
@@ -236,7 +320,7 @@ class TagObject(QTextObjectInterface, QObject):
     def drawObject(self, painter: QPainter, rect: QRectF, doc, posInDocument, fmt):
         try:
             payload = json.loads(fmt.property(PAYLOAD) or '{}')
-            label = self._label(payload)
+            label = self._label(payload, max(20, int(rect.width()) - 8))
             color, bg = self._colors(payload)
             r = QRectF(rect.x() + 1, rect.y() + 2, rect.width() - 2, min(rect.height() - 4, 13))
             painter.setPen(Qt.PenStyle.NoPen)
@@ -986,8 +1070,12 @@ class MqEditor(QTextEdit):
             lines.append(attrs)
         if p.get('id') not in (None, ''):
             lines.append(f"编号：{p.get('id')} · {p.get('tagKind') or p.get('kind') or 'empty'}")
-        elif p.get('tagType'):
-            lines.append(f"类型：{p.get('tagType')}")
+        else:
+            no = tag_output(p)
+            if no:
+                lines.append(f"编号：#{no} · {p.get('tagType') or 'empty'}")
+            elif p.get('tagType'):
+                lines.append(f"类型：{p.get('tagType')}")
         return '\n'.join(lines)
 
     def mouseMoveEvent(self, event):

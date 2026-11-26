@@ -35,6 +35,7 @@ DEFAULTS = {
     "engine_auto_close": True,
     # 中间编辑框行视觉：zebra=轻隔行（默认）；focus=当前行聚焦
     "editor_line_style": "zebra",
+    "editor_font_size": 16,
     # Ctrl+Q 快捷添加术语记住的术语库（空=每次询问）
     "quick_term_tb": "",
     "quick_term_tb_name": "",
@@ -78,6 +79,11 @@ def load() -> dict:
         cfg["editor_line_style"] = legacy_style
     if cfg.get("editor_line_style") not in ("zebra", "focus"):
         cfg["editor_line_style"] = "zebra"
+    try:
+        font_size = int(cfg.get("editor_font_size") or 16)
+    except (TypeError, ValueError):
+        font_size = 16
+    cfg["editor_font_size"] = max(12, min(28, font_size))
     cfg["quick_term_tb"] = str(cfg.get("quick_term_tb") or "").strip()[:64]
     cfg["quick_term_tb_name"] = str(cfg.get("quick_term_tb_name") or "").strip()[:120]
     return cfg

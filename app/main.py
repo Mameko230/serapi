@@ -46,6 +46,12 @@ else:
     BASE = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(BASE))
 
+# QtWebEngine 的 Chromium sandbox 在部分 Windows 账户/受限令牌下会白屏
+# （页面进程起不来，Serapi 显示“未连接 memoQ”）。默认关闭 sandbox；
+# 需要恢复沙箱时设置 SERAPI_ENABLE_WEBENGINE_SANDBOX=1。
+if os.name == "nt" and os.environ.get("SERAPI_ENABLE_WEBENGINE_SANDBOX") != "1":
+    os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
+
 from PyQt6.QtCore import PYQT_VERSION_STR  # noqa: E402
 
 import re as _re  # noqa: E402
