@@ -204,6 +204,18 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
   - 遗留测试数据：测试术语库 A 有第一条冒烟写入的测试术语；测试术语库 B 有本轮 Ctrl+Q 写入的测试术语（用户已授权，未删除）。
 - 冒烟中发现并修复：① 启动时 `_fit_row_number_width` 早于 `_segments` 创建导致 AttributeError；② 新版文档语言识别没识别 `_termLangs` 的 `{src,tgt}` 短键，导致 ListServerProjectTBs 缺 targetLanguage 返回空、Ctrl+Q 误报“没有可用的术语库”；③ 合成确认/拒绝快捷键会落到 memoQ 内部活动行（错行），改走 HTTP 行接口。
 
+## 1.0.1 发布与下一版探索（2026-11-26）
+
+- **1.0.1 已发布**：CI 成功，GitHub Release 含 `Serapi-Setup.exe` / `Serapi-win64.zip`；tag `v1.0.1` → 提交 `758de39`（docs）前一版 `c8b499c` 为代码修复提交。
+- 已修复 P0：
+  - 新版 Ctrl+K 语词检索：接通文档 `POST/GET /concordance`，真机有结果、源/译详情与元信息正常；详情区原文高亮查询词。
+  - Ctrl+Enter 写回后状态不更新：HTTP 响应带 `mappedStatus`，`SegModel.set_row_status` 立即落表 + 8s 权威状态保护；真机确认行 1 后左边立刻变 R1 并跳下一行。
+- **下一版探索结论（默认只做新版，旧版封盘）**：
+  1. **过滤符号**：新版 filter API 本身接受符号，译文侧 `-`/`/` 能返回命中（并非完全不可搜）；同时 API 支持 `isRegex`。新版 concordance 接口对**纯符号查询**返回 0（即使文档里有 `-/、！`），这是语词检索的限制。可行方向：过滤器增加“符号/正则”模式；语词检索符号查询走 Serapi 本地扫描（行 API 批量拉取）或引导用原生查找替换（带正则）。
+  2. **查找替换**：新版原生命令 `findAndReplace` 存在且带热键；页面内合成 Ctrl+F 能打开原生“查找/替换”面板（含“使用正则表达式/替换全部”）。最稳妥接法：Serapi 打开引擎浮层 + 派发原生 Ctrl+F，复用 memoQ 自己的查找替换，不自己批量写回。注意悬浮页面需真正显示/聚焦。
+  3. **语词检索原文高亮**：1.0.1 已实现（详情 `tm_segment_html(..., highlight)`），无需再做。
+  4. **启动提速**：新版页面自身加载占主要时间；Serapi 侧当前 bridge-ready 后还要等：段列表首次刷新 1500ms、能力探测 1200/5000/15000ms、字数统计 1800/5000/12000/20000ms。可优化：bridge-ready 立即探测 + 首刷（带失败重试），能力齐全后取消冗余探测，统计延后；量化启动日志后再改。
+
 ## 下一步（按顺序）
 
 1. 发版 v1.0.1：全量 + `tests/test_release_ready.py` → 提交 → 打 `v1.0.1` tag 推送（Git 需带代理：`-c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897`；Windows 系统代理 Git 不读取）。
