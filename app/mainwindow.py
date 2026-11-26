@@ -3725,6 +3725,8 @@ class MainWindow(QMainWindow):
                 bits.append("段列表")
             if feats.get("tmHits"):
                 bits.append("TM 命中")
+            if feats.get("filter"):
+                bits.append("过滤")
             bits.append("当前段读写")
             text = "新版编辑器 · " + " + ".join(bits)
         elif missing:
@@ -3739,7 +3741,10 @@ class MainWindow(QMainWindow):
         if self._cap_editor == "new":
             self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
             self.conn_label.setStyleSheet("color: #d97706;")
-            if feats.get("listRows") and feats.get("tmHits"):
+            if feats.get("listRows") and feats.get("tmHits") and feats.get("filter"):
+                self.res_panel.set_status(
+                    "新版编辑器：段列表/当前段读写/TM 命中/过滤可用；TB/术语仍在接入")
+            elif feats.get("listRows") and feats.get("tmHits"):
                 self.res_panel.set_status(
                     "新版编辑器：段列表/当前段读写/TM 命中可用；TB/术语、过滤仍在接入")
             elif feats.get("listRows"):
@@ -3815,6 +3820,15 @@ class MainWindow(QMainWindow):
             return
         if msg.get("type") == "segment-info":
             self._update_segment_info(data)
+            return
+        if msg.get("type") == "filter-error":
+            # 新版过滤接口失败：恢复过滤 UI 状态，避免界面显示“已过滤”但列表未变。
+            self._filter_busy = False
+            self._filter_pending = None
+            self._filter_active = False
+            err = str(data.get("err") or "未知错误")
+            self.filter_status.setText("过滤失败：" + err[:44])
+            self.log("过滤失败：" + err)
             return
         if msg.get("type") == "rows-updated":
             # 新版行数据 API 拉到新一批行：后台重同步段列表（不打断当前阅读/切行）。

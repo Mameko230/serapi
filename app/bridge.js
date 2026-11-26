@@ -260,14 +260,20 @@
     function newRowsApiStart(count) {
       var st = newRowsApiState();
       if (st.fetching || st.done) return false;
-      var total = newRowTotal() || 0;
+      var f = newFilterState();
+      var filtered = !!(f.active && f.rowIds);
+      var total = filtered ? f.rowIds.length : (newRowTotal() || 0);
       var start = st.next;
       if (total && start >= total) { st.done = true; return false; }
-      var end = start + (count || st.chunk);
-      if (total) end = Math.min(total, end);
       var ids = [];
-      for (var i = start; i < end; i++) ids.push(i);
-      if (!ids.length) return false;
+      if (filtered) {
+        ids = f.rowIds.slice(start, start + (count || st.chunk));
+      } else {
+        var end = start + (count || st.chunk);
+        if (total) end = Math.min(total, end);
+        for (var i = start; i < end; i++) ids.push(i);
+      }
+      if (!ids.length) { st.done = true; return false; }
       var base = newDocApiBase();
       if (!base) { st.error = '文档 API 路径未找到'; return false; }
       var headers = newApiHeaders();
@@ -291,10 +297,10 @@
             st.rows[entry.rowNo] = entry;
             maxId = Math.max(maxId, parseInt(entry.rowId, 10) + 1);
           }
-          st.next = maxId;
+          st.next = filtered ? start + ids.length : maxId;
           st.fetching = false;
           st.status = 'done';
-          st.total = newRowTotal() || Math.max(st.total, maxId);
+          st.total = filtered ? total : (newRowTotal() || Math.max(st.total, maxId));
           if (rows.length < ids.length) st.done = true;
           try {
             __md.push('rows-updated', {
@@ -314,14 +320,71 @@
     }
     function newRowsApiList() {
       var st = newRowsApiState();
+      var f = newFilterState();
+      var filteredTotal = (f.active && f.rowIds) ? f.rowIds.length : 0;
       var list = [];
       for (var k in st.rows) {
         if (Object.prototype.hasOwnProperty.call(st.rows, k)) list.push(st.rows[k]);
       }
       list.sort(function (a, b) { return a.rowNo - b.rowNo; });
-      var done = !!st.done || (st.total > 0 && st.next >= st.total);
-      return { rows: list, total: st.total || newRowTotal(), cached: list.length,
-               done: done, error: st.error || '' };
+      var total = filteredTotal || st.total || newRowTotal();
+      var done = !!st.done || (total > 0 && st.next >= total);
+      return { rows: list, total: total, cached: list.length,
+               done: done, error: st.error || '', filtered: !!filteredTotal };
+    }
+    /* ---- 新版过滤（原生 filter API，只读视图操作）----
+       POST /api/editor/.../filter {filterSet, sorting}
+       → {rangesByRowIds:[{key: rowId, value:[ranges]}]}；key 就是命中的 0 基 rowId，
+       空 filterSet 表示清除过滤。只改视图，不改文档内容。 */
+    function newRowsApiReset() {
+      window.__md._rowsApi = null;
+    }
+    function newFilterState() {
+      var docKey = location.pathname;
+      var st = window.__md._filter;
+      if (!st || st.doc !== docKey) {
+        st = window.__md._filter = {
+          doc: docKey, active: false, rowIds: [], status: 'idle', error: '',
+        };
+      }
+      return st;
+    }
+    function newFilterSet(sourceText, targetText) {
+      var src = String(sourceText == null ? '' : sourceText).trim();
+      var tgt = String(targetText == null ? '' : targetText).trim();
+      if (!src && !tgt) return {};
+      var content = { shouldIncludeSegments: true };
+      if (src) {
+        content.source = { text: src, isCaseSensitive: false, matchType: 'any',
+                           shouldMatchExactWordOrder: false };
+      }
+      if (tgt) {
+        content.target = { text: tgt, isCaseSensitive: false, matchType: 'any',
+                           shouldMatchExactWordOrder: false };
+      }
+      return { content: content };
+    }
+    function newFilterPost(filterSet, onDone) {
+      var base = newDocApiBase();
+      if (!base) return onDone('文档 API 路径未找到');
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      fetch(base + '/filter', {
+        method: 'POST', credentials: 'same-origin', headers: headers,
+        body: JSON.stringify({ filterSet: filterSet, sorting: 'none' }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (j) {
+        var rows = j && j.rangesByRowIds;
+        if (!Array.isArray(rows)) throw new Error('过滤返回缺少 rangesByRowIds');
+        var ids = [];
+        for (var i = 0; i < rows.length; i++) {
+          var id = Number(rows[i] && rows[i].key);
+          if (isFinite(id)) ids.push(id);
+        }
+        onDone(null, ids);
+      }).catch(function (e) { onDone(String(e.message || e)); });
     }
     function newDocApiBase() {
       return newApiNamespace('editor');
@@ -491,7 +554,12 @@
         if (!api.rows.length && !api.error) newRowsApiStart(100);
         if (api.rows.length) {
           return { ok: true, rows: api.rows, total: api.total, cached: api.cached,
-                   source: 'new-api', done: api.done, error: api.error };
+                   source: 'new-api', done: api.done, error: api.error,
+                   filtered: !!api.filtered };
+        }
+        var filterState = newFilterState();
+        if (filterState.active && !api.rows.length) {
+          return { ok: false, err: '过滤后行数据尚未就绪' };
         }
         var rows = newRowElements();
         var table = newRowsTable();
@@ -626,6 +694,8 @@
           // 命中走文档 API，不依赖右侧结果面板是否已渲染/打开。
           f.tmHits = !!newDocApiBase();
           f.segmentInfo = !!newApiNamespace('translation');
+          // 过滤走原生 filter API（只改视图），不依赖旧版过滤面板。
+          f.filter = !!newDocApiBase();
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -650,7 +720,11 @@
           : '需要旧版编辑器（段信息）';
       }
       if (!f.terms) reasons.terms = '需要旧版编辑器与已加载术语库';
-      if (!f.filter) reasons.filter = '需要旧版编辑器的原生过滤面板';
+      if (!f.filter) {
+        reasons.filter = (kind === 'new')
+          ? '新版编辑器：过滤接口尚未就绪'
+          : '需要旧版编辑器的原生过滤面板';
+      }
       if (!f.concordance) reasons.concordance = '需要旧版编辑器（语词检索）';
       if (!f.confirm) reasons.confirm = '需要旧版编辑器（原生确认）';
       if (!f.readSegment) reasons.readSegment = '当前段编辑器尚未就绪';
@@ -1154,6 +1228,27 @@
        行 id 仍是原始 0 基行号（listRows 的 rowNo = id + 1）。 */
     window.__md.api.filterReq = function (direction, sourceText, targetText) {
       try {
+        if (detectEditor() === 'new') {
+          var f = newFilterState();
+          f.status = 'pending';
+          f.error = '';
+          var filterSet = newFilterSet(sourceText, targetText);
+          var clear = !Object.keys(filterSet).length;
+          newFilterPost(filterSet, function (err, rowIds) {
+            if (err) {
+              f.status = 'error';
+              f.error = String(err).slice(0, 160);
+              try { __md.push('filter-error', { err: f.error }); } catch (e) {}
+              return;
+            }
+            f.active = !clear;
+            f.rowIds = clear ? [] : rowIds;
+            f.status = 'done';
+            newRowsApiReset();
+            try { __md.push('rows-updated', { source: 'filter' }); } catch (e) {}
+          });
+          return { ok: true, pending: true };
+        }
         if (detectEditor() !== 'old') return { ok: false, err: '过滤器仅旧版支持' };
         var target = direction === 'target';
         var el = pageFilterInput(target ? 'target' : 'source');
@@ -1176,6 +1271,25 @@
     };
     window.__md.api.clearFilterReq = function () {
       try {
+        if (detectEditor() === 'new') {
+          var f = newFilterState();
+          f.status = 'pending';
+          f.error = '';
+          newFilterPost({}, function (err) {
+            if (err) {
+              f.status = 'error';
+              f.error = String(err).slice(0, 160);
+              try { __md.push('filter-error', { err: f.error }); } catch (e) {}
+              return;
+            }
+            f.active = false;
+            f.rowIds = [];
+            f.status = 'idle';
+            newRowsApiReset();
+            try { __md.push('rows-updated', { source: 'filter-clear' }); } catch (e) {}
+          });
+          return { ok: true, pending: true };
+        }
         if (detectEditor() !== 'old') return { ok: false, err: '过滤器仅旧版支持' };
         var el = pageFilterInput('source');
 

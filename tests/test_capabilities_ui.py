@@ -67,6 +67,14 @@ assert "TM 命中" in h.cap_label.text()
 assert "TM 命中可用" in h.res_panel.status
 assert "TB/术语、过滤仍在接入" in h.res_panel.status
 
+# 新版段列表 + TM 命中 + 过滤都可用时：过滤也写进提示语。
+new_all = dict(new, features=dict(new["features"], listRows=True, tmHits=True,
+                                  filter=True))
+h._apply_capabilities(json.dumps(new_all))
+assert "过滤" in h.cap_label.text()
+assert "过滤可用" in h.res_panel.status
+assert "仍在接入" in h.res_panel.status
+
 
 class ExpandHost:
     def __init__(self, editor):
@@ -143,6 +151,34 @@ MainWindow.on_bridge_event(bh, 7, json.dumps({
              "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
 }))
 assert bh.refreshes == [{"background": True}], bh.refreshes
+
+
+# 新版过滤失败：bridge 推 filter-error 时恢复过滤 UI 状态，不留“已过滤”假象。
+class FilterBridgeHost(BridgeHost):
+    _filter_busy = True
+    _filter_active = True
+
+    def __init__(self):
+        super().__init__()
+        self.filter_status = QLabel("")
+        self._filter_pending = ("source", "x", False)
+        self.logs = []
+
+    def log(self, text):
+        self.logs.append(str(text))
+
+
+fb = FilterBridgeHost()
+MainWindow.on_bridge_event(fb, 7, json.dumps({
+    "type": "filter-error",
+    "data": {"editor": "new", "err": "HTTP 500",
+             "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
+}))
+assert fb._filter_busy is False
+assert fb._filter_active is False
+assert fb._filter_pending is None
+assert "过滤失败" in fb.filter_status.text()
+assert any("过滤失败" in line for line in fb.logs), fb.logs
 
 old = {
     "ok": True, "editor": "old",

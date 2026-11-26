@@ -82,11 +82,11 @@ assert.strictEqual(nc.features.listRows, false);
 // 命中/段信息走文档 API：路径匹配即可用，不要求结果面板已渲染。
 assert.strictEqual(nc.features.tmHits, true);
 assert.strictEqual(nc.features.segmentInfo, true);
-assert.strictEqual(nc.features.filter, false);
+assert.strictEqual(nc.features.filter, true);
 assert.strictEqual(nc.features.terms, false);
 assert.strictEqual(nc.features.confirm, false);
 assert.ok(nc.reasons.listRows);
-assert.ok(nc.reasons.filter);
+assert.strictEqual(nc.reasons.filter, undefined);
 assert.strictEqual(nc.fingerprint.ok, false);
 assert.ok(nc.fingerprint.missing.indexOf('proseMirror') >= 0);
 
