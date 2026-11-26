@@ -1,0 +1,31 @@
+{
+  "editor": "old",
+  "memoqVersion": "legacy WebTrans",
+  "privacy": "synthetic structure only; no project text, URLs, GUIDs or user names",
+  "grid": {
+    "controller": "gridCtrl",
+    "rowTag": "tr",
+    "rowCount": 2
+  },
+  "rows": [
+    {
+      "order": 1,
+      "cells": {
+        "original": "td.original-segment-grid",
+        "translated": "td.translated-segment-grid",
+        "status": "td.status-cell"
+      }
+    },
+    {
+      "order": 2,
+      "cells": {
+        "original": "td.original-segment-grid",
+        "translated": "td.translated-segment-grid",
+        "status": "td.status-cell"
+      }
+    }
+  ],
+  "confirmInputId": "editorHiddenInput",
+  "filterInputs": ["txtSourceFilter", "txtTargetFilter"],
+  "statusBar": ".status-bar-container"
+}

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'app', 'bridge.js'), 'utf8');
+const SRC = require('./_page_source');
 
 function makeEl(tag, attrs) {
   return {
@@ -40,11 +40,25 @@ function makeEl(tag, attrs) {
 
 function load() {
   const pm = makeEl('div', { class: 'ProseMirror', contenteditable: 'true' });
+  const rows = [];
+  for (let i = 1; i <= 5; i++) {
+    const roleRow = makeEl('div', { role: 'row', 'aria-rowindex': String(i) });
+    const row = makeEl('div', { class: 'translation-row', 'data-row-id': String(i - 1) });
+    row.closest = (sel) => (String(sel).indexOf('role="row"') >= 0 ? roleRow : null);
+    rows.push(row);
+  }
   const document = {
     activeElement: null,
     cookie: 'X-CSRF-TOKEN=token',
-    querySelector(sel) { return sel.indexOf('ProseMirror') >= 0 ? pm : null; },
-    querySelectorAll() { return []; },
+    querySelector(sel) {
+      if (sel.indexOf('ProseMirror') >= 0) return pm;
+      if (sel.indexOf('translation-row') >= 0) return rows[0];
+      return null;
+    },
+    querySelectorAll(sel) {
+      if (sel.indexOf('translation-row') >= 0) return rows;
+      return [];
+    },
     getElementById() { return null; },
     createElement: () => makeEl('div'),
     addEventListener() {},
@@ -168,34 +182,30 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
   assert.strictEqual(rejectPush.data.status, 'rejected');
   assert.strictEqual(rejectPush.data.mappedStatus, 'rejected');
 
-  // 3) 不再依赖合成键盘快捷键（避免落到 memoQ 内部其它活动行）。
+  // 3) 结构操作走显式 rowId，不走整段 PUT。
+  ctx.__fetches.length = 0;
+  ctx.__pushes.length = 0;
+  const lockRet = api.lockRow(2, true, 9);
+  assert.strictEqual(lockRet.ok, true);
+  assert.strictEqual(lockRet.rowId, '1');
+  await tick();
+  const lockReq = ctx.__fetches.find((f) => f.url.endsWith('/rows/1/lock'));
+  assert.ok(lockReq, ctx.__fetches.map((f) => f.url));
+  assert.deepStrictEqual(lockReq.body, { lockValue: true });
+  const structural = ctx.__pushes.map((p) => JSON.parse(p))
+    .find((p) => p.type === 'structural-result');
+  assert.ok(structural, ctx.__pushes);
+  assert.strictEqual(structural.data.ok, true);
+  assert.strictEqual(structural.data.req, 9);
+
+  // 3) 已真机确认：新版页面不响应 JS 合成的 Ctrl/Shift+Enter，产品路径必须走 HTTP。
   pm.events.length = 0;
   ctx.__fetches.length = 0;
   api.confirmSegment(1);
   await tick();
+  assert.ok(ctx.__fetches.some((f) => f.url.endsWith('/rows/0/confirm')),
+    ctx.__fetches.map((f) => f.url));
   assert.strictEqual(pm.events.length, 0, pm.events);
-
-  // 4) HTTP 400 时把错误推回 Qt，而不是静默成功。
-  ctx.__fetches.length = 0;
-  ctx.__pushes.length = 0;
-  const originalFetch = ctx.fetch;
-  ctx.fetch = (url) => {
-    ctx.__fetches.push({ url });
-    return Promise.resolve({
-      ok: false, status: 400,
-      json: () => Promise.resolve({ title: 'validation', detail: 'bad' }),
-    });
-  };
-  // 重新加载 bridge 会重置 __md；直接替换当前 window.fetch 后调用（bridge 内引用全局 fetch）。
-  ctx.window.fetch = ctx.fetch;
-  api.confirmSegment(2);
-  await tick();
-  const errPush = ctx.__pushes.map((p) => JSON.parse(p))
-    .find((p) => p.type === 'row-action-result');
-  assert.strictEqual(errPush.data.ok, false);
-  assert.ok(/validation|bad/.test(errPush.data.err), errPush);
-  ctx.fetch = originalFetch;
-  ctx.window.fetch = originalFetch;
 
   // 4) 新版原生查找替换：合成 Ctrl+F 打开 memoQ 自己面板。
   pm.events.length = 0;

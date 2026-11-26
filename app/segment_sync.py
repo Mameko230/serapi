@@ -103,6 +103,12 @@ class SegmentSync:
         if port.filter_active() or self.auto_loading:
             return
         self.auto_loading = True
+        if getattr(port, "is_new_editor", lambda: False)():
+            # 新版 expandRows 自己会推 rows-updated；不再固定等 900ms。
+            # 2.5s 保险：接口失败/无更多行时复位，避免滚动加载被永久卡住。
+            port.request_expand_grid(lambda _ok: None)
+            port.later(2500, self._clear_auto_loading)
+            return
 
         def done(ok):
             if ok is not True and ok != "true":
@@ -111,6 +117,17 @@ class SegmentSync:
             port.later(900, self._after_more_loaded)
 
         port.request_expand_grid(done)
+
+    def _clear_auto_loading(self):
+        self.auto_loading = False
+
+    def on_rows_updated(self):
+        """rows-updated：新版扩充/单行刷新共用；解除加载标记并后台同步。"""
+        self.auto_loading = False
+        if self.busy:
+            self.port.schedule_refresh(120, background=True)
+            return
+        self.refresh(background=True)
 
     def _after_more_loaded(self):
         self.auto_loading = False

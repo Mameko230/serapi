@@ -27,36 +27,9 @@
     /* ================= 页面结构适配层 =================
        所有页面级选择器集中在这里；memoQ 改版时只需要改这一张表。
        注意：这里只描述结构，不读取/缓存任何原文、译文或项目数据。 */
-    var PAGE = {
-      old: {
-        version: 1,
-        grid: '[ng-controller="gridCtrl"]',
-        rows: 'tr',
-        editorCell: '.editor-cell',
-        orderCell: 'td.order',
-        statusCell: 'td.status-cell',
-        lockIcon: '[data-iconkey="lock"]',
-        originalCell: 'td.original-segment-grid',
-        translatedCell: 'td.translated-segment-grid',
-        contentRoot: '.content-container',
-        statusBar: '.status-bar-container',
-        confirm: ['editorHiddenInput', 'input[type="text"][id*="Hidden"]', '[id*="editorHidden"]'],
-        filterSource: 'txtSourceFilter',
-        filterTarget: 'txtTargetFilter',
-        checkout: 'btnFormCheckout',
-      },
-      new: {
-        version: 2,
-        proseMirror: 'div.ProseMirror',
-        rowsTable: '[data-testid="translation-grid-rows"]',
-        row: '.translation-row',
-        rowRole: '[role="row"]',
-        segment: '[data-segment-type]',
-        targetSegment: '[data-segment-type="target"]',
-        sourceSegment: '[data-segment-type="source"]',
-        bodyAll: 'body *',
-      },
-    };
+    // 选择器规则包由 bridge.py 在启动时从 app/page_rules.json 注入。
+    // 页面改版时可替换规则包，不必改 bridge.js。
+    var PAGE = window.__MD_PAGE_RULES || {};
 
     function page() { return PAGE[detectEditor()] || null; }
     function pageGridEl() {
@@ -170,105 +143,15 @@
       return document.getElementById('translationResultsListInner')
         || document.querySelector('[data-testid="translationResultsContainer"]');
     }
-    function newSegmentSymbols(seg) {
-      if (!seg) return [];
-      if (seg.symbols) return seg.symbols;
-      if (seg.segment && seg.segment.symbols) return seg.segment.symbols;
-      return [];
-    }
-    function newSymbolChar(value) {
-      // symbols 里的文本符号通常是逐字符 Unicode 码点（数字或数字串）。
-      var n = null;
-      if (typeof value === 'number') n = value;
-      else if (typeof value === 'string' && /^\d+$/.test(value) && value.length <= 7) {
-        n = parseInt(value, 10);
-      }
-      if (n !== null && isFinite(n)) {
-        try { return String.fromCodePoint(n); } catch (e) {}
-      }
-      return String(value == null ? '' : value);
-    }
-    function newSymbolsText(seg) {
-      var symbols = newSegmentSymbols(seg);
-      var out = [];
-      for (var i = 0; i < symbols.length; i++) {
-        out.push(newSymbolChar((symbols[i] || {}).value));
-      }
-      return out.join('');
-    }
-    function newSymbolsPlainText(seg) {
-      // 段列表展示用：只要文本符号，tag 占位不显示（不是编辑器内容回放）。
-      var symbols = newSegmentSymbols(seg);
-      var out = [];
-      for (var i = 0; i < symbols.length; i++) {
-        var s = symbols[i] || {};
-        var type = s.type;
-        if (type === 1 || type === 'text' || type === 'Text') {
-          out.push(newSymbolChar(s.value));
-        }
-      }
-      return out.join('');
-    }
-    function newSegText(seg) {
-      if (seg && typeof seg.text === 'string' && seg.text) return seg.text;
-      return newSymbolsText(seg);
-    }
+    function newSegmentSymbols(seg) { return window.__mdSymbols.segmentSymbols(seg); }
+    function newSymbolChar(value) { return window.__mdSymbols.char(value); }
+    function newSymbolsText(seg) { return window.__mdSymbols.text(seg); }
+    function newSymbolsPlainText(seg) { return window.__mdSymbols.plainText(seg); }
+    function newSegText(seg) { return window.__mdSymbols.segText(seg); }
     // 新版命中符号 → token：文本按码点解码，type=2 是 tag（tagType/inlineTagType/name/display）。
-    function newSymbolsTokens(seg) {
-      var symbols = newSegmentSymbols(seg);
-      var out = [];
-      var text = '';
-      var flush = function () {
-        if (text) { out.push({ t: 'text', v: text }); text = ''; }
-      };
-      for (var i = 0; i < symbols.length; i++) {
-        var s = symbols[i] || {};
-        var type = String(s.type);
-        if (type === '2') {
-          flush();
-          var disp = (s.display && typeof s.display === 'object')
-            ? String(s.display.text == null ? '' : s.display.text)
-            : String(s.display == null ? '' : s.display);
-          var inline = String(s.inlineTagType == null ? '' : s.inlineTagType);
-          var tagType = (inline === '2') ? 'inline-self-closed' : 'inline-closed';
-          out.push({
-            t: 'tag', tagKind: 'empty', name: String(s.name || ''),
-            display: disp, tagType: tagType,
-            attrs: { type: tagType, name: String(s.name || ''),
-                     isSpecial: !!(s.display && s.display.isSpecial),
-                     displayText: disp },
-            // 保留 row API 的完整符号（tagType/attributes/display），写回时直接 PUT。
-            raw: s,
-          });
-        } else if (type === '1' || type === 'text') {
-          text += newSymbolChar(s.value);
-        } else {
-          // 未知符号兜底：按文本拼
-          text += newSymbolChar(s.value);
-        }
-      }
-      flush();
-      return out;
-    }
+    function newSymbolsTokens(seg) { return window.__mdSymbols.tokens(seg); }
     // 命中 tag 能否全部按名字映射到当前原文 tag（严格插入前置校验）。
-    function newTagPlan(srcTokens, tgtTokens) {
-      var have = {}, need = {};
-      var count = function (list, bucket) {
-        for (var i = 0; i < list.length; i++) {
-          var t = list[i] || {};
-          if (t.t !== 'tag') continue;
-          var name = String(t.name || '');
-          bucket[name] = (bucket[name] || 0) + 1;
-        }
-      };
-      count(srcTokens || [], have);
-      count(tgtTokens || [], need);
-      for (var name in need) {
-        if (!Object.prototype.hasOwnProperty.call(need, name)) continue;
-        if (need[name] > (have[name] || 0)) return false;
-      }
-      return true;
-    }
+    function newTagPlan(srcTokens, tgtTokens) { return window.__mdSymbols.tagPlan(srcTokens, tgtTokens); }
     function newCurrentSourceTokens() {
       try {
         var view = newActiveView() || newAnyView();
@@ -279,29 +162,17 @@
         return srcView ? newSegmentTokens(srcView) : [];
       } catch (e) { return []; }
     }
-    function newSymbolsHaveTags(seg) {
-      var symbols = newSegmentSymbols(seg);
-      for (var i = 0; i < symbols.length; i++) {
-        var type = symbols[i] && symbols[i].type;
-        if (type !== 1 && type !== 'text' && type !== 'Text') return true;
-      }
-      return false;
-    }
+    function newSymbolsHaveTags(seg) { return window.__mdSymbols.haveTags(seg); }
     /* ---- 新版段列表（行数据 API，按范围加载）----
        POST /api/editor/projects/<prj>/docs/<doc>/rows {rowIds:[...], scope:'entireRow'}
        绕开虚拟网格：缓存连续行号，加载更多时再取下一批，不会出现行号跳跃。 */
-    function newRowsApiState() {
-      var docKey = location.pathname;
-      var st = window.__md._rowsApi;
-      if (!st || st.doc !== docKey) {
-        st = window.__md._rowsApi = {
-          doc: docKey, status: 'idle', fetching: false, done: false, error: '',
-          rows: {}, next: 0, total: 0, chunk: 100,
-        };
-      }
-      return st;
-    }
+    function newRowsApiState() { return window.__mdRowsStore.state(); }
     function newRowStatusFromMeta(meta, hasTarget) {
+      try {
+        if (window.__mdRowStatus && window.__mdRowStatus.fromMeta) {
+          return window.__mdRowStatus.fromMeta(meta, hasTarget);
+        }
+      } catch (e) {}
       // 新版 row.meta.status 是 memoQ 枚举 camelCase：
       // notStarted/edited/trConfirmed/manuallyConfirmed/reviewer1Confirmed/
       // reviewer2Confirmed/rejected/assembled/pretranslated.../machineTranslated 等。
@@ -318,263 +189,50 @@
       if (/edited/.test(low)) return hasTarget ? 'edited' : 'untranslated';
       return hasTarget ? 'edited' : 'untranslated';
     }
-    function newRowApiEntry(raw) {
-      var id = Number(raw && raw.id);
-      if (!isFinite(id) || id < 0) return null;
-      var meta = (raw && raw.meta) || {};
-      var src = newSymbolsPlainText(raw && raw.source);
-      var tgt = newSymbolsPlainText(raw && raw.target);
+    function newRowApiEntry(raw) { return window.__mdRowsStore.entry(raw, newSymbolsPlainText, newRowStatusFromMeta); }
+    function newRowsDeps() {
       return {
-        rowNo: id + 1, rowId: String(id), src: src, tgt: tgt,
-        locked: !!meta.isLocked, maxLen: 0,
-        status: newRowStatusFromMeta(meta, !!tgt),
-        tmRate: Number(meta.matchRate || 0) || 0,
+        state: newRowsApiState, filterState: newFilterState, rowTotal: newRowTotal,
+        path: function () { return location.pathname; },
+        docBase: newDocApiBase, headers: newApiHeaders, fetch: newApiFetch,
+        entry: newRowApiEntry,
+        push: function (type, payload) {
+          try { __md.push(type, payload); } catch (e) {}
+        },
       };
     }
     function newRowsApiStart(count) {
-      var st = newRowsApiState();
-      if (st.fetching || st.done) return false;
-      var f = newFilterState();
-      var filtered = !!(f.active && f.rowIds);
-      var total = filtered ? f.rowIds.length : (newRowTotal() || 0);
-      var start = st.next;
-      if (total && start >= total) { st.done = true; return false; }
-      var ids = [];
-      if (filtered) {
-        ids = f.rowIds.slice(start, start + (count || st.chunk));
-      } else {
-        var end = start + (count || st.chunk);
-        if (total) end = Math.min(total, end);
-        for (var i = start; i < end; i++) ids.push(i);
-      }
-      if (!ids.length) { st.done = true; return false; }
-      var base = newDocApiBase();
-      if (!base) { st.error = '文档 API 路径未找到'; return false; }
-      var headers = newApiHeaders();
-      headers['Content-Type'] = 'application/json';
-      var docKey = location.pathname;
-      st.fetching = true;
-      try {
-        fetch(base + '/rows', {
-          method: 'POST', credentials: 'same-origin', headers: headers,
-          body: JSON.stringify({ rowIds: ids, scope: 'entireRow' }),
-        }).then(function (r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        }).then(function (rows) {
-          if (st.doc !== docKey) return;   // 已换文档：旧响应丢弃
-          if (!Array.isArray(rows)) throw new Error('行数据返回不是数组');
-          var maxId = st.next;
-          for (var i = 0; i < rows.length; i++) {
-            var entry = newRowApiEntry(rows[i]);
-            if (!entry) continue;
-            st.rows[entry.rowNo] = entry;
-            maxId = Math.max(maxId, parseInt(entry.rowId, 10) + 1);
-          }
-          st.next = filtered ? start + ids.length : maxId;
-          st.fetching = false;
-          st.status = 'done';
-          st.total = filtered ? total : (newRowTotal() || Math.max(st.total, maxId));
-          if (rows.length < ids.length) st.done = true;
-          try {
-            __md.push('rows-updated', {
-              source: 'rows-api', cached: Object.keys(st.rows).length,
-            });
-          } catch (e) {}
-        }).catch(function (e) {
-          if (st.doc !== docKey) return;
-          st.fetching = false;
-          st.error = String(e.message || e).slice(0, 160);
-        });
-      } catch (e) {
-        st.fetching = false;
-        st.error = String(e.message || e).slice(0, 160);
-      }
-      return true;
+      return window.__mdRowsApi.start(newRowsDeps(), count);
     }
     // 长文档跳行：不要从第 1 行慢慢滚，直接把缓存窗换成目标附近的一段连续行。
     // 列表仍显示原始行号；向下滚到底再按 st.next 继续扩批（向上不回补，再跳一次即可）。
     function newRowsApiJump(rowNo) {
-      var base = newDocApiBase();
-      if (!base) return { ok: false, err: '文档 API 未就绪' };
-      var f = newFilterState();
-      if (f.active) return { ok: false, err: '过滤状态下暂不支持跳行' };
-      var target = parseInt(rowNo, 10);
-      if (!isFinite(target) || target < 1) return { ok: false, err: '行号无效' };
-      var st = newRowsApiState();
-      var total = newRowTotal() || st.total || 0;
-      var chunk = st.chunk || 100;
-      var rid = target - 1;
-      var start = Math.max(0, rid - Math.floor(chunk / 3));
-      var end = start + chunk;
-      if (total && end > total) {
-        end = total;
-        start = Math.max(0, end - chunk);
-      }
-      if (!total) total = end;
-      var ids = [];
-      for (var i = start; i < end; i++) ids.push(i);
-      if (!ids.length) return { ok: false, err: '行号超出范围' };
-      var headers = newApiHeaders();
-      headers['Content-Type'] = 'application/json';
-      var docKey = location.pathname;
-      st.fetching = true;
-      try {
-        fetch(base + '/rows', {
-          method: 'POST', credentials: 'same-origin', headers: headers,
-          body: JSON.stringify({ rowIds: ids, scope: 'entireRow' }),
-        }).then(function (r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        }).then(function (rows) {
-          if (st.doc !== docKey) return;
-          if (!Array.isArray(rows)) throw new Error('行数据返回不是数组');
-          st.rows = {};
-          st.mode = 'window';
-          st.windowStart = start;
-          st.windowEnd = end - 1;
-          st.next = end;
-          st.total = total;
-          st.fetching = false;
-          st.status = 'done';
-          st.error = '';
-          st.done = !!(total && end >= total);
-          for (var j = 0; j < rows.length; j++) {
-            var entry = newRowApiEntry(rows[j]);
-            if (entry) st.rows[entry.rowNo] = entry;
-          }
-          try { __md.push('rows-updated', { source: 'jump' }); } catch (e) {}
-          try {
-            __md.push('jump-ready', {
-              rowNo: target, windowStart: start + 1, windowEnd: end,
-            });
-          } catch (e) {}
-        }).catch(function (e) {
-          if (st.doc !== docKey) return;
-          st.fetching = false;
-          st.error = String(e.message || e).slice(0, 160);
-          try {
-            __md.push('jump-error', { rowNo: target, err: st.error });
-          } catch (e2) {}
-        });
-      } catch (e) {
-        st.fetching = false;
-        st.error = String(e.message || e).slice(0, 160);
-        return { ok: false, err: st.error };
-      }
-      return { ok: true, pending: true, windowStart: start + 1, windowEnd: end };
+      return window.__mdRowsApi.jump(newRowsDeps(), rowNo);
     }
-    function newRowsApiList() {
-      var st = newRowsApiState();
-      var f = newFilterState();
+    function newRowsApiList() { var f = newFilterState();
       var filteredTotal = (f.active && f.rowIds) ? f.rowIds.length : 0;
-      var list = [];
-      for (var k in st.rows) {
-        if (Object.prototype.hasOwnProperty.call(st.rows, k)) list.push(st.rows[k]);
-      }
-      list.sort(function (a, b) { return a.rowNo - b.rowNo; });
-      var total = filteredTotal || st.total || newRowTotal();
-      var done = !!st.done || (total > 0 && st.next >= total);
-      return { rows: list, total: total, cached: list.length,
-               done: done, error: st.error || '', filtered: !!filteredTotal,
-               mode: st.mode || 'prefix',
-               windowStart: st.windowStart || 0, windowEnd: st.windowEnd || 0 };
-    }
+      return window.__mdRowsStore.list(newRowsApiState(), filteredTotal, newRowTotal()); }
     // 写回/确认后刷新单行缓存：段列表走 API 缓存，不刷新会一直显示保存前的旧译文。
     function newRefreshRowCache(rowId) {
-      var rid = parseInt(rowId, 10);
-      if (!isFinite(rid) || rid < 0) return false;
-      var base = newDocApiBase();
-      if (!base) return false;
-      var st = newRowsApiState();
-      var docKey = location.pathname;
-      var headers = newApiHeaders();
-      headers['Content-Type'] = 'application/json';
-      try {
-        fetch(base + '/rows', {
-          method: 'POST', credentials: 'same-origin', headers: headers,
-          body: JSON.stringify({ rowIds: [rid], scope: 'entireRow' }),
-        }).then(function (r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        }).then(function (rows) {
-          if (st.doc !== docKey || !Array.isArray(rows)) return;
-          var updated = 0;
-          for (var i = 0; i < rows.length; i++) {
-            var entry = newRowApiEntry(rows[i]);
-            if (!entry) continue;
-            if (!st.rows[entry.rowNo]) continue;  // 未缓存的行不用补，避免行号缺口
-            st.rows[entry.rowNo] = entry;
-            updated++;
-          }
-          if (updated) {
-            try { __md.push('rows-updated', { source: 'row-refresh' }); } catch (e) {}
-          }
-        }).catch(function () {});
-      } catch (e) { return false; }
-      return true;
+      return window.__mdRowsApi.refresh(newRowsDeps(), rowId);
     }
     /* ---- 新版过滤（原生 filter API，只读视图操作）----
        POST /api/editor/.../filter {filterSet, sorting}
        → {rangesByRowIds:[{key: rowId, value:[ranges]}]}；key 就是命中的 0 基 rowId，
        空 filterSet 表示清除过滤。只改视图，不改文档内容。 */
-    function newRowsApiReset() {
-      window.__md._rowsApi = null;
-    }
-    function newFilterState() {
-      var docKey = location.pathname;
-      var st = window.__md._filter;
-      if (!st || st.doc !== docKey) {
-        st = window.__md._filter = {
-          doc: docKey, active: false, rowIds: [], status: 'idle', error: '',
-        };
-      }
-      return st;
-    }
-    function newFilterSet(sourceText, targetText, regex) {
-      var src = String(sourceText == null ? '' : sourceText).trim();
-      var tgt = String(targetText == null ? '' : targetText).trim();
-      if (!src && !tgt) return {};
-      var useRegex = !!regex;
-      var content = { shouldIncludeSegments: true };
-      if (src) {
-        content.source = { text: src, isCaseSensitive: false, matchType: 'any',
-                           shouldMatchExactWordOrder: false };
-        if (useRegex) content.source.isRegex = true;
-      }
-      if (tgt) {
-        content.target = { text: tgt, isCaseSensitive: false, matchType: 'any',
-                           shouldMatchExactWordOrder: false };
-        if (useRegex) content.target.isRegex = true;
-      }
-      return { content: content };
-    }
-    function newFilterPost(filterSet, onDone) {
-      var base = newDocApiBase();
-      if (!base) return onDone('文档 API 路径未找到');
-      var headers = newApiHeaders();
-      headers['Content-Type'] = 'application/json';
-      fetch(base + '/filter', {
-        method: 'POST', credentials: 'same-origin', headers: headers,
-        body: JSON.stringify({ filterSet: filterSet, sorting: 'none' }),
-      }).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }).then(function (j) {
-        var rows = j && j.rangesByRowIds;
-        if (!Array.isArray(rows)) throw new Error('过滤返回缺少 rangesByRowIds');
-        var ids = [];
-        for (var i = 0; i < rows.length; i++) {
-          var id = Number(rows[i] && rows[i].key);
-          if (isFinite(id)) ids.push(id);
-        }
-        onDone(null, ids);
-      }).catch(function (e) { onDone(String(e.message || e)); });
-    }
+    function newRowsApiReset() { window.__mdRowsStore.reset(); }
+    function newFilterState() { return window.__mdFilter.state(); }
+    function newFilterSet(sourceText, targetText, regex) { return window.__mdFilter.set(sourceText, targetText, regex); }
+    function newFilterPost(filterSet, onDone) { return window.__mdFilter.post({ docBase: newDocApiBase, headers: newApiHeaders, fetch: newApiFetch }, filterSet, onDone); }
     function newDocApiBase() {
       return newApiNamespace('editor');
     }
     function newApiNamespace(ns) {
+      try {
+        if (window.__mdApiClient && window.__mdApiClient.namespaceBase) {
+          return window.__mdApiClient.namespaceBase(ns);
+        }
+      } catch (e) {}
       // /memoqweb/editor/projects/<prj>/docs/<doc> → /memoqweb/editor/api/<ns>/projects/...
       var m = /^(\/memoqweb\/editor)(\/projects\/[^/]+\/docs\/[^/]+)/.exec(location.pathname);
       return m ? (m[1] + '/api/' + ns + m[2]) : null;
@@ -588,7 +246,25 @@
       }
       return String(rowId);
     }
+    function newRowIdForWrite(rowNo) {
+      var row = newRowByIndex(parseInt(rowNo, 10));
+      var rowId = row ? newRowIdOf(row) : null;
+      return (rowId === null || rowId === undefined || rowId === '') ? null : String(rowId);
+    }
+    function newApiFetch(url, init) {
+      try {
+        if (window.__mdApiClient && window.__mdApiClient.fetch) {
+          return window.__mdApiClient.fetch(url, init || {});
+        }
+      } catch (e) {}
+      return fetch(url, init);
+    }
     function newApiHeaders() {
+      try {
+        if (window.__mdApiClient && window.__mdApiClient.headers) {
+          return window.__mdApiClient.headers();
+        }
+      } catch (e) {}
       // 新版 POST 需要 CSRF + XHR 标记（与页面 axios 封装一致），否则 400。
       var h = { 'X-Requested-With': 'XMLHttpRequest' };
       try {
@@ -602,20 +278,11 @@
       return h;
     }
     function newCommentTexts(items) {
-      var out = [];
-      for (var i = 0; i < items.length; i++) {
-        var c = items[i] || {};
-        var t = '';
-        if (typeof c === 'string') t = c;
-        else if (typeof c.text === 'string') t = c.text;
-        else if (typeof c.commentText === 'string') t = c.commentText;
-        else if (typeof c.content === 'string') t = c.content;
-        else if (typeof c.message === 'string') t = c.message;
-        else if (c.comment && typeof c.comment.text === 'string') t = c.comment.text;
-        if (t && t.trim()) out.push(t.trim());
-      }
-      return out;
+      return window.__mdComments.texts(items);
     }
+    window.__md.api.commentRanges = function (items) {
+      return window.__mdComments.ranges(items || []);
+    };
     // 新版段信息：上下文/原始 ID 新版接口不暴露（行 meta 只有状态字段），
     // 注释由 TranslationDocument /comments 接口按 rowId 拉取（只读）。
     function newFetchSegmentInfo(rowNo) {
@@ -629,7 +296,7 @@
       }
       var headers = newApiHeaders();
       headers['Content-Type'] = 'application/json';
-      fetch(base + '/comments', {
+      newApiFetch(base + '/comments', {
         method: 'POST', credentials: 'same-origin', headers: headers,
         body: JSON.stringify({ rowIds: [parseInt(rowId, 10)] }),
       }).then(function (r) {
@@ -658,116 +325,7 @@
       return { rowId: newRowIdFor(rowNo), base: base };
     }
     function newMapHitsEntries(entries) {
-      var tm = [], tb = [];
-      var sourceTokens = newCurrentSourceTokens();
-      for (var i = 0; i < entries.length; i++) {
-        var h = entries[i] || {};
-        var meta = h.meta || {};
-        var res = h.documentName || meta.project || '';
-        var type = String(h.type || '');
-        if (type === 'transMemory') {
-          var srcSeg = (h.segments && h.segments.source) || {};
-          var tgtSeg = (h.segments && h.segments.target) || {};
-          var srcText = newSegText(srcSeg);
-          var tgtText = newSegText(tgtSeg);
-          var srcTokens = newSymbolsTokens(srcSeg);
-          var tgtTokens = newSymbolsTokens(tgtSeg);
-          var hasTags = newSymbolsHaveTags(srcSeg) || newSymbolsHaveTags(tgtSeg);
-          // 用户确认的插入语义：TM 的 tag 若原文也有，就按 TM 顺序映射回去；
-          // 原文没有的 tag 直接略过（只插文本），不再整条阻止插入。
-          var planOk = !hasTags || newTagPlan(sourceTokens, tgtTokens);
-          tm.push({
-            rate: Number(h.matchRate || 0), res: String(res || ''),
-            user: String(h.creator || ''), time: String(h.created || '').slice(0, 16),
-            srcDisp: srcText, srcDecorated: srcText, tgtDecorated: tgtText,
-            srcTokens: srcTokens, tgtTokens: tgtTokens,
-            strictTags: hasTags && planOk, tagPlanOk: planOk,
-            readOnly: false, tagDefs: [],
-          });
-        } else if (type === 'termBase') {
-          // TB 条目：languages[lang].terms[{term}]，source 指明原文语言与词条序号。
-          var langs = h.languages || {};
-          var langKeys = Object.keys(langs);
-          var srcLang = (h.source && h.source.langCode) || langKeys[0] || '';
-          var tgtLang = h.targetLangCode || langKeys[1] || '';
-          var srcIdx = (h.source && typeof h.source.termIndex === 'number')
-            ? h.source.termIndex : 0;
-          var tbTerm = function (lang, idx) {
-            var bucket = langs[lang] || {};
-            var terms = bucket.terms || [];
-            var term = terms[idx] || terms[0] || null;
-            return term ? String(term.term || '') : '';
-          };
-          var sTerm = tbTerm(srcLang, srcIdx);
-          var tTerm = tbTerm(tgtLang, 0);
-          if (sTerm || tTerm) {
-            // 新版条目详情直接从命中数据里取（languages[].fields + terms[].fields），
-            // 只读；tbGuid/entryId 仅供缓存键，newTerm 标记阻止再走旧版术语详情接口。
-            var detailLangs = [];
-            for (var li = 0; li < langKeys.length; li++) {
-              var code = langKeys[li];
-              var bucket = langs[code] || {};
-              var terms = bucket.terms || [];
-              var role = (code === srcLang) ? 'source'
-                : ((code === tgtLang) ? 'target' : 'other');
-              var rawFields = (bucket.fields || []).slice();
-              if (terms[0] && terms[0].fields) rawFields = rawFields.concat(terms[0].fields);
-              var definition = '', examples = [], langFields = [];
-              for (var fi = 0; fi < rawFields.length; fi++) {
-                var f = rawFields[fi] || {};
-                var fname = String(f.name || '');
-                var fvalue = String(f.value == null ? '' : f.value);
-                if (!fvalue) continue;
-                if (/definition/i.test(fname) && !definition) definition = fvalue;
-                else if (/example/i.test(fname)) examples.push(fvalue);
-                else langFields.push({ name: fname, value: fvalue });
-              }
-              var termTexts = [];
-              for (var ti = 0; ti < terms.length; ti++) {
-                var tv = String((terms[ti] || {}).term || '');
-                if (tv) termTexts.push(tv);
-              }
-              detailLangs.push({ role: role, code: code, terms: termTexts,
-                                 definition: definition, examples: examples,
-                                 fields: langFields });
-            }
-            var entryFields = [];
-            var rawEntryFields = h.fields || [];
-            for (var ei = 0; ei < rawEntryFields.length; ei++) {
-              var ef = rawEntryFields[ei] || {};
-              var ev = String(ef.value == null ? '' : ef.value);
-              if (ev) entryFields.push({ name: String(ef.name || ''), value: ev });
-            }
-            if (entryFields.length) {
-              for (var di = 0; di < detailLangs.length; di++) {
-                if (detailLangs[di].role === 'source') {
-                  detailLangs[di].fields = detailLangs[di].fields.concat(entryFields);
-                  break;
-                }
-              }
-            }
-            var hitSrcCode = '', hitTgtCode = '';
-            for (var dc = 0; dc < detailLangs.length; dc++) {
-              if (detailLangs[dc].role === 'source') hitSrcCode = detailLangs[dc].code;
-              else if (detailLangs[dc].role === 'target') hitTgtCode = detailLangs[dc].code;
-            }
-            if (hitSrcCode && hitTgtCode) {
-              try { window.__md._termLangs = { src: hitSrcCode, tgt: hitTgtCode }; } catch (e) {}
-            }
-            tb.push({
-              s: sTerm, t: tTerm, res: String(res || ''),
-              user: String(h.creator || ''), time: String(h.created || '').slice(0, 19),
-              modifiedBy: String(h.modifier || ''),
-              modifiedTime: String(h.lastModified || '').slice(0, 19),
-              entryId: String(h.entryId || h.id || ''),
-              tbGuid: String(h.resourceId || ''),
-              newTerm: true, readOnly: true,
-              detail: { readOnly: true, languages: detailLangs },
-            });
-          }
-        }
-      }
-      return { tm: tm, tb: tb, at: [] };
+      return window.__mdHits.map(entries || [], newCurrentSourceTokens());
     }
     // 新版命中走文档 API（与面板同源）：不依赖面板是否可见/是否已刷新，
     // 行 id 直接用 data-row-id（0 起），请求错行也不会污染。
@@ -775,7 +333,7 @@
       var packed = newHitsForRow(rowNo);
       if (packed.err) return onFail(packed.err);
       var rowId = packed.rowId;
-      fetch(packed.base + '/rows/' + encodeURIComponent(rowId) + '/hits',
+      newApiFetch(packed.base + '/rows/' + encodeURIComponent(rowId) + '/hits',
             { credentials: 'same-origin' })
         .then(function (r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -800,6 +358,12 @@
     function newListRows() {
       try {
         // 优先行数据 API：连续行号、无虚拟网格缺口。
+        // 瞬时失败（网络/页面忙）3 秒后允许重试，避免一次失败永久退回 DOM 网格。
+        var stNow = newRowsApiState();
+        if (stNow.error && Date.now() - (stNow.errorAt || 0) > 3000) {
+          stNow.error = '';
+          stNow.errorAt = 0;
+        }
         var api = newRowsApiList();
         if (!api.rows.length && !api.error) newRowsApiStart(100);
         if (api.rows.length) {
@@ -897,9 +461,49 @@
       return (h >>> 0).toString(16);
     }
 
+    /* 文档级编辑状态：跟踪修改/只读/锁定/作者/schema。写策略依赖它。 */
+    function newEditFlags(view) {
+      try {
+        if (window.__mdState && window.__mdState.flags) return window.__mdState.flags(view);
+      } catch (e) {}
+      var out = {
+        tracking: false, readOnly: false, locked: false, author: '',
+        rowId: null, marks: [], plugins: [],
+      };
+      if (!view || !view.state) return out;
+      try {
+        var attrs = view.state.doc.attrs || {};
+        out.readOnly = !!attrs.readOnly;
+        out.locked = !!attrs.locked;
+        out.rowId = attrs.rowId == null ? null : String(attrs.rowId);
+        out.marks = Object.keys((view.state.schema && view.state.schema.marks) || {});
+        var ps = view.state.plugins || [];
+        for (var i = 0; i < ps.length; i++) {
+          var key = String(ps[i].key || '');
+          if (!/^trackChanges/.test(key)) continue;
+          var st = ps[i].getState(view.state);
+          out.tracking = !!(st && st.isTrackingChanges);
+          out.author = st && st.currentAuthor ? String(st.currentAuthor) : '';
+        }
+      } catch (e) {}
+      return out;
+    }
+
+    /* 从 Version-12.5-*.js 资源名提取编辑器版本；找不到返回空串。 */
+    function newEditorVersion() {
+      try {
+        var ss = document.querySelectorAll('script[src]');
+        for (var i = 0; i < ss.length; i++) {
+          var src = String(ss[i].getAttribute('src') || ss[i].src || '');
+          var m = /Version-([0-9.]+)-/.exec(src);
+          if (m) return m[1];
+        }
+      } catch (e) {}
+      return '';
+    }
+
     /* ================= 编辑器类型识别 ================= */
-    function detectEditor() {
-      var p = location.pathname || '';
+    function detectEditor() {      var p = location.pathname || '';
       if (p.indexOf('/memoqweb/editor/') >= 0) return 'new';
       if (p.indexOf('Translation.aspx') >= 0) return 'old';
       return null;
@@ -944,6 +548,7 @@
         } else if (kind === 'new') {
           f.rowChanged = true;
           f.docStats = true;
+          f.version = newEditorVersion();
           f.listRows = !!newRowsTable();
           // 命中走文档 API，不依赖右侧结果面板是否已渲染/打开。
           f.tmHits = !!newDocApiBase();
@@ -961,10 +566,37 @@
           f.concordance = !!newDocApiBase();
           // 新版原生命令 findAndReplace 带热键；Serapi 打开引擎浮层后派发 Ctrl+F。
           f.findReplace = true;
+          f.readSegment = false;
+          try { f.readSegment = !!newAnyView(); f.writeSegment = f.readSegment; } catch (e) {}
           try {
-            f.readSegment = !!newAnyView();
-            f.writeSegment = f.readSegment;
-          } catch (e) {}
+            f.endpoints = {
+              rows: !!newDocApiBase(),
+              rowsMeta: !!newDocApiBase(),
+              hits: !!newDocApiBase(),
+              comments: !!newApiNamespace('translation'),
+              issues: !!newDocApiBase(),
+              lock: !!newDocApiBase(),
+              splitJoin: !!newDocApiBase(),
+              concordance: !!newDocApiBase(),
+              settings: !!newDocApiBase(),
+              deliver: !!newApiNamespace('translation'),
+            };
+          } catch (e) { f.endpoints = {}; }
+          try {
+            var editView = null;
+            try { editView = newActiveView() || newAnyView(); } catch (e) {}
+            f.document = newEditFlags(editView);
+            f.writePolicy = {
+              canWrite: !f.document.tracking && !f.document.readOnly && !f.document.locked,
+              tracking: f.document.tracking,
+              readOnly: f.document.readOnly,
+              locked: f.document.locked,
+              author: f.document.author,
+            };
+          } catch (e) {
+            f.document = f.document || {};
+            f.writePolicy = f.writePolicy || { canWrite: false };
+          }
         }
       } catch (e) {
         reasons.error = String(e.message || e);
@@ -1680,6 +1312,21 @@
       } catch (e) { return { kind: kind, err: e.message }; }
     };
 
+    window.__md.api.selectorSnapshot = function () {
+      return JSON.parse(JSON.stringify(PAGE));
+    };
+
+    window.__md.api.editorState = function () {
+      var v = newActiveView() || newAnyView();
+      var flags = newEditFlags(v);
+      var ref = { rowNo: null, rowId: flags.rowId };
+      try {
+        if (window.__mdState && window.__mdState.rowRef) ref = window.__mdState.rowRef(v);
+      } catch (e) {}
+      return { ok: !!v, rowNo: ref.rowNo, rowId: ref.rowId, flags: flags,
+               writePolicy: { canWrite: !flags.tracking && !flags.readOnly && !flags.locked } };
+    };
+
     // 按 rowId 找译文段视图（自动化指定行用，不依赖焦点）
     function newFindViewByRow(rowId) {
       var pms = pagePmList();
@@ -1927,15 +1574,21 @@
     // 注意：确认后 memoQ 会把活动行跳到下一个未确认段（原生行为）。
     // 新版确认/拒绝走 HTTP 行接口（行号显式指定），不再依赖 memoQ 内部“活动行”：
     // 真机发现合成快捷键会作用在 memoQ 当前活动行上，切行后可能拒绝错行。
+    // 实验结论（2026-11-26 真机）：新版页面对 JS 合成的 Ctrl/Shift+Enter
+    // 不响应（isTrusted=false 或 ProseMirror 拦截），行状态不会改变。
+    // 因此产品路径仍走 HTTP 行接口；本函数保留仅用于以后可信输入方案验证。
     function newRowAction(rowNo, action) {
       var base = newDocApiBase();
       if (!base) return { ok: false, err: '新版文档 API 未就绪' };
       var target = parseInt(rowNo, 10);
       if (!isFinite(target) || target < 1) return { ok: false, err: '行号无效' };
-      var rowId = newRowIdFor(target);
+      var rowId = newRowIdForWrite(target);
+      if (rowId === null) {
+        return { ok: false, err: '目标行未渲染，缺少 rowId，已拒绝按行号写入' };
+      }
       var headers = newApiHeaders();
       headers['Content-Type'] = 'application/json';
-      fetch(base + '/rows/' + rowId + '/' + action, {
+      newApiFetch(base + '/rows/' + rowId + '/' + action, {
         method: 'POST', credentials: 'same-origin', headers: headers,
         body: JSON.stringify({ AutoOptions: {} }),
       }).then(function (r) {
@@ -1969,10 +1622,65 @@
       return { ok: true, pending: true, rowNo: target, rowId: rowId };
     }
 
+    // 结构操作：lock / split / join / clear。显式 rowId，不走整段 PUT。
+    function newStructuralOp(rowNo, action, body, req) {
+      var rowId = newRowIdForWrite(rowNo);
+      if (rowId === null) {
+        return { ok: false, err: '目标行未渲染，缺少 rowId，已拒绝结构操作' };
+      }
+      var flags = newEditFlags(newActiveView() || newAnyView());
+      if (flags.tracking) {
+        return { ok: false, err: '跟踪修改开启时禁止结构写回' };
+      }
+      if (flags.readOnly) {
+        return { ok: false, err: '当前文档为只读，禁止结构操作' };
+      }
+      var base = newDocApiBase();
+      if (!base) return { ok: false, err: '文档 API 未就绪' };
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      newApiFetch(base + '/rows/' + rowId + '/' + action, {
+        method: 'POST', credentials: 'same-origin', headers: headers,
+        body: JSON.stringify(body || {}),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json().catch(function () { return null; });
+      }).then(function (data) {
+        try {
+          __md.push('structural-result', {
+            req: req, ok: true, action: action, rowNo: rowNo, rowId: rowId, data: data,
+          });
+        } catch (e) {}
+      }).catch(function (e) {
+        try {
+          __md.push('structural-result', {
+            req: req, ok: false, action: action, rowNo: rowNo, rowId: rowId,
+            err: String(e.message || e).slice(0, 200),
+          });
+        } catch (e2) {}
+      });
+      return { ok: true, pending: true, action: action, rowNo: rowNo, rowId: rowId };
+    }
+
+    window.__md.api.lockRow = function (rowNo, lock, req) {
+      return newStructuralOp(rowNo, 'lock', { lockValue: !!lock }, req);
+    };
+    window.__md.api.clearRow = function (rowNo, req) {
+      return newStructuralOp(rowNo, 'clear', {}, req);
+    };
+    window.__md.api.splitRow = function (rowNo, sourceSegmentPosition, req) {
+      return newStructuralOp(rowNo, 'split',
+        { sourceSegmentPosition: parseInt(sourceSegmentPosition, 10) || 0 }, req);
+    };
+    window.__md.api.joinRow = function (rowNo, rowCount, req) {
+      return newStructuralOp(rowNo, 'join',
+        { rowCount: Math.max(1, parseInt(rowCount, 10) || 1) }, req);
+    };
+
     window.__md.api.confirmSegment = function (rowNo) {
       var kind = detectEditor();
       if (kind === 'new') return newRowAction(rowNo, 'confirm');
-      if (kind !== 'old') return { ok: false, err: 'confirmSegment 仅旧版支持' };
+      if (kind !== 'old') return { ok: false, err: 'confirmSegment 仅新版/旧版编辑器支持' };
       try {
         var inp = pageConfirmInput();
         if (!inp) return { ok: false, err: '隐藏输入框未找到' };
@@ -1992,7 +1700,7 @@
     window.__md.api.rejectSegment = function (rowNo) {
       var kind = detectEditor();
       if (kind === 'new') return newRowAction(rowNo, 'reject');
-      if (kind !== 'old') return { ok: false, err: 'rejectSegment 仅旧版支持' };
+      if (kind !== 'old') return { ok: false, err: 'rejectSegment 仅新版/旧版编辑器支持' };
       try {
         var inp = pageConfirmInput();
         if (!inp) return { ok: false, err: '隐藏输入框未找到' };
@@ -2071,12 +1779,22 @@
             || newActiveView() || newAnyView();
           if (!view) return { ok: false, err: '新版编辑器 view 未找到' };
           if (view.state.doc.attrs.locked) return { ok: false, err: '该段已锁定' };
-          var written = newWriteSegment(view, tokens || []);
-          if (!written || !written.ok) return written;
+          var editFlags = newEditFlags(view);
+          if (editFlags.tracking) {
+            return { ok: false, err: '文档已开启跟踪修改，禁止整段写回（会制造假修订）' };
+          }
+          if (editFlags.readOnly) {
+            return { ok: false, err: '当前文档为只读，禁止写回' };
+          }
           var rid = view.state.doc.attrs.rowId;
           if (rid === undefined || rid === null) {
             return { ok: false, err: '新版行 ID 未找到' };
           }
+          if (rowId !== undefined && rowId !== null && String(rowId) !== String(rid)) {
+            return { ok: false, err: '写入行与当前活动行不一致，已拒绝' };
+          }
+          var written = newWriteSegment(view, tokens || []);
+          if (!written || !written.ok) return written;
           if (typeof XMLHttpRequest !== 'function') {
             // 离线契约测试没有 XHR：保留旧行为，只刷新缓存，不伪装成已服务端保存。
             newRefreshRowCache(rid);
@@ -2088,13 +1806,27 @@
           var rowNo = (typeof row.id === 'number') ? row.id + 1 : null;
           var mapped = '';
           try { mapped = newRowStatusFromMeta({ status: status }, true); } catch (e) {}
+          var fullTgt = newSymbolsText(row.target || {});
+          // PUT 已经返回该行：直接补进段列表缓存，不再额外发一次 POST /rows。
+          // 只补已在缓存窗里的行，避免空缓存被写成“只有一行”的假列表。
+          try {
+            var st = newRowsApiState();
+            var cur = st.rows && rowNo ? st.rows[rowNo] : null;
+            if (cur) {
+              cur.tgt = fullTgt;
+              if (row.source) cur.src = newSymbolsPlainText(row.source);
+              if (row.meta && row.meta.matchRate != null) {
+                cur.tmRate = Number(row.meta.matchRate) || 0;
+              }
+              if (mapped) cur.status = mapped;
+            }
+          } catch (eCache) {}
           try {
             __md.push('row-write-result', {
               ok: true, rowNo: rowNo, rowId: String(rid), status: status,
-              mappedStatus: mapped, tgt: newSymbolsText(row.target || {}).slice(0, 60),
+              mappedStatus: mapped, tgt: fullTgt.slice(0, 60), tgtFull: fullTgt,
             });
           } catch (e) {}
-          newRefreshRowCache(rid);
           return { ok: true, status: status, rowNo: rowNo, rowId: String(rid) };
         }
         if (kind === 'old') return oldWriteSegment(tokens || [], rowId !== undefined && rowId !== null);
@@ -2123,14 +1855,7 @@
        实测协议（rt_tmtb4）：Row 用 {id, guid} 最小对象即可；DocInstanceId = WebTrans.Core.docInstanceId；
        响应 {Success, Value:{Hits[]}}，Hit.Type 0=TM / 1=TB，信封必查 SessionExpired */
     function apiPost(svc, body) {
-      return fetch(location.origin + '/memoqweb/api/' + svc, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify(body || {})
-      }).then(function (r) {
-        return r.json().catch(function () { return null; })
-          .then(function (j) { return { status: r.status, body: j }; });
-      });
+      return window.__mdLegacyApi.post(svc, body);
     }
 
     /* ---- Ctrl+E 添加术语：列表只读；Entry 由 memoQ 原生模块初始化，用户确认后才提交 ---- */
@@ -2231,291 +1956,54 @@
     function newTermProjectGuidFor(params) {
       return String((params && params.projectGuid) || newProjectGuidFromUrl() || '');
     }
-    function termTbList(prj, tgtLang) {
-      return apiPost('TranslationService/ListServerProjectTBs', {
-        projectGuid: prj, targetLanguage: tgtLang || '',
-      }).then(function (r) {
-        var b = r.body || {};
-        if (b.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
-        if (r.status !== 200 || b.Success === false) {
-          throw new Error(b.ErrorDetails || b.ErrorMessage || ('HTTP ' + r.status));
-        }
-        var raw = Array.isArray(b) ? b : (Array.isArray(b.Value) ? b.Value : []);
-        return raw.map(function (f) {
-          return { guid: String(f.TBGuid || ''), name: String(f.TBName || f.TBGuid || ''),
-                   primary: !!f.IsPrimary };
-        }).filter(function (f) { return !!f.guid; });
-      });
-    }
-    // 术语库模板（GetEmptyMetaList）→ AddNewEntry 需要的 camelCase EntryGui；
-    // 模板里每层通常已有一条空术语占位，缺了就补一条，其余重复项标记删除。
-    function termTemplateEntryGui(tpl, tbGuid) {
-      function guiMeta(m) { return termMetaToGui(m || {}); }
-      function guiTerm(t) {
-        return {
-          termId: t.TermId, termText: String(t.TermText || ''),
-          termWildText: String(t.TermWildText || t.TermText || ''),
-          isDeleted: !!t.IsDeleted, metaInfos: (t.MetaInfos || []).map(guiMeta),
-          isMetaListRendered: false,
-        };
-      }
-      function guiLang(lang) {
-        var terms = (lang.TermLevelMetaInfos || []).map(guiTerm);
-        if (!terms.length) {
-          terms.push({ termId: -1, termText: '', termWildText: '', isDeleted: false,
-                       metaInfos: [], isMetaListRendered: false });
-        }
-        return {
-          languageCode: String(lang.LanguageCode || ''), languageID: lang.LanguageID,
-          languageName: String(lang.LanguageName || ''), isDeleted: !!lang.IsDeleted,
-          metaInfos: (lang.MetaInfos || []).map(guiMeta),
-          termLevelMetaInfos: terms, isMetaListRendered: false,
-        };
-      }
-      return {
-        tbGuid: tbGuid, readOnlyTB: !!tpl.ReadOnlyTb, entryId: -1,
-        prettyPrintHtml: String(tpl.PrettyPrintHtml || ''),
-        relationships: (tpl.Relationships || []).slice(),
-        entryNeedsModeration: false,
-        entryLevelMetaInfos: (tpl.EntryLevelMetaInfos || []).map(guiMeta),
-        languageLevelMetaInfos: (tpl.LanguageLevelMetaInfos || []).map(guiLang),
-        isMetaListRendered: false,
-      };
-    }
-    function termAlignQuickLayers(entry, srcLang, tgtLang) {
-      var layers = entry.languageLevelMetaInfos || [];
-      function base(code) { return String(code || '').trim().toLowerCase().split('-')[0]; }
-      function find(code) {
-        var want = String(code || '').trim().toLowerCase();
-        if (!want) return null;
-        for (var i = 0; i < layers.length; i++) {
-          var have = String(layers[i].languageCode || '').trim().toLowerCase();
-          if (have && (have === want || base(have) === base(want))) return layers[i];
-        }
-        return null;
-      }
-      var src = find(srcLang);
-      var tgt = find(tgtLang);
-      if (src && tgt && src === tgt) tgt = null;
-      if (!src || !tgt) {
-        // 模板顺序兜底：第一层原文、第二层译文（旧版 qTerm.Entry 也按此顺序覆写）。
-        if (!src) src = layers[0] || null;
-        if (!tgt) {
-          for (var i = 0; i < layers.length; i++) {
-            if (layers[i] !== src) { tgt = layers[i]; break; }
-          }
-        }
-      }
-      return { src: src, tgt: tgt };
-    }
-    function termQuickAddEntry(req, tb, source, target, srcLang, tgtLang, prj) {
-      return apiPost('QTermService/GetEmptyMetaList', {
-        tbGuid: tb.guid, projectGuid: prj,
-      }).then(function (r) {
-        var b = r.body || {};
-        if (b.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
-        if (r.status !== 200 || b.Success === false) {
-          throw new Error(b.ErrorDetails || b.ErrorMessage || ('HTTP ' + r.status));
-        }
-        var data = Array.isArray(b) ? b : (b.Value || []);
-        if (!Array.isArray(data) || !data[0]
-            || !Array.isArray(data[0].LanguageLevelMetaInfos)) {
-          throw new Error('memoQ 返回了无法识别的术语库模板');
-        }
-        var entry = termTemplateEntryGui(data[0], tb.guid);
-        if (entry.readOnlyTB) throw new Error('所选术语库为只读，无法添加术语');
-        var pair = termAlignQuickLayers(entry, srcLang, tgtLang);
-        if (!pair.src || !pair.tgt) throw new Error('术语库缺少可用的原文/译文语言层');
-        if (srcLang) pair.src.languageCode = srcLang;
-        if (tgtLang) pair.tgt.languageCode = tgtLang;
-        pair.src.termLevelMetaInfos[0].termText = source;
-        pair.src.termLevelMetaInfos[0].termWildText = source;
-        pair.tgt.termLevelMetaInfos[0].termText = target;
-        pair.tgt.termLevelMetaInfos[0].termWildText = target;
-        return apiPost('QTermService/AddNewEntry', {
-          TBGuid: tb.guid, EntryGui: entry, ProjectGuid: prj,
+    var __termsApi = null;
+    function newTermsApi() {
+      if (!__termsApi) {
+        __termsApi = window.__mdTermsApi.create({
+          post: apiPost,
+          model: window.__mdTermsModel,
+          detectEditor: detectEditor,
+          termCore: termCore,
+          termProjectGuid: termProjectGuid,
+          fail: termFail,
+          newProjectGuidFromUrl: newProjectGuidFromUrl,
+          termProjectGuidFor: newTermProjectGuidFor,
+          documentLanguageCodes: newDocumentLanguageCodes,
+          getEntry: termGetEntry,
+          langCodes: newTermLangCodes,
+          language: termLanguage,
+          languageDetail: termLanguageDetail,
+          metaValue: termMetaValue,
+          examples: termExamples,
+          primaryTerm: termPrimaryTerm,
+          patchHtml: termPatchPrettyHtml,
+          setMeta: termSetMeta,
+          entryToGui: termEntryToGui,
+          push: function (type, payload) { try { __md.push(type, payload); } catch (e) {} },
         });
-      }).then(function (r) {
-        var b = r.body || {};
-        if (b.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
-        if (r.status !== 200 || b.Success === false) {
-          throw new Error(b.ErrorDetails || b.ErrorMessage || ('HTTP ' + r.status));
-        }
-        var value = b.Value || {};
-        if (value.Result !== undefined && Number(value.Result) !== 0) {
-          throw new Error(value.ErrorMessage || 'memoQ 拒绝了这次术语添加');
-        }
-        __md.push('term-quick-result', {
-          req: req, ok: true, quick: true, tbGuid: tb.guid, tbName: tb.name,
-          source: source, target: target,
-        });
-      });
+      }
+      return __termsApi;
     }
+    function termTbList() { return newTermsApi().termTbList.apply(null, arguments); }
+    function termTemplateEntryGui() { return newTermsApi().termTemplateEntryGui.apply(null, arguments); }
+    function termAlignQuickLayers() { return newTermsApi().termAlignQuickLayers.apply(null, arguments); }
+    function termQuickAddEntry() { return newTermsApi().termQuickAddEntry.apply(null, arguments); }
 
     /* ---- 术语条目结构（读取 PascalCase → 提交 camelCase，均来自真实抓包） ---- */
-    function termMetaList(container) {
-      if (!container) return [];
-      return container.MetaInfos || container.metaInfos ||
-        container.EntryLevelMetaInfos || container.entryLevelMetaInfos || [];
-    }
-    function termMetaName(meta) {
-      return String((meta && (meta.Name !== undefined ? meta.Name : meta.name)) || '');
-    }
-    function termMetaValue(container, name) {
-      var list = termMetaList(container);
-      var want = String(name || '').toLowerCase();
-      for (var i = 0; i < list.length; i++) {
-        if (termMetaName(list[i]).toLowerCase() !== want) continue;
-        var value = list[i].ValueAsObject;
-        if (value === undefined) value = list[i].valueAsObject;
-        return value === null || value === undefined ? '' : String(value);
-      }
-      return '';
-    }
-    function termSetMeta(container, name, value) {
-      var list = termMetaList(container);
-      var want = String(name || '').toLowerCase();
-      var text = String(value === null || value === undefined ? '' : value);
-      var empty = text === '';
-      for (var i = 0; i < list.length; i++) {
-        var meta = list[i];
-        if (termMetaName(meta).toLowerCase() !== want) continue;
-        if ('ValueAsObject' in meta) meta.ValueAsObject = empty ? null : text;
-        if ('valueAsObject' in meta) meta.valueAsObject = empty ? null : text;
-        if ('IsNoValue' in meta) meta.IsNoValue = empty;
-        if ('isNoValue' in meta) meta.isNoValue = empty;
-        return true;
-      }
-      return false;
-    }
-    function termLanguage(entry, code) {
-      var langs = (entry && entry.LanguageLevelMetaInfos) || [];
-      var want = String(code || '').trim().toLowerCase();
-      if (!want) return null;
-      var wantBase = want.split('-')[0];
-      var baseMatch = null;
-      var baseCount = 0;
-      for (var i = 0; i < langs.length; i++) {
-        var lc = String(langs[i].LanguageCode || '').trim().toLowerCase();
-        if (!lc) continue;
-        if (lc === want) return langs[i];
-        if (lc.split('-')[0] === wantBase) {
-          baseMatch = langs[i];
-          baseCount++;
-        }
-      }
-      // core.targetLangCode 可能是 zho，而条目里是 zho-CN；只在唯一匹配时退化到基础语言码。
-      return baseCount === 1 ? baseMatch : null;
-    }
-    function termPrimaryTerm(lang) {
-      var terms = (lang && lang.TermLevelMetaInfos) || [];
-      for (var i = 0; i < terms.length; i++) {
-        if (!terms[i].IsDeleted) return terms[i];
-      }
-      return null;
-    }
-    function termExamples(lang) {
-      var out = [];
-      var terms = (lang && lang.TermLevelMetaInfos) || [];
-      for (var i = 0; i < terms.length; i++) {
-        if (terms[i].IsDeleted) continue;
-        var value = termMetaValue(terms[i], 'Example');
-        if (value && out.indexOf(value) < 0) out.push(value);
-      }
-      return out;
-    }
-    function termLanguageTerms(lang) {
-      var out = [];
-      var terms = (lang && lang.TermLevelMetaInfos) || [];
-      for (var i = 0; i < terms.length; i++) {
-        if (terms[i].IsDeleted) continue;
-        var text = String(terms[i].TermText || '');
-        if (text && out.indexOf(text) < 0) out.push(text);
-      }
-      return out;
-    }
-    function termLanguageDetail(lang, role) {
-      return {
-        code: String(lang.LanguageCode || ''),
-        name: String(lang.LanguageName || ''),
-        role: role,
-        terms: termLanguageTerms(lang),
-        definition: termMetaValue(lang, 'Definition'),
-        examples: termExamples(lang)
-      };
-    }
-    function termEscapeHtml(text) {
-      return String(text === null || text === undefined ? '' : text)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-    // PrettyPrintHtml 只是条目展示缓存；按旧值→新值做一次保守替换，服务端若重新生成也无副作用。
-    function termPatchPrettyHtml(html, pairs) {
-      var out = String(html || '');
-      for (var i = 0; i < pairs.length; i++) {
-        var from = String(pairs[i][0] || '');
-        var to = String(pairs[i][1] || '');
-        if (!from || from === to) continue;
-        var escapedFrom = termEscapeHtml(from);
-        if (out.indexOf(from) >= 0) out = out.split(from).join(termEscapeHtml(to));
-        if (escapedFrom !== from && out.indexOf(escapedFrom) >= 0) {
-          out = out.split(escapedFrom).join(termEscapeHtml(to));
-        }
-      }
-      return out;
-    }
-    function termMetaToGui(meta) {
-      return {
-        name: meta.Name,
-        displayName: meta.DisplayName,
-        description: meta.Description || '',
-        typeName: meta.TypeName,
-        allowedValues: meta.AllowedValues === undefined ? null : meta.AllowedValues,
-        valueAsObject: meta.ValueAsObject === undefined ? null : meta.ValueAsObject,
-        isNoValue: !!meta.IsNoValue,
-        isUnique: !!meta.IsUnique,
-        isRequired: !!meta.IsRequired,
-        isReadonly: !!meta.IsReadOnly,
-        isMultiLine: !!meta.IsMultiLine,
-        imageDimension: meta.ImageDimension === undefined ? null : meta.ImageDimension,
-        defaultValueAsObject: meta.DefaultValueAsObject === undefined ? null : meta.DefaultValueAsObject,
-        timeStampForServer: meta.TimeStampForServer === undefined ? null : meta.TimeStampForServer,
-        valueSetType: meta.ValueSetType === undefined ? 0 : meta.ValueSetType
-      };
-    }
-    function termLanguageToGui(lang) {
-      return {
-        languageCode: lang.LanguageCode,
-        languageID: lang.LanguageID,
-        languageName: lang.LanguageName,
-        isDeleted: !!lang.IsDeleted,
-        metaInfos: (lang.MetaInfos || []).map(termMetaToGui),
-        termLevelMetaInfos: (lang.TermLevelMetaInfos || []).map(function (term) {
-          return {
-            termId: term.TermId,
-            termText: term.TermText,
-            termWildText: term.TermWildText,
-            isDeleted: !!term.IsDeleted,
-            metaInfos: (term.MetaInfos || []).map(termMetaToGui),
-            isMetaListRendered: false
-          };
-        }),
-        isMetaListRendered: false
-      };
-    }
-    function termEntryToGui(entry) {
-      return {
-        tbGuid: entry.TbGuid,
-        readOnlyTB: !!entry.ReadOnlyTb,
-        entryId: entry.EntryId,
-        prettyPrintHtml: entry.PrettyPrintHtml || '',
-        relationships: entry.Relationships || [],
-        entryNeedsModeration: false,
-        entryLevelMetaInfos: (entry.EntryLevelMetaInfos || []).map(termMetaToGui),
-        languageLevelMetaInfos: (entry.LanguageLevelMetaInfos || []).map(termLanguageToGui),
-        isMetaListRendered: false
-      };
-    }
+    function termMetaList() { return window.__mdTermsModel.termMetaList.apply(null, arguments); }
+    function termMetaName() { return window.__mdTermsModel.termMetaName.apply(null, arguments); }
+    function termMetaValue() { return window.__mdTermsModel.termMetaValue.apply(null, arguments); }
+    function termSetMeta() { return window.__mdTermsModel.termSetMeta.apply(null, arguments); }
+    function termLanguage() { return window.__mdTermsModel.termLanguage.apply(null, arguments); }
+    function termPrimaryTerm() { return window.__mdTermsModel.termPrimaryTerm.apply(null, arguments); }
+    function termExamples() { return window.__mdTermsModel.termExamples.apply(null, arguments); }
+    function termLanguageTerms() { return window.__mdTermsModel.termLanguageTerms.apply(null, arguments); }
+    function termLanguageDetail() { return window.__mdTermsModel.termLanguageDetail.apply(null, arguments); }
+    function termEscapeHtml() { return window.__mdTermsModel.termEscapeHtml.apply(null, arguments); }
+    function termPatchPrettyHtml() { return window.__mdTermsModel.termPatchPrettyHtml.apply(null, arguments); }
+    function termMetaToGui() { return window.__mdTermsModel.termMetaToGui.apply(null, arguments); }
+    function termLanguageToGui() { return window.__mdTermsModel.termLanguageToGui.apply(null, arguments); }
+    function termEntryToGui() { return window.__mdTermsModel.termEntryToGui.apply(null, arguments); }
     function termGetEntry(tbGuid, entryId, projectGuid) {
       return apiPost('QTermService/GetEntryForTerm', {
         tbGuid: tbGuid,
@@ -2539,32 +2027,7 @@
       });
     }
     window.__md.api.termContextReq = function (req) {
-      try {
-        if (detectEditor() !== 'old') return termFail('term-context', req, '添加术语仅旧版支持');
-        var core = termCore();
-        var prj = termProjectGuid(core);
-        apiPost('TranslationService/ListServerProjectTBs', {
-          projectGuid: prj, targetLanguage: core.targetLangCode
-        }).then(function (r) {
-          var b = r.body || {};
-          if (b.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
-          if (r.status !== 200 || b.Success === false) {
-            throw new Error(b.ErrorDetails || b.ErrorMessage || ('HTTP ' + r.status));
-          }
-          var raw = Array.isArray(b) ? b : (Array.isArray(b.Value) ? b.Value : []);
-          var items = raw.map(function (f) {
-            return { guid: String(f.TBGuid || ''), name: String(f.TBName || f.TBGuid || ''),
-                     primary: !!f.IsPrimary };
-          }).filter(function (f) { return !!f.guid; });
-          var selected = String(core.lastUsedTBGuid || '');
-          if (!selected) {
-            var primary = items.filter(function (f) { return f.primary; })[0];
-            selected = primary ? primary.guid : (items.length ? items[0].guid : '');
-          }
-          __md.push('term-context', { req: req, items: items, selected: selected });
-        }).catch(function (e) { termFail('term-context', req, e.message || e); });
-      } catch (e) { termFail('term-context', req, e.message || e); }
-      return { ok: true };
+      return newTermsApi().termContext(req);
     };
     window.__md.api.termAddReq = function (req, params) {
       params = params || {};
@@ -2703,140 +2166,10 @@
     };
     /* 详情栏用：读回原文/译文语言层的 Definition 与术语层 Example（只读）。 */
     window.__md.api.termDetailReq = function (req, params) {
-      params = params || {};
-      var tbGuid = String(params.tbGuid || '');
-      var entryId = params.entryId;
-      if (!tbGuid || entryId === undefined || entryId === null || entryId === '') {
-        return termFail('term-detail', req, '缺少术语条目信息');
-      }
-      try {
-        var kind = detectEditor();
-        if (kind !== 'old' && kind !== 'new') return termFail('term-detail', req, '术语详情仅新版/旧版支持');
-        var isNew = kind === 'new';
-        var core = null;
-        var prj = String(params.projectGuid || '');
-        if (isNew) {
-          prj = prj || newProjectGuidFromUrl();
-        } else {
-          core = termCore();
-          if (!core.sourceLangCode || !core.targetLangCode) {
-            throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
-          }
-          prj = prj || termProjectGuid(core);
-        }
-        if (!prj) throw new Error('项目 GUID 未找到');
-        termGetEntry(tbGuid, entryId, prj).then(function (entry) {
-          var codes = isNew
-            ? newTermLangCodes(entry, params)
-            : { src: core.sourceLangCode, tgt: core.targetLangCode };
-          var src = termLanguage(entry, codes.src);
-          var tgt = termLanguage(entry, codes.tgt);
-          var languages = (entry.LanguageLevelMetaInfos || []).map(function (lang) {
-            var role = 'other';
-            if (lang === src) role = 'source';
-            else if (lang === tgt) role = 'target';
-            return termLanguageDetail(lang, role);
-          });
-          __md.push('term-detail', {
-            req: req,
-            tbGuid: tbGuid,
-            entryId: entry.EntryId,
-            projectGuid: prj,
-            readOnly: !!entry.ReadOnlyTb,
-            sourceLang: src ? String(src.LanguageCode || '') : '',
-            targetLang: tgt ? String(tgt.LanguageCode || '') : '',
-            sourceDefinition: src ? termMetaValue(src, 'Definition') : '',
-            targetDefinition: tgt ? termMetaValue(tgt, 'Definition') : '',
-            sourceExamples: src ? termExamples(src) : [],
-            targetExamples: tgt ? termExamples(tgt) : [],
-            languages: languages
-          });
-        }).catch(function (e) { termFail('term-detail', req, e.message || e); });
-      } catch (e) { termFail('term-detail', req, e.message || e); }
-      return { ok: true };
+      return newTermsApi().termDetail(req, params);
     };
     window.__md.api.termEditReq = function (req, params) {
-      params = params || {};
-      var tbGuid = String(params.tbGuid || '');
-      var entryId = params.entryId;
-      var source = String(params.source || '').trim();
-      var target = String(params.target || '').trim();
-      if (!tbGuid || entryId === undefined || entryId === null || entryId === '') {
-        return termFail('term-edit-result', req, '缺少术语条目信息');
-      }
-      if (!source || !target) return termFail('term-edit-result', req, '原文术语和译文术语都需要填写');
-      try {
-        var kind = detectEditor();
-        if (kind !== 'old' && kind !== 'new') return termFail('term-edit-result', req, '编辑术语仅新版/旧版支持');
-        var isNew = kind === 'new';
-        var core = null;
-        var prj = String(params.projectGuid || '');
-        if (isNew) {
-          prj = prj || newProjectGuidFromUrl();
-        } else {
-          core = termCore();
-          if (!core.sourceLangCode || !core.targetLangCode) {
-            throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
-          }
-          prj = prj || termProjectGuid(core);
-        }
-        if (!prj) throw new Error('项目 GUID 未找到');
-        termGetEntry(tbGuid, entryId, prj).then(function (entry) {
-          if (entry.ReadOnlyTb) throw new Error('该术语库为只读，无法编辑');
-          var codes = isNew
-            ? newTermLangCodes(entry, params)
-            : { src: core.sourceLangCode, tgt: core.targetLangCode };
-          var src = termLanguage(entry, codes.src);
-          var tgt = termLanguage(entry, codes.tgt);
-          if (!src || !tgt) throw new Error('术语条目缺少原文或译文语言层');
-          var srcTerm = termPrimaryTerm(src);
-          var tgtTerm = termPrimaryTerm(tgt);
-          if (!srcTerm || !tgtTerm) throw new Error('术语条目缺少原文或译文术语');
-          var srcDef = String(params.sourceDefinition || '');
-          var tgtDef = String(params.targetDefinition || '');
-          var srcExample = String(params.sourceExample || '');
-          var tgtExample = String(params.targetExample || '');
-          var oldSrc = String(srcTerm.TermText || '');
-          var oldTgt = String(tgtTerm.TermText || '');
-          // 只编辑主术语、语言层 Definition 与术语层 Example，其余术语、语言、meta 全量原样回传。
-          entry.PrettyPrintHtml = termPatchPrettyHtml(entry.PrettyPrintHtml, [
-            [oldSrc, source], [oldTgt, target],
-            [termMetaValue(src, 'Definition'), srcDef],
-            [termMetaValue(tgt, 'Definition'), tgtDef],
-            [termMetaValue(srcTerm, 'Example'), srcExample],
-            [termMetaValue(tgtTerm, 'Example'), tgtExample]
-          ]);
-          srcTerm.TermText = source;
-          srcTerm.TermWildText = source;
-          tgtTerm.TermText = target;
-          tgtTerm.TermWildText = target;
-          termSetMeta(src, 'Definition', srcDef);
-          termSetMeta(tgt, 'Definition', tgtDef);
-          termSetMeta(srcTerm, 'Example', srcExample);
-          termSetMeta(tgtTerm, 'Example', tgtExample);
-          return apiPost('QTermService/UpdateEntry', {
-            TBGuid: tbGuid,
-            EntryId: entry.EntryId === undefined ? entryId : entry.EntryId,
-            EntryGui: termEntryToGui(entry),
-            ProjectGuid: prj,
-            EntryNeedsModeration: false
-          }).then(function (r) {
-            var body = r.body || {};
-            if (body.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
-            if (r.status !== 200 || body.Success === false) {
-              throw new Error(body.ErrorDetails || body.ErrorMessage || ('HTTP ' + r.status));
-            }
-            var value = body.Value || {};
-            var result = value.Result === undefined ? 0 : Number(value.Result);
-            if (result !== 0) throw new Error(value.ErrorMessage || 'memoQ 拒绝了这次术语修改');
-            __md.push('term-edit-result', {
-              req: req, ok: true, entryId: entry.EntryId, tbGuid: tbGuid,
-              source: source, target: target
-            });
-          });
-        }).catch(function (e) { termFail('term-edit-result', req, e.message || e); });
-      } catch (e) { termFail('term-edit-result', req, e.message || e); }
-      return { ok: true };
+      return newTermsApi().termEdit(req, params);
     };
 
     /* ---- Ctrl+Q 快速添加术语 ----
@@ -2845,69 +2178,7 @@
        单术语库直接加；多术语库 push term-pick-tb 让 Qt 弹选择浮窗（可记住）。
        新版没有 Core：projectGuid 从 URL 取，语言层用命中缓存/全局状态，找不到时按模板顺序。 */
     window.__md.api.termQuickAddReq = function (req, params) {
-      params = params || {};
-      var source = String(params.source || '').trim();
-      var target = String(params.target || '').trim();
-      if (!source || !target) {
-        return termFail('term-quick-err', req, '请分别在原文、译文选中要添加的术语');
-      }
-      try {
-        var kind = detectEditor();
-        if (kind !== 'old' && kind !== 'new') {
-          return termFail('term-quick-err', req, '快速添加术语仅新版/旧版支持');
-        }
-        var core = null, prj = '', srcLang = '', tgtLang = '';
-        if (kind === 'old') {
-          core = termCore();
-          prj = String(params.projectGuid || termProjectGuid(core));
-          srcLang = String(core.sourceLangCode || '');
-          tgtLang = String(core.targetLangCode || '');
-        } else {
-          prj = newTermProjectGuidFor(params);
-          var docLangs = newDocumentLanguageCodes();
-          srcLang = String(params.sourceLang || docLangs.src || '');
-          tgtLang = String(params.targetLang || docLangs.tgt || '');
-        }
-        if (!prj) throw new Error('项目 GUID 未找到');
-        if (kind === 'new' && (!srcLang || !tgtLang)) {
-          return termFail(
-            'term-quick-err', req,
-            '未能识别文档语言：请先切换到有术语命中的段，再使用 Ctrl+Q');
-        }
-        var wanted = String(params.tbGuid || '').trim();
-        termTbList(prj, tgtLang).then(function (items) {
-          if (!items.length) throw new Error('当前项目没有可用的术语库');
-          var chosen = null;
-          if (wanted) {
-            for (var i = 0; i < items.length; i++) {
-              if (items[i].guid === wanted) { chosen = items[i]; break; }
-            }
-          }
-          if (!chosen && !wanted && items.length === 1) chosen = items[0];
-          if (!chosen) {
-            var primary = items.filter(function (x) { return x.primary; })[0];
-            __md.push('term-pick-tb', {
-              req: req, items: items, source: source, target: target,
-              selected: wanted,
-              stale: !!wanted,
-              primary: primary ? primary.guid : (items[0] ? items[0].guid : ''),
-              srcLang: srcLang, tgtLang: tgtLang, projectGuid: prj,
-            });
-            return;
-          }
-          return termQuickAddEntry(req, chosen, source, target, srcLang, tgtLang, prj)
-            .then(function () {
-              // 旧版仍同步 memoQ 的“上次使用术语库”，失败不影响添加结果。
-              if (core) {
-                core.lastUsedTBGuid = chosen.guid;
-                return apiPost('TranslationService/SaveLastUsedTBGuid', {
-                  docInstanceId: core.docInstanceId, lastUsedTBGuid: chosen.guid,
-                }).catch(function () {});
-              }
-            });
-        }).catch(function (e) { termFail('term-quick-err', req, e.message || e); });
-      } catch (e) { termFail('term-quick-err', req, e.message || e); }
-      return { ok: true };
+      return newTermsApi().termQuickAdd(req, params);
     };
 
     /* ---- 段信息：行内上下文字段 + 行注释 + 文档注释（按文档缓存一次） ---- */
@@ -3037,7 +2308,7 @@
         tagView: 'short',
         requestWeb: {},
       };
-      fetch(base + '/concordance', {
+      newApiFetch(base + '/concordance', {
         method: 'POST', credentials: 'same-origin', headers: headers,
         body: JSON.stringify(body),
       }).then(function (r) {
@@ -3051,7 +2322,7 @@
         var url = base + '/concordance?' + new URLSearchParams({
           contextId: contextId, skip: '0', take: '50',
         }).toString();
-        return fetch(url, { credentials: 'same-origin', headers: headers })
+        return newApiFetch(url, { headers: headers })
           .then(function (r) {
             return r.json().then(function (j) {
               if (r.status !== 200) {

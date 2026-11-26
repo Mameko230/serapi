@@ -101,7 +101,7 @@ const context = {
 };
 context.window = context;
 vm.createContext(context);
-const source = fs.readFileSync(path.join(__dirname, '..', 'app', 'bridge.js'), 'utf8');
+const source = require('./_page_source');
 vm.runInContext(source, context, { filename: 'bridge.js' });
 
 const result = context.__md.api.listRows();

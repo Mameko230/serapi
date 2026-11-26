@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'app', 'bridge.js'), 'utf8');
+const SRC = require('./_page_source');
 
 // ---- 极简 DOM：只实现 bridge.js 新版分支用到的选择器与方法 ----
 let fakeDoc = null;

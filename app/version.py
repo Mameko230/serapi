@@ -5,4 +5,4 @@
 CI 会校验 tag 去掉 v 后与 APP_VERSION 一致，避免客户端版本和 Release 对不上。
 """
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"

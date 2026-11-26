@@ -11,6 +11,19 @@ from PyInstaller.utils.hooks import collect_data_files
 
 datas = [
     ("app/bridge.js", "app"),   # app/bridge.py 运行时读取
+    ("app/api_client.js", "app"),
+    ("app/editor_state.js", "app"),
+    ("app/row_status.js", "app"),
+    ("app/symbols.js", "app"),
+    ("app/comments.js", "app"),
+    ("app/hits.js", "app"),
+    ("app/rows_store.js", "app"),
+    ("app/rows_api.js", "app"),
+    ("app/filter_api.js", "app"),
+    ("app/legacy_api.js", "app"),
+    ("app/terms_model.js", "app"),
+    ("app/terms_api.js", "app"),
+    ("app/page_rules.json", "app"),
     ("assets", "assets"),       # 窗口 / 任务栏图标
 ]
 # qfluentwidgets 自带 QSS / 图片资源

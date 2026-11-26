@@ -261,41 +261,17 @@ assert not w_info.seg_info_frame.isHidden()
 info_text = w_info.seg_info.toPlainText()
 assert info_text.count("新版不提供") == 2, info_text
 
-# 8b) 确认后跳转：follow 交给 memoQ；next/previous/stay 覆盖目标；越界/文档变化不跳。
-jh = Dummy()
-jh._app_cfg = {"jump_mode": "next"}
-jh._editor_url = "doc"
-jh._has_loaded_segment = True
-jh._cur_row = 10
-jh._total_rows = 100
-jh.jumps = []
-jh.log = lambda _s: None
-jh._jump_to_row = lambda n: jh.jumps.append(int(n))
-jh._apply_confirm_jump = types.MethodType(MainWindow._apply_confirm_jump, jh)
-jh._apply_confirm_jump(10, "doc")            # next → 11
-assert jh.jumps == [11], jh.jumps
-jh._app_cfg["jump_mode"] = "previous"
-jh._cur_row = 11
-jh._apply_confirm_jump(11, "doc")            # previous → 10
-assert jh.jumps == [11, 10], jh.jumps
-jh._app_cfg["jump_mode"] = "stay"
-jh._cur_row = 10
-jh._apply_confirm_jump(10, "doc")            # stay → 已是 10，不重复跳
-assert jh.jumps == [11, 10], jh.jumps
-jh._app_cfg["jump_mode"] = "next"
-jh._apply_confirm_jump(100, "doc")           # 超过总行数
-jh._apply_confirm_jump(20, "other-doc")      # 文档已变
-jh._app_cfg["jump_mode"] = "follow"
-jh._apply_confirm_jump(20, "doc")            # 跟随 memoQ
-assert jh.jumps == [11, 10], jh.jumps
+# 8b) 确认后跳转不再走 Serapi 配置：旧的 _apply_confirm_jump 已删除。
+assert not hasattr(MainWindow, "_apply_confirm_jump")
 
-# 8c) 新版确认/拒绝 HTTP 结果：按行号刷新，confirm + follow 回退到下一行，reject 不跳。
+# 8c) 新版确认/拒绝走 HTTP：带回 mappedStatus 时立即落表；确认后用快速路径到下一行。
 ah = Dummy()
-ah._app_cfg = {"jump_mode": "follow"}
+ah._app_cfg = {}
 ah._editor_url = "doc"
 ah._has_loaded_segment = True
 ah._cur_row = 10
 ah._total_rows = 100
+ah._confirm_busy = True
 ah.jumps = []
 ah.logs = []
 ah.statuses = []
@@ -307,21 +283,32 @@ ah._schedule_seg_refresh = lambda delay, background=True: None
 ah._refresh_row_cache = lambda row: None
 ah.status_updates = []
 ah._select_current_in_view = lambda: None
+lock_map = {11: {"locked": True}, 12: {"locked": True}, 13: {"locked": False}}
 ah.seg_model = types.SimpleNamespace(
-    set_row_status=lambda row, status: ah.status_updates.append((row, status)))
-ah._apply_confirm_jump = types.MethodType(MainWindow._apply_confirm_jump, ah)
+    set_row_status=lambda row, status: ah.status_updates.append((row, status)),
+    row_snapshot=lambda row: lock_map.get(row))
 ah._on_row_action = types.MethodType(MainWindow._on_row_action, ah)
+ah._next_unlocked_row = types.MethodType(MainWindow._next_unlocked_row, ah)
+
 ah._on_row_action({"ok": True, "action": "confirm", "rowNo": 10,
                    "status": "reviewer1Confirmed", "mappedStatus": "reviewer1"})
 assert any("已确认第 10 行" in line for line in ah.logs), ah.logs
 assert ah.status_updates == [(10, "reviewer1")], ah.status_updates
-assert ah.jumps == [11], ah.jumps
+# 11/12 锁定 → 跳到 13（memoQ 原生会跳过锁定行）。
+assert ah.jumps == [13], ah.jumps
+
+# 拒绝：落状态、不跳行。
 ah._on_row_action({"ok": True, "action": "reject", "rowNo": 10,
-                   "status": "rejected"})
-assert any("已拒绝第 10 行" in line for line in ah.logs), ah.logs
-assert ah.jumps == [11], ah.jumps
+                   "status": "rejected", "mappedStatus": "rejected"})
+assert ah.jumps == [13], ah.jumps
+assert ah.status_updates[-1] == (10, "rejected"), ah.status_updates
+assert any("第 10 行已拒绝" in line for line in ah.statuses), ah.statuses
+
+# 失败：解除确认保护并提示。
+ah._confirm_busy = True
 ah._on_row_action({"ok": False, "action": "confirm", "rowNo": 10,
                    "err": "HTTP 400"})
+assert ah._confirm_busy is False
 assert any("确认失败：HTTP 400" in line for line in ah.logs), ah.logs
 assert any("确认失败" in line for line in ah.statuses), ah.statuses
 

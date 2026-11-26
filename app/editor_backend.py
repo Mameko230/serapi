@@ -17,10 +17,16 @@ class EditorBackend(Protocol):
     """一次编辑器会话需要的页面操作。"""
 
     def capabilities(self, callback) -> None: ...
+    def editor_state(self, callback) -> None: ...
     def read_segment(self, callback) -> None: ...
     def write_segment(self, tokens, callback) -> None: ...
     def activate_row(self, row_no, callback) -> None: ...
     def confirm_segment(self, callback) -> None: ...
+    def reject_segment(self, row_no, callback) -> None: ...
+    def lock_row(self, row_no, lock, req, callback) -> None: ...
+    def clear_row(self, row_no, req, callback) -> None: ...
+    def split_row(self, row_no, source_position, req, callback) -> None: ...
+    def join_row(self, row_no, row_count, req, callback) -> None: ...
     def list_rows(self, callback) -> None: ...
     def document_stats(self, callback) -> None: ...
     def list_tags(self, row_no, callback) -> None: ...
@@ -49,6 +55,9 @@ class JsBridgeBackend:
     def capabilities(self, callback):
         self._call("JSON.stringify(__md.api.capabilities())", callback)
 
+    def editor_state(self, callback):
+        self._call("JSON.stringify(__md.api.editorState())", callback)
+
     def read_segment(self, callback):
         self._call("JSON.stringify(__md.api.readSegment())", callback)
 
@@ -66,6 +75,24 @@ class JsBridgeBackend:
 
     def reject_segment(self, row_no, callback):
         self._call(f"JSON.stringify(__md.api.rejectSegment({int(row_no)}))", callback)
+
+    def lock_row(self, row_no, lock, req, callback):
+        self._call(
+            f"JSON.stringify(__md.api.lockRow({int(row_no)}, "
+            f"{'true' if lock else 'false'}, {int(req)}))", callback)
+
+    def clear_row(self, row_no, req, callback):
+        self._call(f"JSON.stringify(__md.api.clearRow({int(row_no)}, {int(req)}))", callback)
+
+    def split_row(self, row_no, source_position, req, callback):
+        self._call(
+            f"JSON.stringify(__md.api.splitRow({int(row_no)}, "
+            f"{int(source_position)}, {int(req)}))", callback)
+
+    def join_row(self, row_no, row_count, req, callback):
+        self._call(
+            f"JSON.stringify(__md.api.joinRow({int(row_no)}, "
+            f"{int(row_count)}, {int(req)}))", callback)
 
     def jump_rows(self, row_no, callback=None):
         expr = f"JSON.stringify(__md.api.jumpToRow({int(row_no)}))"

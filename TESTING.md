@@ -12,6 +12,8 @@
 
 真实 memoQ 页面探针只在**桥接/选择器/版本适配**改动时做，不进入 CI，不提交任何真实内容。
 
+桥接选择器契约：`tests/test_bridge_contract.js` 对比 `app/bridge.js` 的 PAGE 表与 `tests/fixtures/bridge_selectors.json`。memoQ 改版导致选择器漂移时测试会失败；更新真实页面选择器后必须同步 fixture，禁止只改 JS 不留下契约记录。
+
 ## 命令
 
 ```bash
@@ -31,7 +33,7 @@ $env:SERAPI_NODE = "C:\path\to\node.exe"
 
 | 改动区域 | 至少跑 |
 |---|---|
-| `app/bridge.js` 选择器/能力/指纹 | `test_capabilities.js`、`test_capabilities_ui.py` |
+| `app/bridge.js` 选择器/能力/指纹 | `test_capabilities.js`、`test_capabilities_ui.py`、`test_bridge_contract.js` |
 | `app/bridge.js` 过滤 | `test_filter.js`、`test_filter_ui.py`、`test_term_edit.js` |
 | `app/bridge.js` 术语/详情 | `test_term_edit.js`、`test_term_edit.py`、`test_tb_metadata.js` |
 | 编辑器后端/页面表达式 | `test_editor_backend.py`、`test_capabilities_ui.py` |

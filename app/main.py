@@ -35,12 +35,24 @@ def enable_crash_handler(stderr="auto", log_path=None):
 
 _CRASH_LOG = enable_crash_handler()
 
+if sys.version_info < (3, 14):
+    print("Serapi 需要 Python 3.14 或更高版本；当前为 %s" % sys.version.split()[0])
+    sys.exit(2)
+
 # PyInstaller 打包时资源路径兼容
 if getattr(sys, "frozen", False):
     BASE = Path(sys._MEIPASS)  # noqa: SLF001
 else:
     BASE = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(BASE))
+
+from PyQt6.QtCore import PYQT_VERSION_STR  # noqa: E402
+
+import re as _re  # noqa: E402
+_qt_ver = _re.match(r"(\d+)\.(\d+)", PYQT_VERSION_STR or "")
+if not _qt_ver or (int(_qt_ver.group(1)), int(_qt_ver.group(2))) < (6, 12):
+    print("Serapi 需要 PyQt6 6.12.1 或更高版本；当前为 %s" % PYQT_VERSION_STR)
+    sys.exit(2)
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 import PyQt6.QtWebEngineWidgets  # noqa: E402,F401  须在 QApplication 前导入

@@ -3,7 +3,9 @@
 import json
 import time
 
-from PyQt6.QtCore import Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint, QSize
+from PyQt6.QtCore import (
+    Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint, QSize, QModelIndex, QRectF,
+)
 from PyQt6.QtWidgets import (
     QMainWindow, QSplitter, QTabWidget, QPlainTextEdit,
     QTextEdit, QVBoxLayout, QWidget, QLabel, QLineEdit, QHBoxLayout,
@@ -11,7 +13,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QComboBox, QTextBrowser, QStyledItemDelegate, QApplication, QScrollBar,
     QMenu,
 )
-from PyQt6.QtGui import QColor, QPainter, QPen, QDesktopServices
+from PyQt6.QtGui import QColor, QPainter, QPen, QDesktopServices, QIcon, QPixmap, QFont
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEngineSettings
 
@@ -31,6 +33,12 @@ from .updater import (
     ReleaseChecker, decide, reason_text, safe_release_url, should_auto_check, today_str,
 )
 from .version import APP_VERSION
+from .rowref import RowRef
+from .row_navigation import is_fast_jump, next_unlocked_row
+from .row_workflow import RowWorkflowMixin
+from .read_workflow import ReadWorkflowMixin
+from .stats_filter_workflow import StatsFilterWorkflowMixin
+from .write_policy import WriteIntent, decide as decide_write, state_from_flags
 
 # ---- Fluent 组件库（PyQt-Fluent-Widgets，acrylic 玻璃主题）----
 from qfluentwidgets import (
@@ -41,6 +49,56 @@ from qfluentwidgets import (
 
 # 社区版组件即可实现一致的胶囊按钮；主操作仍由 PrimaryPushButton 强调。
 PushButton = PillPushButton
+
+
+def _tag_icon(long_form=True, plus=False, badge=None):
+    pm = QPixmap(64, 64)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor("#475569"), 5.0)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    p.setPen(pen)
+    p.drawRoundedRect(QRectF(9, 11, 40, 36), 9, 9)
+    if long_form:
+        p.drawLine(17, 21, 41, 21)
+        p.drawLine(17, 30, 35, 30)
+        p.drawLine(17, 39, 29, 39)
+    else:
+        p.drawLine(17, 24, 35, 24)
+        p.drawLine(17, 35, 27, 35)
+    if plus:
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#2563eb"))
+        p.drawEllipse(QRectF(39, 35, 22, 22))
+        p.setPen(QPen(QColor("white"), 3.4))
+        p.drawLine(50, 39, 50, 53)
+        p.drawLine(43, 46, 57, 46)
+    elif badge:
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#2563eb"))
+        p.drawEllipse(QRectF(36, 34, 26, 26))
+        p.setPen(QColor("white"))
+        f = QFont("Segoe UI", 16)
+        f.setBold(True)
+        p.setFont(f)
+        p.drawText(QRectF(36, 34, 26, 26), Qt.AlignmentFlag.AlignCenter, badge)
+    p.end()
+    return QIcon(pm)
+
+
+def _pilcrow_icon():
+    pm = QPixmap(64, 64)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QColor("#475569"))
+    f = QFont("Georgia", 40)
+    f.setBold(True)
+    p.setFont(f)
+    p.drawText(QRectF(0, 0, 64, 64), Qt.AlignmentFlag.AlignCenter, "¶")
+    p.end()
+    return QIcon(pm)
 
 
 class SegTableView(QTableView):
@@ -246,9 +304,41 @@ class SegModel(QAbstractTableModel):
             bottom = self.index(len(self._rows) - 1, 3)
             self.dataChanged.emit(top, bottom, [Qt.ItemDataRole.ForegroundRole])
 
+    def _apply_authoritative(self, row: dict) -> dict:
+        """本地动作的 8 秒权威值：所有模型入口共用，换窗时也不能回跳。"""
+        row_no = row.get("rowNo")
+        auth = self._authoritative_status.get(row_no)
+        if auth is not None:
+            auth_status, auth_ts = auth
+            if row.get("status") == auth_status:
+                self._authoritative_status.pop(row_no, None)
+            elif time.monotonic() - auth_ts < 8.0:
+                row["status"] = auth_status
+            else:
+                self._authoritative_status.pop(row_no, None)
+        aw = self._authoritative_write.get(row_no)
+        if aw is not None:
+            want_tgt, aw_ts = aw
+            if time.monotonic() - aw_ts < 8.0:
+                row["tgt"] = want_tgt
+            else:
+                self._authoritative_write.pop(row_no, None)
+        return row
+
+    def clear_status_authority(self, row_no):
+        """原生确认/拒绝后：清掉写回时记下的 edited 权威状态。"""
+        self._authoritative_status.pop(row_no, None)
+        self._pending_status.pop(row_no, None)
+
+    def clear_authoritative(self):
+        """换文档：旧文档的行号权威值绝不能套到新文档同名行上。"""
+        self._authoritative_status.clear()
+        self._authoritative_write.clear()
+        self._pending_status.clear()
+
     def set_rows(self, rows, tm_rates=None):
         self.beginResetModel()
-        self._all_rows = list(rows)
+        self._all_rows = [self._apply_authoritative(dict(r)) for r in (rows or [])]
         self._pending_status.clear()
         if tm_rates:
             for r in self._all_rows:
@@ -257,6 +347,48 @@ class SegModel(QAbstractTableModel):
                     r["tmRate"] = rate
         self._rebuild_visible_rows()
         self.endResetModel()
+
+    def apply_window(self, rows) -> int:
+        """缓存窗切换：按 rowNo 键控增删改，不整表 reset。"""
+        incoming = [dict(r) for r in (rows or [])]
+        if self._status_filter:
+            self.set_rows(incoming)
+            return len(incoming)
+        new_by_no = {}
+        for r in incoming:
+            new_by_no[r.get("rowNo")] = self._apply_authoritative(r)
+        changed = 0
+        for i in range(len(self._all_rows) - 1, -1, -1):
+            if self._all_rows[i].get("rowNo") not in new_by_no:
+                self.beginRemoveRows(QModelIndex(), i, i)
+                del self._all_rows[i]
+                del self._rows[i]
+                self.endRemoveRows()
+        for i, old in enumerate(self._all_rows):
+            new = new_by_no.get(old.get("rowNo"))
+            if new is None or new == old:
+                continue
+            self._all_rows[i] = new
+            self._rows[i] = new
+            self.dataChanged.emit(self.index(i, 0), self.index(i, 3))
+            changed += 1
+        existing = {r.get("rowNo") for r in self._all_rows}
+        for r in incoming:
+            row_no = r.get("rowNo")
+            if row_no in existing:
+                continue
+            pos = len(self._all_rows)
+            for j, old in enumerate(self._all_rows):
+                if (old.get("rowNo") or 0) > (row_no or 0):
+                    pos = j
+                    break
+            self.beginInsertRows(QModelIndex(), pos, pos)
+            self._all_rows.insert(pos, new_by_no.get(row_no, r))
+            self._rows.insert(pos, new_by_no.get(row_no, r))
+            self.endInsertRows()
+            existing.add(row_no)
+            changed += 1
+        return changed
 
     def update_rows(self, rows, tm_rates=None) -> int:
         """差量更新；状态需连续两次一致才变更，挡住单次旧快照造成的跳色。"""
@@ -269,33 +401,14 @@ class SegModel(QAbstractTableModel):
         old_numbers = [r.get("rowNo") for r in self._all_rows]
         new_numbers = [r.get("rowNo") for r in incoming]
         if old_numbers != new_numbers:
-            self.set_rows(incoming)
-            return len(incoming)
+            return self.apply_window(incoming)
         changed = 0
         for i, row in enumerate(incoming):
             old = self._all_rows[i]
             row_no = row.get("rowNo")
+            row = self._apply_authoritative(row)
             new_status = row.get("status")
             old_status = old.get("status")
-            auth = self._authoritative_status.get(row_no)
-            if auth is not None:
-                auth_status, auth_ts = auth
-                if new_status == auth_status:
-                    self._authoritative_status.pop(row_no, None)
-                elif time.monotonic() - auth_ts < 8.0:
-                    # 行缓存刷新有延迟：旧快照不得把刚确认/拒绝的状态覆盖回去。
-                    row["status"] = auth_status
-                    new_status = auth_status
-                else:
-                    self._authoritative_status.pop(row_no, None)
-            aw = self._authoritative_write.get(row_no)
-            if aw is not None:
-                want_tgt, aw_ts = aw
-                if time.monotonic() - aw_ts < 8.0:
-                    # PUT 已成功但行缓存可能还是旧内容：旧快照不能把新译文清空。
-                    row["tgt"] = want_tgt
-                else:
-                    self._authoritative_write.pop(row_no, None)
             if new_status != old_status:
                 if self._pending_status.get(row_no) == new_status:
                     self._pending_status.pop(row_no, None)
@@ -333,6 +446,13 @@ class SegModel(QAbstractTableModel):
                                                          Qt.ItemDataRole.ToolTipRole])
                         break
                 return
+
+    def row_snapshot(self, row_no):
+        """返回缓存中的行快照；未缓存返回 None。"""
+        for r in self._all_rows:
+            if r.get("rowNo") == row_no:
+                return r
+        return None
 
     def row_no_at(self, row: int):
         if 0 <= row < len(self._rows):
@@ -1721,7 +1841,7 @@ class EngineView(QWebEngineView):
         return v
 
 
-class MainWindow(QMainWindow):
+class MainWindow(ReadWorkflowMixin, RowWorkflowMixin, StatsFilterWorkflowMixin, QMainWindow):
     @property
     def _cur_row(self):
         return self._session.cur_row
@@ -1860,24 +1980,25 @@ class MainWindow(QMainWindow):
         # tag 显示长短切换（持久化到 ui.json）
         self._tag_display = self._load_ui_state().get("tagDisplay", "long")
         self._tag_cfg["tagDisplay"] = self._tag_display
-        self.btn_tagmode = PushButton("切换tag显示长短")
-        self.btn_tagmode.setMinimumWidth(128)
-        self.btn_tagmode.setToolTip("切换 tag 胶囊显示：长=名称+编号，短=仅编号")
+        self.btn_tagmode = self._icon_button(
+            _tag_icon(self._tag_display == "long", badge="L" if self._tag_display == "long" else "S"),
+            "切换 Tag 显示长短")
         self.btn_tagmode.clicked.connect(self._toggle_tag_display)
         self._update_tagmode_btn()
-        # 按顺序插入缺失 tag（对齐 memoQ 的插入下一个 tag）
-        self.btn_nexttag = PushButton("按顺序插入Tag")
+        self.btn_nexttag = self._icon_button(
+            _tag_icon(True, plus=True),
+            "按顺序插入当前译文中缺失的第一个 tag（F9）")
         self.btn_nexttag.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.btn_nexttag.setToolTip("在光标处按顺序插入当前译文中缺失的第一个 tag（F9）")
         self.btn_nexttag.clicked.connect(self.insert_next_tag)
-        # 空格可视化开关（memoQ 式蓝色圆点；持久化到 ui.json）
         self._show_spaces = bool(self._load_ui_state().get("showSpaces", True))
         self._tag_cfg["showSpaces"] = self._show_spaces
-        self.btn_spaces = PillPushButton("显示非打印字符")
-        self.btn_spaces.setCheckable(True)
+        self.btn_spaces = self._icon_button(
+            _pilcrow_icon(),
+            "显示非打印字符：开=空格显示为蓝色圆点，关=普通空格", checkable=True)
         self.btn_spaces.setChecked(self._show_spaces)
-        self.btn_spaces.setToolTip("开：空格显示为蓝色圆点（同 memoQ，便于发现多余空格）；关：普通空格")
         self.btn_spaces.toggled.connect(self._toggle_spaces)
+        for _b in (self.btn_tagmode, self.btn_nexttag, self.btn_spaces):
+            _b.setIconSize(QSize(28, 28))
         from PyQt6.QtGui import QShortcut, QKeySequence
         sc = QShortcut(QKeySequence("F9"), self)
         sc.activated.connect(self.insert_next_tag)
@@ -2102,7 +2223,7 @@ class MainWindow(QMainWindow):
             f" border: none; padding: 12px; }}")
         self.src_view.viewport().setAutoFillBackground(False)
         self.src_view.setReadOnly(True)
-        _line_style = str(self._app_cfg.get("editor_line_style") or "bplus")
+        _line_style = str(self._app_cfg.get("editor_line_style") or "zebra")
         self.editor.set_line_style(_line_style)
         self.src_view.set_line_style(_line_style)
         self._last_src_tokens = []
@@ -2317,9 +2438,12 @@ class MainWindow(QMainWindow):
         self._cur_row = 1  # 当前段行号（1 起），段列表落地后由列表选择驱动
         self._read_gen = 0  # 读段代际号：异步回调返回时比对，过期响应直接丢弃（防切换后旧响应覆盖新内容）
         self._activating_row = None  # 程序切行期间忽略重复 row-changed，避免双读取互相取消
-        self._jump_pending_row = None  # 新版长文档跳行：等待缓存窗换到目标行
+        self._jump_pending_row = None
+        self._list_window_pending = None
         self._follow_pending_row = None  # 新版：等待缓存窗跟随 memoQ 自动选中的当前行
         self._tm_rates = {}  # 本次文档内已实际查询的 memoQ 最佳 TM 匹配率：rowNo -> rate
+        self._res_fetch_mark = (0, 0.0)
+        self._info_fetch_mark = (0, 0.0)
         self._editor_url = ""  # 同一标签页换文档时也据此清空 TM 缓存
         # 保存状态机：行号+编辑代际+文档身份共同约束异步回调，防止迟到写回/清脏。
         self._drafts = DraftStore()
@@ -2350,6 +2474,8 @@ class MainWindow(QMainWindow):
         self._pending_update = None
         self._caps = {}
         self._cap_editor = None
+        self._editor_flags = {}
+        self._current_row_id = ""
         self._missing_selectors = []
         self._draft_timer = QTimer(self)
         self._draft_timer.setSingleShot(True)
@@ -2535,7 +2661,13 @@ class MainWindow(QMainWindow):
         self._activating_row = None
         self._caps = {}
         self._cap_editor = None
+        self._editor_flags = {}
+        self._current_row_id = ""
         self._missing_selectors = []
+        model = getattr(self, "seg_model", None)
+        clear_auth = getattr(model, "clear_authoritative", None)
+        if callable(clear_auth):
+            clear_auth()
         if hasattr(self, "cap_label"):
             self.cap_label.setVisible(False)
             self.cap_label.setText("")
@@ -2577,6 +2709,8 @@ class MainWindow(QMainWindow):
         self._editor_url = url
         self._editor_pid = page_id
         self._tm_rates.clear()
+        self._res_fetch_mark = (0, 0.0)
+        self._info_fetch_mark = (0, 0.0)
 
     def _next_read_gen(self) -> int:
         """读段代际号 +1 并返回；异步回调落地前必须比对 self._read_gen"""
@@ -2727,6 +2861,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(600, self._follow_current_row_in_cache)
             return
         self._follow_retry_count = 0
+        if getattr(self, "_list_window_pending", None) == row_no:
+            return
         self._follow_pending_row = row_no
         self.log(f"memoQ 当前行 {row_no} 不在缓存窗，正在定位缓存…")
         try:
@@ -2869,10 +3005,13 @@ class MainWindow(QMainWindow):
 
     # ---------------- tag 显示长短切换 ----------------
     def _update_tagmode_btn(self):
-        self.btn_tagmode.setText("切换tag显示长短")
+        long_form = self._tag_display == "long"
+        self.btn_tagmode.setIcon(
+            _tag_icon(long_form, badge="L" if long_form else "S"))
         self.btn_tagmode.setToolTip(
-            "当前为" + ("长 tag（名称+编号）" if self._tag_display == "long" else "短 tag（仅编号）")
+            "当前为" + ("长 tag（L：名称+编号）" if long_form else "短 tag（S：仅编号）")
             + "；点击切换")
+        self.btn_tagmode.setAccessibleName("切换 Tag 显示长短")
 
     def _rerender_editors(self):
         """只重画当前屏幕内容：绝不回读旧段，也不丢弃未写回编辑。
@@ -2977,30 +3116,6 @@ class MainWindow(QMainWindow):
         n = _re.sub(r"\D", "", self.row_edit.text())
         if n:
             self._jump_to_row(int(n))
-
-    def _jump_to_row(self, row_no: int):
-        """长文档跳行：新版先把 API 缓存窗换到目标附近，再激活目标行。"""
-        if getattr(self, "_jump_pending_row", None) is not None:
-            self.log("正在跳转，请稍候…")
-            return
-        if (getattr(self, "_cap_editor", None) == "new"
-                and not self.filter_active()):
-            self._jump_pending_row = int(row_no)
-            self.log(f"正在跳到第 {row_no} 行…")
-            try:
-                backend_for(self).jump_rows(int(row_no))
-            except Exception as exc:
-                self._jump_pending_row = None
-                self.log(f"跳转失败：{exc}")
-                return
-            QTimer.singleShot(4000, lambda: self._jump_timeout(row_no))
-            return
-        self.activate_row(int(row_no))
-
-    def _jump_timeout(self, row_no: int):
-        if getattr(self, "_jump_pending_row", None) == int(row_no):
-            self._jump_pending_row = None
-            self.log(f"跳转第 {row_no} 行超时，请重试")
 
     # ---------------- TM/术语快捷键插入 ----------------
     def _insert_hit_by_index(self, idx: int):
@@ -3185,7 +3300,12 @@ class MainWindow(QMainWindow):
             callback()
 
     def _fetch_res(self, row_no: int):
-        """选中段后拉取 TM/术语命中（异步；结果由页面 push 回来）。"""
+        """同一次切行可能由多条路径调用；同一行 2 秒内只发一次。"""
+        now = time.monotonic()
+        last_row, last_at = getattr(self, "_res_fetch_mark", (0, 0.0))
+        if int(row_no) == int(last_row) and now - last_at < 2.0:
+            return
+        self._res_fetch_mark = (int(row_no), now)
         self._hits.fetch(row_no)
 
     def _on_seginfo_toggled(self, on: bool):
@@ -3237,7 +3357,12 @@ class MainWindow(QMainWindow):
         self.res_panel.forget_tb_detail(key)
 
     def _fetch_segment_info(self, row_no: int):
-        """读取当前段上下文/注释；文档注释由 JS 按文档缓存，切行不重复请求。"""
+        """读取当前段上下文/注释；同一行 2 秒内只发一次。"""
+        now = time.monotonic()
+        last_row, last_at = getattr(self, "_info_fetch_mark", (0, 0.0))
+        if int(row_no) == int(last_row) and now - last_at < 2.0:
+            return
+        self._info_fetch_mark = (int(row_no), now)
         self._info.fetch(row_no)
 
     def _update_segment_info(self, info: dict):
@@ -3658,7 +3783,6 @@ class MainWindow(QMainWindow):
             appconfig.save(self._app_cfg)
             if getattr(self, "_settings_panel", None) is not None:
                 self._settings_panel.open(
-                    str(self._app_cfg.get("jump_mode") or "follow"),
                     bool(self._app_cfg.get("engine_auto_close", True)),
                     self._app_cfg["quick_term_tb_name"])
             self._quick_remember_after = False
@@ -4188,16 +4312,14 @@ class MainWindow(QMainWindow):
     def _show_settings_panel(self):
         if getattr(self, "_settings_panel", None) is None:
             self._settings_panel = SettingsPanel(self)
-            self._settings_panel.jumpModeChanged.connect(self._set_jump_mode)
             self._settings_panel.engineAutoCloseChanged.connect(self._set_engine_auto_close)
             self._settings_panel.editorLineStyleChanged.connect(self._set_editor_line_style)
             self._settings_panel.clearQuickTermRequested.connect(self._clear_quick_term_memory)
             self._settings_panel.closed.connect(lambda: self._set_settings_visible(False))
         self._settings_panel.open(
-            str(self._app_cfg.get("jump_mode") or "follow"),
             bool(self._app_cfg.get("engine_auto_close", True)),
             str(self._app_cfg.get("quick_term_tb_name") or ""),
-            str(self._app_cfg.get("editor_line_style") or "bplus"),
+            str(self._app_cfg.get("editor_line_style") or "zebra"),
         )
 
     def _set_settings_visible(self, visible):
@@ -4235,23 +4357,15 @@ class MainWindow(QMainWindow):
         elif getattr(self, "_shortcuts_panel", None) is not None:
             self._shortcuts_panel.hide()
 
-    def _set_jump_mode(self, mode):
-        if mode not in ("follow", "next", "previous", "stay"):
-            return
-        self._app_cfg["jump_mode"] = mode
-        appconfig.save(self._app_cfg)
-        labels = {"follow": "跟随 memoQ 原生设置", "next": "下一行",
-                  "previous": "上一行", "stay": "不跳转"}
-        self.log(f"确认后跳转：{labels[mode]}")
-
     def _set_engine_auto_close(self, enabled: bool):
         self._app_cfg["engine_auto_close"] = bool(enabled)
         appconfig.save(self._app_cfg)
         self.log("选中行后自动关闭引擎页：" + ("开" if enabled else "关（用浮层右上角 × 或 Esc 手动关闭）"))
 
     def _set_editor_line_style(self, style):
-        """用户可选：B+ 细分隔线 / C 一行一格；立即应用到原文和译文编辑框。"""
-        if style not in ("bplus", "cells"):
+        """A 轻隔行 / B 当前行聚焦。"""
+        style = {"bplus": "zebra", "cells": "focus"}.get(style, style)
+        if style not in ("zebra", "focus"):
             return
         self._app_cfg["editor_line_style"] = style
         appconfig.save(self._app_cfg)
@@ -4261,8 +4375,8 @@ class MainWindow(QMainWindow):
                     editor.set_line_style(style)
                 except Exception:
                     pass
-        self.log("编辑框行样式：" + ("C · 一行一格" if style == "cells"
-                                      else "B+ · 细分隔线"))
+        self.log("编辑框行样式：" + ("A · 轻隔行" if style == "zebra"
+                                      else "B · 当前行聚焦"))
 
     def _clear_quick_term_memory(self):
         self._app_cfg["quick_term_tb"] = ""
@@ -4271,9 +4385,9 @@ class MainWindow(QMainWindow):
         self.log("已清除快捷添加术语记住的术语库；Ctrl+Q 将恢复每次询问")
         if getattr(self, "_settings_panel", None) is not None:
             self._settings_panel.open(
-                str(self._app_cfg.get("jump_mode") or "follow"),
                 bool(self._app_cfg.get("engine_auto_close", True)),
                 "",
+                str(self._app_cfg.get("editor_line_style") or "zebra"),
             )
 
     def switch_account(self):
@@ -4368,6 +4482,24 @@ class MainWindow(QMainWindow):
             return
         backend_for(self).capabilities(self._apply_capabilities)
 
+    def _refresh_editor_flags(self):
+        """行切换后刷新跟踪/只读/锁定状态；失败不影响主流程。"""
+        try:
+            backend_for(self).editor_state(self._apply_editor_state)
+        except Exception:
+            pass
+
+    def _apply_editor_state(self, r):
+        try:
+            res = json.loads(r) if isinstance(r, str) else (r or {})
+        except Exception:
+            return
+        flags = res.get("flags") or {}
+        if flags:
+            self._editor_flags = dict(flags)
+            if flags.get("rowId") is not None:
+                self._current_row_id = str(flags.get("rowId"))
+
     def _apply_capabilities(self, r):
         try:
             res = json.loads(r) if isinstance(r, str) else (r or {})
@@ -4381,6 +4513,7 @@ class MainWindow(QMainWindow):
         self._missing_selectors = missing
         self._caps = feats
         self._cap_editor = res.get("editor")
+        self._editor_flags = res.get("document") or {}
         if changed and missing:
             logger = getattr(self, "log", None)
             if logger:
@@ -4572,7 +4705,10 @@ class MainWindow(QMainWindow):
         if msg.get("type") == "rows-updated":
             # 新版行数据 API 拉到新一批行：后台重同步段列表（不打断当前阅读/切行）。
             # 同步正忙时稍后再试一次，避免这批行要等到下一次切行才出现。
-            if not self._segments.busy and not self._segments.auto_loading:
+            on_updated = getattr(self._segments, "on_rows_updated", None)
+            if callable(on_updated):
+                on_updated()
+            elif not self._segments.busy and not self._segments.auto_loading:
                 self._segments.refresh(background=True)
             else:
                 self._schedule_seg_refresh(600, background=True)
@@ -4595,16 +4731,13 @@ class MainWindow(QMainWindow):
                 self.log(f"缓存窗已跟随 memoQ 当前行 {row}（{data.get('windowStart')}–"
                          f"{data.get('windowEnd')}）")
                 return
-            if row and getattr(self, "_jump_pending_row", None) == row:
-                self._jump_pending_row = None
+            if row and getattr(self, "_list_window_pending", None) == row:
+                self._list_window_pending = None
                 if msg.get("type") == "jump-error":
-                    self.log(f"跳转第 {row} 行失败：{data.get('err') or '未知错误'}")
+                    self.log(f"列表窗口定位失败：{data.get('err') or '未知错误'}")
                     return
-                self.log(f"已定位到第 {row} 行（缓存窗 {data.get('windowStart')}–"
-                         f"{data.get('windowEnd')}）")
                 self._segments.invalidate()
                 self._schedule_seg_refresh(0, background=True)
-                QTimer.singleShot(500, lambda r=row: self.activate_row(r))
             return
         if msg.get("type") in ("concordance-results", "concordance-error"): 
             try:
@@ -4635,42 +4768,6 @@ class MainWindow(QMainWindow):
         self.log(f"[bridge] {msg.get('type')}: {str(msg.get('data'))[:160]}")
 
     # ---------------- 段列表 ----------------
-    def refresh_doc_stats(self):
-        """读取 memoQ 原生统计；文档切换后丢弃迟到的旧响应。"""
-        self._stats_seq = getattr(self, "_stats_seq", 0) + 1
-        seq = self._stats_seq
-        editor_url = getattr(self, "_editor_url", None)
-
-        def done(r):
-            if seq != self._stats_seq or editor_url != getattr(self, "_editor_url", None):
-                return
-            try:
-                res = json.loads(r) if isinstance(r, str) else (r or {})
-            except Exception:
-                res = {}
-            if res.get("ok") and res.get("text"):
-                text = str(res["text"])
-                self.doc_stats.setText(text)
-                if res.get("mode") == "percent":
-                    self.doc_stats.setToolTip(f"memoQ Doc 原生进度：{text}")
-                else:
-                    self.doc_stats.setToolTip("memoQ 全文件统计：已完成字数 / 文件总字数（完成比例）")
-            else:
-                self.doc_stats.setText("—")
-                self.doc_stats.setToolTip("memoQ 原生统计暂不可用")
-
-        backend_for(self).document_stats(done)
-
-    # ---------------- 段列表同步端口（状态机在 segment_sync.py） ----------------
-    # 这里只提供“读页面 / 更新模型 / 操作滚动条”，不做同步时机判断。
-    def supports_list_rows(self):
-        caps = getattr(self, "_caps", {})
-        return not (caps and not caps.get("listRows"))
-
-    def sync_allowed(self, background: bool):
-        return not (getattr(self, "_filter_busy", False)
-                    or (background and not self._editor_pid))
-
     def filter_active(self):
         return bool(getattr(self, "_filter_active", False))
 
@@ -4711,343 +4808,14 @@ class MainWindow(QMainWindow):
         return changed
 
     # ---------------- 行号列：宽度保持 + 行状态过滤 ----------------
-    def _on_seg_header_resized(self, logical, _old, new):
-        if logical != 0 or getattr(self, "_syncing_col0", False):
-            return
-        try:
-            self._col0_user_width = int(new)
-            self._save_ui_state({"segCol0Width": int(new)})
-        except Exception:
-            pass
-
-    def _on_seg_header_clicked(self, section):
-        if section == 0:
-            self._show_status_filter_menu()
-
-    def _fit_row_number_width(self, force: bool = False):
-        """行号列只增不减地按位数给最小宽度；用户拖过就完全尊重用户宽度。"""
-        hh = self.seg_table.horizontalHeader()
-        try:
-            total = max(1, int(self._total_rows or 0))
-        except (AttributeError, TypeError, ValueError):
-            # 构造早期（段同步状态机还没建好）先给最小宽度，行数到位后会再校准。
-            total = 1
-        digits = max(3, len(str(total)))
-        fm = self.seg_table.fontMetrics()
-        need = fm.horizontalAdvance("9" * digits + "  R1") + 34
-        need = max(52, min(160, need))
-        user = int(getattr(self, "_col0_user_width", 0) or 0)
-        target = user or need
-        cur = hh.sectionSize(0)
-        if not force and cur >= target:
-            return
-        self._syncing_col0 = True
-        try:
-            hh.resizeSection(0, target)
-        finally:
-            self._syncing_col0 = False
-
-    def _show_status_filter_menu(self):
-        menu = QMenu(self)
-        counts = self.seg_model.status_counts()
-        current = self.seg_model.status_filter()
-        options = [("untranslated", "未编辑"), ("edited", "已编辑"),
-                   ("confirmed", "译者已确认"), ("reviewer1", "审校1已确认"),
-                   ("reviewer2", "审校2已确认"), ("rejected", "已拒绝"),
-                   ("locked", "已锁定")]
-        for key, name in options:
-            act = menu.addAction(f"{name}（{counts.get(key, 0)}）")
-            act.setCheckable(True)
-            act.setChecked(key in current)
-            act.toggled.connect(
-                lambda checked, k=key: self._on_status_filter_action(k, checked))
-        menu.addSeparator()
-        clear_act = menu.addAction("清除状态过滤")
-        clear_act.setEnabled(bool(current))
-        clear_act.triggered.connect(lambda: self._set_status_filter([]))
-        hh = self.seg_table.horizontalHeader()
-        menu.exec(self.seg_table.mapToGlobal(QPoint(0, hh.height())))
-
-    def _on_status_filter_action(self, key, checked):
-        values = self.seg_model.status_filter()
-        if checked:
-            values.add(key)
-        else:
-            values.discard(key)
-        self._set_status_filter(sorted(values))
-
-    def _set_status_filter(self, values):
-        n = self.seg_model.set_status_filter(values)
-        try:
-            self._save_ui_state(
-                {"statusFilter": sorted(self.seg_model.status_filter())})
-        except Exception:
-            pass
-        self._fit_row_number_width(force=True)
-        self._select_current_in_view()
-        names = {"untranslated": "未编辑", "edited": "已编辑", "confirmed": "已确认",
-                 "reviewer1": "审校1", "reviewer2": "审校2", "rejected": "已拒绝",
-                 "locked": "已锁定"}
-        active = [names.get(v, v) for v in sorted(self.seg_model.status_filter())]
-        self.log("状态过滤：" + ("、".join(active) if active else "全部") + f"（{n} 行）")
-
-    def _select_current_in_view(self):
-        idx = -1
-        for i in range(self.seg_model.rowCount()):
-            if self.seg_model.row_no_at(i) == self._cur_row:
-                idx = i
-                break
-        if idx < 0:
-            self.seg_table.clearSelection()
-            return
-        selected = self.seg_table.selectionModel().selectedRows()
-        if not selected or selected[0].row() != idx:
-            self.seg_table.selectRow(idx)
-        self.seg_table.scrollTo(self.seg_model.index(idx, 0))
-
-    def schedule_refresh(self, delay: int, background: bool = True):
-        self._schedule_seg_refresh(delay, background=background)
-
-    def scroll_max(self):
-        return self.seg_table.verticalScrollBar().maximum()
-
-    def cached_rows(self):
-        return self.seg_model.cached_row_count()
-
-    def nudge_scroll(self):
-        self._on_seg_scroll(self.seg_table.verticalScrollBar().value())
-
-    def request_expand_grid(self, callback):
-        """让 memoQ 网格滚到下一批行：旧版扩展缓存，新版滚动虚拟列表。"""
-        if getattr(self, "_cap_editor", None) == "new":
-            self.call_js("JSON.stringify(__md.api.expandRows())", callback)
-            return
-        """让 memoQ 网格容器滚到底，触发行缓存扩容。"""
-        expr = ("(function(){var el=document.querySelector('[ng-controller=gridCtrl]');"
-                "if(!el) return false;"
-                "var cur=el, n=0;"
-                "while(cur && n<12){"
-                " if(cur.scrollHeight > cur.clientHeight + 10){ cur.scrollTop = cur.scrollHeight; return true; }"
-                " cur = cur.parentElement; n++; }"
-                " return false;})()")
-        self.call_js(expr, callback)
-
-    def later(self, delay: int, callback):
-        QTimer.singleShot(delay, callback)
-
-    def refresh_seg_list(self, background: bool = False):
-        """完整读取 memoQ 缓存行以保证多人同步，但只对变化行发 Qt 更新。"""
-        self._segments.refresh(background=background)
-
-    def _on_seg_scroll(self, value: int):
-        self._segments.on_scroll(value)
-
-    def _load_more_rows(self):
-        """左栏接近底部时自动让 memoQ 扩展缓存，再后台同步到段列表。"""
-        self._segments.load_more()
-
-    def _set_filter_direction(self, direction):
-        self._filter_last_direction = direction
-
-    def _toggle_filter_bar(self, on):
-        self.filter_bar.setVisible(bool(on))
-        if on:
-            self.filter_src.setFocus()
-            self.log("过滤栏已展开：输入原文/译文包含内容后回车")
-        else:
-            self.log("过滤栏已收起")
-
-    def _toggle_filter_shortcut(self):
-        btn = getattr(self, "btn_filter", None)
-        if btn is None:
-            return
-        if not btn.isEnabled():
-            self.log("当前编辑器不支持原生过滤")
-            return
-        btn.setChecked(not btn.isChecked())
-
-    def open_find_replace(self):
-        """打开引擎浮层并派发 memoQ 原生 Ctrl+F（复用其查找/替换/正则能力）。"""
-        caps = getattr(self, "_caps", {})
-        if caps and not caps.get("findReplace"):
-            self.log("当前编辑器不支持原生查找替换（仅新版）")
-            return
-        if not getattr(self, "_engine_visible", False):
-            self._set_engine_visible(True)
-        self.log("已打开 memoQ 原生查找替换；完成后点引擎右上角 × 或 Esc 返回翻译")
-
-        def send():
-            try:
-                backend_for(self).open_find_replace()
-            except Exception as exc:
-                self.log(f"打开查找替换失败：{exc}")
-        QTimer.singleShot(350, send)
-
-    def _set_filter_regex(self, checked):
-        self._filter_regex = bool(checked)
-        self._save_ui_state({"filterRegex": self._filter_regex})
-        self.log("过滤模式：正则（可搜符号；特殊字符按正则语法）" if checked
-                 else "过滤模式：普通包含")
-
-    def _apply_filter_from_ui(self):
-        if getattr(self, "_filter_busy", False) or self._save_coordinator().busy:
-            self.log("正在保存/过滤，请稍候……")
-            return
-        direction = self._filter_last_direction
-        text = (self.filter_src.text() if direction == "source"
-                else self.filter_tgt.text()).strip()
-        # 只有按下 Enter/点过滤的框才提交条件；另一个框里没按 Enter 的输入不生效。
-        self._filter_committed[direction] = text
-        if not self._filter_committed["source"] and not self._filter_committed["target"]:
-            self._clear_filter()
-            return
-        self._begin_filter_change(direction, text, clear=False)
-
-    def _clear_filter(self):
-        if getattr(self, "_filter_busy", False) or self._save_coordinator().busy:
-            self.log("正在保存/过滤，请稍候……")
-            return
-        if self._filter_active:
-            self._filter_committed = {"source": "", "target": ""}
-            self._begin_filter_change("source", "", clear=True)
-            return
-        self._filter_committed = {"source": "", "target": ""}
-        self.filter_src.clear()
-        self.filter_tgt.clear()
-        self.filter_status.setText("")
-
-    def _begin_filter_change(self, direction, text, clear):
-        if self._filter_busy or self._save_coordinator().busy:
-            return
-        self._filter_busy = True
-        self._filter_pending = (direction, text, clear)
-        self.filter_status.setText("清除过滤中…" if clear else "过滤中…")
-        if self._has_actual_edits():
-            self._persist_current_draft()
-            self.save_segment(on_done=self._after_filter_save)
-        else:
-            self._start_filter_req()
-
-    def _after_filter_save(self, ok):
-        if not ok:
-            self._filter_busy = False
-            self._filter_pending = None
-            self.filter_status.setText("保存失败，未过滤")
-            self.log("当前段保存失败，已取消过滤")
-            return
-        self._start_filter_req()
-
-    def _start_filter_req(self):
-        pending = self._filter_pending
-        if not pending:
-            self._filter_busy = False
-            return
-        direction, text, clear = pending
-        self._filter_gen = getattr(self, "_filter_gen", 0) + 1
-        filter_gen = self._filter_gen
-        self._next_read_gen()
-        self._activating_row = None
-        # 只传已提交的两个条件；未按 Enter 的输入不参与过滤。
-        src_text = self._filter_committed["source"]
-        tgt_text = self._filter_committed["target"]
-
-        def done(r):
-            try:
-                res = json.loads(r) if isinstance(r, str) else (r or {})
-            except Exception:
-                res = {}
-            if not res.get("ok"):
-                err = str(res.get("err") or "未知错误")
-                self._filter_busy = False
-                self._filter_pending = None
-                self.filter_status.setText("过滤失败：" + err[:44])
-                self.log("过滤失败：" + err)
-                return
-            self._filter_active = not clear
-            self._filter_busy = False
-            self._filter_pending = None
-            if clear:
-                self.filter_src.clear()
-                self.filter_tgt.clear()
-                self.filter_status.setText("正在恢复行列表…")
-                self.btn_filter.setToolTip("过滤（按原文/译文包含内容过滤整份文件）")
-            else:
-                self.filter_status.setText("过滤已应用，读取结果…")
-                self.btn_filter.setToolTip("过滤已启用（点漏斗展开/收起过滤栏）")
-            # 原生过滤异步刷新网格：等一下再以 listRows 的 total/rows 为准。
-            QTimer.singleShot(150, self.refresh_seg_list)
-            QTimer.singleShot(900, lambda: self._after_filter_applied(
-                clear, direction, filter_gen))
-
-        if clear:
-            backend_for(self).clear_filter(done)
-        else:
-            backend_for(self).filter_rows(direction, src_text, tgt_text,
-                                          bool(getattr(self, "_filter_regex", False)), done)
-
-    def _after_filter_applied(self, cleared, direction, filter_gen):
-        if self._filter_busy or filter_gen != getattr(self, "_filter_gen", filter_gen):
-            return
-
-        def done(r):
-            try:
-                res = json.loads(r) if isinstance(r, str) else (r or {})
-            except Exception:
-                res = {}
-            if cleared:
-                self.filter_status.setText("已清除过滤")
-                self.refresh_seg_list()
-                self.read_segment(auto=True)
-                return
-            label = "原文" if direction == "source" else "译文"
-            total = res.get("total") if res.get("ok") else None
-            try:
-                total = int(total) if total is not None else None
-            except (TypeError, ValueError):
-                total = None
-            self.filter_status.setText(
-                f"已过滤（{label}）{total} 行" if total is not None else "已过滤")
-            self.refresh_seg_list()
-            QTimer.singleShot(150, self.refresh_seg_list)
-            if total is not None and total <= 0:
-                self.seg_table.clearSelection()
-                self._has_loaded_segment = False
-                self._loading_editor = True
-                try:
-                    self.editor.clear()
-                    self.editor.document().setModified(False)
-                    self.src_view.clear()
-                finally:
-                    self._loading_editor = False
-                self.ed_label.setText("过滤无匹配行")
-                self.log("原生过滤无匹配行")
-                return
-            self.read_segment(auto=True)
-
-        backend_for(self).list_rows(done)
-
-    def _select_seg_row(self, row_no):
-        """把 Qt 选择落到指定 memoQ 行；只在切行成功后调用，避免假选中。"""
-        for i in range(self.seg_model.rowCount()):
-            if self.seg_model.row_no_at(i) != row_no:
-                continue
-            self.seg_table.selectRow(i)
-            self.seg_table.scrollTo(self.seg_model.index(i, 0))
-            return
-
-    def _on_seg_clicked(self, index):
-        row_no = self.seg_model.row_no_at(index.row())
-        if row_no:
-            self.activate_row(row_no)
-
-    def activate_row(self, row_no: int):
+    def activate_row(self, row_no: int, explicit: bool = False):
         """有未保存编辑时先保存旧行；保存成功后才允许 memoQ 切到目标行。"""
         if getattr(self, "_filter_busy", False):
             self.log("正在过滤，请稍候……")
             return
         known = any(self.seg_model.row_no_at(i) == row_no
                     for i in range(self.seg_model.rowCount()))
-        if not known and self._total_rows > self.seg_model.rowCount():
+        if not explicit and not known and self._total_rows > self.seg_model.rowCount():
             self._load_more_rows()
         save = self._save_coordinator()
         if (row_no == self._cur_row and not save.busy
@@ -5065,104 +4833,6 @@ class MainWindow(QMainWindow):
             # 仅视觉层置脏：清掉 Qt 标记，直接切行，不触碰 memoQ 内容或状态。
             self.editor.document().setModified(False)
         self._activate_row_now(row_no)
-
-    def _activate_row_now(self, row_no: int):
-        """激活并读取指定行；失败时废弃旧编辑上下文，禁止对不明活动行确认。"""
-        state = {"tries": 0}
-        gen = self._next_read_gen()
-        previous_row = self._cur_row
-        overlay = getattr(self, "_cc_overlay", None)
-        if overlay is not None and overlay.row_no != row_no:
-            self._close_concordance()
-        self._cur_row = row_no
-        self._activating_row = row_no
-
-        def stop_activation():
-            if gen == self._read_gen:
-                self._activating_row = None
-
-        def fail_activation(message):
-            if gen != self._read_gen:
-                return
-            stop_activation()
-            # memoQ 活动行此时不确定；旧内容不能继续用于保存或原生确认。
-            self._cur_row = previous_row
-            self._has_loaded_segment = False
-            self._confirm_busy = False
-            self._confirm_seq = getattr(self, "_confirm_seq", 0) + 1
-            self._last_tokens = []
-            self._remote_tokens = []
-            self._loading_editor = True
-            try:
-                self.editor.clear()
-                self.editor.document().setModified(False)
-                self.src_view.clear()
-            finally:
-                self._loading_editor = False
-            self.ed_label.setText("切行失败 · 请重新选择行")
-            select = getattr(self, "_select_seg_row", None)
-            if select:
-                select(previous_row)
-            self.log(message)
-
-        def poll_read():
-            if gen != self._read_gen:
-                return
-
-            def done(r):
-                if gen != self._read_gen:
-                    return  # 已切到别的行：过期响应直接丢弃
-                try:
-                    res = json.loads(r) if isinstance(r, str) else r
-                except Exception:
-                    res = {"ok": False}
-                res = res or {"ok": False}
-                import re as _re
-                row_no_got = _re.sub(r"\D", "", str(res.get("rowNo") or ""))
-                if res.get("ok") and row_no_got == str(row_no):
-                    stop_activation()
-                    draft = self._present_segment(row_no, res.get("tokens") or [])
-                    self._load_src(res.get("srcTokens") or [])
-                    suffix = " · 本地未保存草稿" if draft else ""
-                    self.ed_label.setText(f"第 {row_no} 行{suffix}")
-                    self.log((f"已恢复第 {row_no} 行的本地未保存草稿" if draft
-                              else f"已读取段 第{row_no}行，{len(self._last_tokens)} 个 token"))
-                    self._refresh_tag_pool()
-                    self._after_load_apply_limits()
-                    self._fetch_segment_info(row_no)
-                    self._fetch_res(row_no)
-                    select = getattr(self, "_select_seg_row", None)
-                    if select:
-                        select(row_no)
-                    # 普通切行不等待全量同步；5 秒后台校准负责多人协作变化。
-                    return
-                state["tries"] += 1
-                if state["tries"] > 40:  # 最多约 3.6 秒；正常情况首次或前几次即成功
-                    fail_activation(f"第 {row_no} 行激活超时（最后返回: {str(res)[:120]}）")
-                    return
-                QTimer.singleShot(90, poll_read)
-            backend_for(self).read_segment(done)
-
-        def after_activate(r):
-            if gen != self._read_gen:
-                return
-            try:
-                res = json.loads(r) if isinstance(r, str) else r
-            except Exception:
-                res = {"ok": False, "err": f"返回解析失败: {r!r}"[:150]}
-            res = res or {"ok": False, "err": "activateRow 无返回"}
-            if not res.get("ok"):
-                state["tries"] += 1
-                if state["tries"] > 8:
-                    fail_activation(f"activateRow 多次失败：{res.get('err')}")
-                    return
-                QTimer.singleShot(200, lambda: backend_for(self).activate_row(
-                    row_no, after_activate))
-                return
-            poll_read()  # 不再固定等待 500ms
-
-        self.log(f"切换到第 {row_no} 行……")
-        backend_for(self).activate_row(row_no, after_activate)
 
     # ---------------- 段读写 ----------------
     def _limit_inputs(self):
@@ -5239,217 +4909,15 @@ class MainWindow(QMainWindow):
             self._last_tag_pool = list((res or {}).get("sourceTags") or []) + list(tags)
         backend_for(self).list_tags(row_no, done)
 
-    def read_segment(self, auto: bool = False):
-        """读取 memoQ 活动段；未保存内容先落到本地草稿，绝不被远端读取覆盖。"""
-        import os as _os
-        had_local_edits = self._has_actual_edits()
-        if _os.environ.get("MEMODESK_TRACE"):
-            print(f"TRACE read_segment auto={auto} actual_edits={had_local_edits}", flush=True)
-        if had_local_edits:
-            self._persist_current_draft()
-        else:
-            self.editor.document().setModified(False)
-        if auto and getattr(self, "_cc_overlay", None) is not None:
-            self._close_concordance()
-        self._activating_row = None
-        gen = self._next_read_gen()
-
-        def done(r):
-            if gen != self._read_gen:
-                return
-            try:
-                res = json.loads(r) if isinstance(r, str) else r
-            except Exception:
-                res = {"ok": False, "err": f"返回解析失败: {r!r}"[:200]}
-            if not res.get("ok"):
-                self.log(f"读取失败: {res.get('err')}")
-                return
-            import re as _re
-            rn = _re.sub(r"\D", "", str(res.get("rowNo") or ""))
-            row_no = int(rn) if rn else self._cur_row
-            self._cur_row = row_no
-            draft = self._present_segment(row_no, res.get("tokens") or [])
-            self._load_src(res.get("srcTokens") or [])
-            suffix = " · 本地未保存草稿" if draft else ""
-            self.ed_label.setText(f"第 {row_no} 行{suffix}")
-            for i in range(self.seg_model.rowCount()):
-                if self.seg_model.row_no_at(i) == row_no:
-                    self.seg_table.selectRow(i)
-                    break
-            if draft:
-                self.log(f"已保留并恢复第 {row_no} 行的本地未保存草稿")
-            else:
-                self.log(f"已读取段 第{row_no}行，{len(self._last_tokens)} 个 token")
-            if auto and had_local_edits:
-                self.log("memoQ 页面直接切行：原行编辑已保留为本地草稿")
-            self._refresh_tag_pool()
-            self._after_load_apply_limits()
-            if rn:
-                self._fetch_segment_info(row_no)
-                self._fetch_res(row_no)
-            # 新版：memoQ 打开时自动选中上次编辑行，左边缓存窗/列表也要跟过去。
-            follow = getattr(self, "_follow_current_row_in_cache", None)
-            if callable(follow):
-                QTimer.singleShot(120, follow)
-        backend_for(self).read_segment(done)
-
-    def _read_confirmed_next(self, read_gen: int, doc_url: str):
-        """确认后的兜底读取；若 row-changed 已驱动读取，代际号变化会自然取消本次。"""
-        if (read_gen != self._read_gen or doc_url != self._editor_url
-                or self._save_coordinator().busy):
-            return
-        self.read_segment(auto=True)
-
-    def _confirm_after_write(self, expected_row=None, expected_doc=None):
-        """派发一次 memoQ 原生确认；读到新段前禁止重复确认，超时保护可恢复。"""
-        if self._confirm_busy:
-            self.log("上一次确认仍在等待 memoQ 响应，请稍候……")
-            return
-        if not self._has_loaded_segment or self._activating_row is not None:
-            self.log("当前段尚未稳定读取，暂不能确认")
-            return
-        row_no = self._cur_row if expected_row is None else expected_row
-        doc_url = self._editor_url if expected_doc is None else expected_doc
-        if row_no != self._cur_row or doc_url != self._editor_url:
-            self.log("文档或活动行已变化，本次未确认")
-            return
-        self._confirm_busy = True
-        self._confirm_seq += 1
-        confirm_id = self._confirm_seq
-
-        def release_if_stuck():
-            if confirm_id == self._confirm_seq and self._confirm_busy:
-                self._confirm_busy = False
-                self.log("确认后尚未读到新段，已解除确认保护；请核对 memoQ 状态")
-
-        def done(r):
-            if confirm_id != self._confirm_seq:
-                return
-            try:
-                res = json.loads(r) if isinstance(r, str) else r
-            except Exception:
-                res = {"ok": False}
-            res = res or {"ok": False}
-            if res.get("ok"):
-                self._segments.invalidate()
-                self.log("已发送 memoQ 原生确认，等待状态回执")
-                if getattr(self, "_cap_editor", None) == "new":
-                    # 行缓存是 API 快照：确认会改状态，稍后刷新该行，避免段列表回跳。
-                    QTimer.singleShot(700, lambda: self._refresh_row_cache(row_no))
-                    QTimer.singleShot(1800, lambda: self._refresh_row_cache(row_no))
-                    QTimer.singleShot(3500, lambda: self._refresh_row_cache(row_no))
-                # 自定义跳转模式覆盖：等原生跳行动作稳定后再校正到用户选择的位置。
-                jump_fn = getattr(self, "_apply_confirm_jump", None)
-                if callable(jump_fn):
-                    QTimer.singleShot(900, lambda: jump_fn(row_no, doc_url))
-                # 某些旧版页面确认后焦点离开隐藏输入框，row-changed 轮询可能漏发。
-                # 450ms 后直接读当前活动行；若推送已先读取，read_gen 会阻止重复读取。
-                read_gen = self._read_gen
-                QTimer.singleShot(450, lambda: self._read_confirmed_next(read_gen, doc_url))
-                stats_fn = getattr(self, "refresh_doc_stats", None)
-                if callable(stats_fn):
-                    QTimer.singleShot(900, stats_fn)
-            else:
-                self._confirm_busy = False
-                self.log(f"确认未生效: {res.get('err')}（可在 memoQ 页手动 Ctrl+Enter）")
-            # 等 memoQ 同步回包后刷新段列表/状态（防抖）
-            self._schedule_seg_refresh(1200)
-        QTimer.singleShot(3500, release_if_stuck)
-        backend_for(self).confirm_segment(row_no, done)
-
-    def _refresh_row_cache(self, row_no: int):
-        """确认/拒绝后刷新该行 API 缓存；失败不影响主流程。"""
-        try:
-            backend_for(self).refresh_row_cache(row_no)
-        except Exception:
-            pass
-
-    def _on_row_write_result(self, data):
-        """新版 PUT 行保存成功后立即更新左栏内容/状态，再等确认回执覆盖为最终状态。"""
-        if not data.get("ok"):
-            return
-        try:
-            row_no = int(data.get("rowNo") or 0)
-        except (TypeError, ValueError):
-            return
-        if row_no <= 0:
-            return
-        status = str(data.get("mappedStatus") or "")
-        tgt = data.get("tgt")
-        self.seg_model.set_row_written(row_no, tgt if isinstance(tgt, str) else None,
-                                       status or None)
-        if status:
-            self.log(f"memoQ 已保存第 {row_no} 行（{status}）")
-        select = getattr(self, "_select_current_in_view", None)
-        if callable(select):
-            select()
-
-    def _on_row_action(self, data):
-        """新版确认/拒绝 HTTP 结果：按行号落状态、刷缓存，并处理确认后跳转。"""
-        data = data or {}
-        action = str(data.get("action") or "")
-        label = "确认" if action == "confirm" else "拒绝"
-        if not data.get("ok"):
-            self.log(f"{label}失败：{data.get('err') or '未知错误'}")
-            self.res_panel.set_status(f"{label}失败：{data.get('err') or '未知错误'}")
-            return
-        try:
-            row_no = int(data.get("rowNo") or self._cur_row)
-        except (TypeError, ValueError):
-            return
-        status = str(data.get("status") or "")
-        mapped_status = str(data.get("mappedStatus") or "")
-        self._segments.invalidate()
-        self._schedule_seg_refresh(0, background=True)
-        self._refresh_row_cache(row_no)
-        if mapped_status:
-            # 确认/拒绝 HTTP 已经带回权威状态：立即写进段表，不等下一次周期同步。
-            self.seg_model.set_row_status(row_no, mapped_status)
-            self._select_current_in_view()
-        stats_fn = getattr(self, "refresh_doc_stats", None)
-        if callable(stats_fn):
-            QTimer.singleShot(700, stats_fn)
-        if action == "confirm":
-            self.log(f"memoQ 已确认第 {row_no} 行" + (f"（{status}）" if status else ""))
-            # HTTP 确认不会触发 memoQ 自己的跳行；follow 模式下按“下一行”补跳，
-            # 自定义模式照旧由 _apply_confirm_jump 校正。
-            self._apply_confirm_jump(row_no, self._editor_url, fallback_next=True)
-        else:
-            self.log(f"memoQ 已拒绝第 {row_no} 行（状态 {status or 'rejected'}）")
-            self.res_panel.set_status(f"第 {row_no} 行已拒绝")
-
-    def _apply_confirm_jump(self, row_no, doc_url, fallback_next=False):
-        """按设置校正确认后的目标行；自定义模式覆盖，follow 可回退到下一行。"""
-        mode = str(self._app_cfg.get("jump_mode") or "follow")
-        if doc_url != self._editor_url:
-            return
-        try:
-            row_no = int(row_no)
-        except (TypeError, ValueError):
-            return
-        if not getattr(self, "_has_loaded_segment", False):
-            return
-        if mode == "follow":
-            if not fallback_next:
-                return
-            target = row_no + 1
-        elif mode == "stay":
-            target = row_no
-        elif mode == "previous":
-            target = max(1, row_no - 1)
-        else:
-            target = row_no + 1
-        total = int(self._total_rows or 0)
-        if total and target > total:
-            return
-        try:
-            current = int(self._cur_row)
-        except (TypeError, ValueError):
-            return
-        if target == current:
-            return
-        self.log(f"按设置跳到第 {target} 行")
-        self._jump_to_row(target)
+    def _next_unlocked_row(self, row_no: int):
+        """下一行，跳过连续的锁定行；未缓存的行不猜，直接作为目标。"""
+        def locked(n):
+            snapshot = None
+            getter = getattr(self.seg_model, "row_snapshot", None)
+            if callable(getter):
+                snapshot = getter(n)
+            return bool(snapshot and snapshot.get("locked"))
+        return next_unlocked_row(row_no, int(self._total_rows or 0), locked)
 
     def reject_segment(self):
         """Shift+Enter：先写回当前编辑，再把行状态改为已拒绝（同 memoQ 原生语义）。"""
@@ -5475,55 +4943,6 @@ class MainWindow(QMainWindow):
             self._reject_after_write(expected_row=row_no, expected_doc=doc_url)
         self.save_segment(on_done=saved, force=True)
 
-    def _reject_after_write(self, expected_row=None, expected_doc=None):
-        """派发一次 memoQ 原生拒绝；状态回执同样靠随后读取/刷新行列表。"""
-        if self._confirm_busy:
-            self.log("上一次确认/拒绝仍在等待 memoQ 响应，请稍候……")
-            return
-        if not self._has_loaded_segment or self._activating_row is not None:
-            self.log("当前段尚未稳定读取，暂不能拒绝")
-            return
-        row_no = self._cur_row if expected_row is None else expected_row
-        doc_url = self._editor_url if expected_doc is None else expected_doc
-        if row_no != self._cur_row or doc_url != self._editor_url:
-            self.log("文档或活动行已变化，本次未拒绝")
-            return
-        self._confirm_busy = True
-        self._confirm_seq += 1
-        reject_id = self._confirm_seq
-
-        def release_if_stuck():
-            if reject_id == self._confirm_seq and self._confirm_busy:
-                self._confirm_busy = False
-                self.log("拒绝后尚未收到状态更新，已解除保护；请核对 memoQ 状态")
-
-        def done(r):
-            if reject_id != self._confirm_seq:
-                return
-            try:
-                res = json.loads(r) if isinstance(r, str) else r
-            except Exception:
-                res = {"ok": False}
-            res = res or {"ok": False}
-            if res.get("ok"):
-                self._segments.invalidate()
-                self.log("已发送 memoQ 原生拒绝，等待状态回执")
-                if getattr(self, "_cap_editor", None) == "new":
-                    QTimer.singleShot(700, lambda: self._refresh_row_cache(row_no))
-                    QTimer.singleShot(1800, lambda: self._refresh_row_cache(row_no))
-                    QTimer.singleShot(3500, lambda: self._refresh_row_cache(row_no))
-                self._schedule_seg_refresh(1200)
-                stats_fn = getattr(self, "refresh_doc_stats", None)
-                if callable(stats_fn):
-                    QTimer.singleShot(900, stats_fn)
-            else:
-                self._confirm_busy = False
-                self.log(f"拒绝未生效: {res.get('err')}（可在 memoQ 页手动 Shift+Enter）")
-        QTimer.singleShot(3500, release_if_stuck)
-        backend_for(self).reject_segment(row_no, done)
-
-    # ---------------- 保存协调器端口（状态机在 save_coordinator.py） ----------------
-    # 这里只提供“取值 / 落草稿 / 调桥接 / 更新界面”，不做任何保存时机的判断。
     def has_loaded_segment(self):
         return bool(self._has_loaded_segment)
 
@@ -5617,6 +5036,22 @@ class MainWindow(QMainWindow):
 
     def refresh_rows(self, delay: int):
         self._schedule_seg_refresh(delay)
+
+    # ---------------- 写策略端口 ----------------
+    def write_decision(self, intent):
+        """所有写入口先问这里；返回 WriteDecision（不弹窗、不写）。"""
+        row_ref = RowRef(row_no=self._cur_row, row_id=self._current_row_id or None)
+        flags = dict(self._editor_flags or {})
+        try:
+            snapshot = self.seg_model.row_snapshot(self._cur_row)
+            if snapshot and snapshot.get("locked"):
+                flags["locked"] = True
+        except Exception:
+            pass
+        decision = decide_write(WriteIntent(intent), state_from_flags(flags, row_ref.has_row_id))
+        if not decision.allowed:
+            self.log(decision.reason)
+        return decision
 
     def save_segment(self, on_done=None, force=False, skip_conflict=False):
         """只保存、不确认。写前核对行号和远端快照；回调参数为是否已安全保存。"""

@@ -437,8 +437,8 @@ assert any("模拟写入失败" in line for line in qw.logs), qw.logs
 qw._app_cfg["quick_term_tb"] = "g2"
 qw._app_cfg["quick_term_tb_name"] = "库2"
 panel_stub = types.SimpleNamespace(opens=[])
-panel_stub.open = lambda mode, auto_close, name: panel_stub.opens.append(
-    (mode, auto_close, name))
+panel_stub.open = lambda auto_close, name, line_style="bplus": panel_stub.opens.append(
+    (auto_close, name, line_style))
 qw._settings_panel = panel_stub
 qw._clear_quick_term_memory = types.MethodType(MainWindow._clear_quick_term_memory, qw)
 appconfig.save = lambda cfg: None
@@ -447,7 +447,7 @@ try:
 finally:
     appconfig.save = _orig_save
 assert qw._app_cfg["quick_term_tb"] == "" and qw._app_cfg["quick_term_tb_name"] == ""
-assert panel_stub.opens and panel_stub.opens[-1][2] == "", panel_stub.opens
+assert panel_stub.opens and panel_stub.opens[-1][1] == "", panel_stub.opens
 assert any("已清除快捷添加术语" in line for line in qw.logs), qw.logs
 
 print("TERM_EDIT_TEST: PASS (offline only)")

@@ -203,27 +203,27 @@ def spin(ms):
 
 
 jbh = BridgeHost()
-jbh._jump_pending_row = 120
+jbh._list_window_pending = 120
 jbh.activated = []
 jbh.activate_row = lambda row: jbh.activated.append(int(row))
 MainWindow.on_bridge_event(jbh, 7, json.dumps({
     "type": "jump-ready",
     "data": {"editor": "new", "rowNo": 120, "windowStart": 87, "windowEnd": 186},
 }))
-assert jbh._jump_pending_row is None
+assert jbh._list_window_pending is None
 assert (0, True) in jbh.schedules, jbh.schedules
 spin(650)
-assert jbh.activated == [120], jbh.activated
+assert jbh.activated == [], jbh.activated  # 编辑器已先激活；列表到位后不再延迟激活
 
 # jump-error：清 pending 并记录日志，不激活。
 jbh2 = BridgeHost()
-jbh2._jump_pending_row = 88
+jbh2._list_window_pending = 88
 MainWindow.on_bridge_event(jbh2, 7, json.dumps({
     "type": "jump-error",
     "data": {"editor": "new", "rowNo": 88, "err": "HTTP 500"},
 }))
-assert jbh2._jump_pending_row is None
-assert any("跳转第 88 行失败" in line for line in jbh2.logs), jbh2.logs
+assert jbh2._list_window_pending is None
+assert any("列表窗口定位失败" in line for line in jbh2.logs), jbh2.logs
 
 # 重载/每条编辑器事件不得重复安排能力探测与首次段列表刷新（P0：命中被清空）。
 MainWindow.on_bridge_event(bh, 7, json.dumps({

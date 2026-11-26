@@ -1,3 +1,6 @@
-PyQt6==6.12.1
-PyQt6-WebEngine==6.140.1
-PyQt6-Fluent-Widgets==1.11.3
+# 最低版本，允许使用更新的 PyQt6 / WebEngine / Fluent Widgets。
+# 升级前必须跑 `python tests/run_all.py --full` 并做真实渲染检查；
+# 未来大版本若有破坏性变更，再按需要临时加上限。
+PyQt6>=6.12.1
+PyQt6-WebEngine>=6.140.1
+PyQt6-Fluent-Widgets>=1.11.3

@@ -1,0 +1,48 @@
+{
+  "editor": "new",
+  "memoqVersion": "12.5",
+  "privacy": "synthetic structure only; no project text, URLs, GUIDs or user names",
+  "rowsTable": {
+    "testid": "translation-grid-rows",
+    "ariaRowCount": 3
+  },
+  "rows": [
+    {
+      "ariaRowIndex": 1,
+      "dataRowId": "0",
+      "segments": {
+        "source": { "proseMirror": true },
+        "target": { "proseMirror": true }
+      },
+      "meta": { "status": "edited", "isLocked": false }
+    },
+    {
+      "ariaRowIndex": 2,
+      "dataRowId": "1",
+      "segments": {
+        "source": { "proseMirror": true },
+        "target": { "proseMirror": true }
+      },
+      "meta": { "status": "rejected", "isLocked": false }
+    },
+    {
+      "ariaRowIndex": 3,
+      "dataRowId": "2",
+      "segments": {
+        "source": { "proseMirror": true },
+        "target": { "proseMirror": true }
+      },
+      "meta": { "status": "notStarted", "isLocked": true }
+    }
+  ],
+  "editorPlugins": [
+    "trackChangesPlugin",
+    "commentsPlugin",
+    "editboxHighlightsPlugin",
+    "history"
+  ],
+  "schema": {
+    "nodes": ["doc", "text", "tag"],
+    "marks": ["bold", "italic", "underline", "sub", "super"]
+  }
+}

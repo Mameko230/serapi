@@ -1,0 +1,30 @@
+{
+  "old": {
+    "version": 1,
+    "grid": "[ng-controller=\"gridCtrl\"]",
+    "rows": "tr",
+    "editorCell": ".editor-cell",
+    "orderCell": "td.order",
+    "statusCell": "td.status-cell",
+    "lockIcon": "[data-iconkey=\"lock\"]",
+    "originalCell": "td.original-segment-grid",
+    "translatedCell": "td.translated-segment-grid",
+    "contentRoot": ".content-container",
+    "statusBar": ".status-bar-container",
+    "confirm": ["editorHiddenInput", "input[type=\"text\"][id*=\"Hidden\"]", "[id*=\"editorHidden\"]"],
+    "filterSource": "txtSourceFilter",
+    "filterTarget": "txtTargetFilter",
+    "checkout": "btnFormCheckout"
+  },
+  "new": {
+    "version": 2,
+    "proseMirror": "div.ProseMirror",
+    "rowsTable": "[data-testid=\"translation-grid-rows\"]",
+    "row": ".translation-row",
+    "rowRole": "[role=\"row\"]",
+    "segment": "[data-segment-type]",
+    "targetSegment": "[data-segment-type=\"target\"]",
+    "sourceSegment": "[data-segment-type=\"source\"]",
+    "bodyAll": "body *"
+  }
+}

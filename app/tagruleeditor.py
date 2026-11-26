@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """图形化 Tag 规则编辑器：嵌入主窗口，不使用 QDialog/QColorDialog。"""
 import copy
+import json
 import re
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -293,7 +294,16 @@ class TagRuleEditor(QWidget):
             pattern = token_pattern(token)
             if not pattern:
                 continue
-            signature = (pattern, token.get("tagKind"), token.get("attrs"))
+            # 新版 tag 的 attrs 是 dict（旧版是字符串）；dict 不可哈希，
+            # 直接放进 set 会在点击「Tag 规则」时抛 TypeError 并把 Qt 主线程带崩。
+            attrs = token.get("attrs")
+            attrs_key = ""
+            if attrs:
+                try:
+                    attrs_key = json.dumps(attrs, sort_keys=True, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    attrs_key = repr(attrs)
+            signature = (pattern, token.get("tagKind"), attrs_key)
             if signature in seen:
                 continue
             seen.add(signature)

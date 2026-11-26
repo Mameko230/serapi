@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from qfluentwidgets import (
     PrimaryPushButton, PushButton, ComboBox as FComboBox, LineEdit as FLineEdit,
-    RadioButton, CheckBox,
+    CheckBox,
 )
 
 from .qtedit import MqEditor
@@ -896,20 +896,11 @@ class _ClickLabel(QLabel):
 
 
 class SettingsPanel(QWidget):
-    """悬浮「设置」面板：先放确认后跳转逻辑，后续继续扩充。"""
-    jumpModeChanged = pyqtSignal(str)
+    """悬浮「设置」面板。确认/拒绝后的跳转完全跟随 memoQ 自身设置。"""
     engineAutoCloseChanged = pyqtSignal(bool)
     editorLineStyleChanged = pyqtSignal(str)
     clearQuickTermRequested = pyqtSignal()
     closed = pyqtSignal()
-
-    MODES = [
-        ("follow", "跟随 memoQ 原生设置（推荐）",
-         "完全使用 memoQ 自己的“确认后跳转”设置（含 settingsBased 过滤）。"),
-        ("next", "下一行", "确认后跳到下一行，忽略 memoQ 的跳转设置。"),
-        ("previous", "上一行", "确认后跳到上一行。"),
-        ("stay", "不跳转", "确认后停留在当前行。"),
-    ]
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -922,7 +913,6 @@ class SettingsPanel(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._drag_offset = None
         self._placed = False
-        self._radios = {}
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 14, 20, 16)
         lay.setSpacing(10)
@@ -942,15 +932,6 @@ class SettingsPanel(QWidget):
         head.addStretch(1)
         head.addWidget(close)
         lay.addLayout(head)
-        section = QLabel("确认（Ctrl+Enter）后的跳转")
-        section.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
-        lay.addWidget(section)
-        for key, name, tip in self.MODES:
-            rb = RadioButton(name, self)
-            rb.setToolTip(tip)
-            rb.clicked.connect(lambda _checked=False, k=key: self._pick(k))
-            self._radios[key] = rb
-            lay.addWidget(rb)
         lay.addWidget(self._sep())
         engine_label = QLabel("引擎浮层")
         engine_label.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
@@ -966,10 +947,10 @@ class SettingsPanel(QWidget):
         lay.addWidget(style_label)
         self.cmb_line_style = FComboBox()
         self.cmb_line_style.setMinimumHeight(34)
-        self.cmb_line_style.addItem("B+：细分隔线（推荐）", userData="bplus")
-        self.cmb_line_style.addItem("C：一行一格（大格子）", userData="cells")
+        self.cmb_line_style.addItem("A · 轻隔行（推荐）", userData="zebra")
+        self.cmb_line_style.addItem("B · 当前行聚焦", userData="focus")
         self.cmb_line_style.setToolTip(
-            "B+ 保留连续段落，只用细分隔线；C 把每行显示为独立大格子")
+            "A 用极淡隔行底色建立节奏；B 只标记当前行，不降低其他行对比度")
         self.cmb_line_style.currentIndexChanged.connect(self._pick_line_style)
         lay.addWidget(self.cmb_line_style)
         lay.addWidget(self._sep())
@@ -996,30 +977,20 @@ class SettingsPanel(QWidget):
         f.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         return f
 
-    def _pick(self, key):
-        for k, rb in self._radios.items():
-            rb.setChecked(k == key)
-        self.jumpModeChanged.emit(key)
-
     def _pick_line_style(self, _index):
         style = self.cmb_line_style.currentData()
-        if style in ("bplus", "cells"):
+        if style in ("zebra", "focus"):
             self.editorLineStyleChanged.emit(style)
 
     def set_line_style(self, style):
-        style = style if style in ("bplus", "cells") else "bplus"
+        style = {"bplus": "zebra", "cells": "focus"}.get(style, style)
+        style = style if style in ("zebra", "focus") else "zebra"
         idx = self.cmb_line_style.findData(style)
         self.cmb_line_style.blockSignals(True)
         self.cmb_line_style.setCurrentIndex(max(0, idx))
         self.cmb_line_style.blockSignals(False)
 
-    def set_current(self, mode):
-        mode = mode if mode in self._radios else "follow"
-        for k, rb in self._radios.items():
-            rb.setChecked(k == mode)
-
-    def open(self, mode, engine_auto_close=True, quick_term_name="", line_style="bplus"):
-        self.set_current(mode)
+    def open(self, engine_auto_close=True, quick_term_name="", line_style="bplus"):
         self.chk_engine_close.blockSignals(True)
         self.chk_engine_close.setChecked(bool(engine_auto_close))
         self.chk_engine_close.blockSignals(False)

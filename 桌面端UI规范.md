@@ -4,16 +4,17 @@
 
 ## 1. 技术边界
 
-当前固定组合：
+当前最低组合（允许更新，升级需回归）：
 
 ```text
-PyQt6==6.12.1
-PyQt6-WebEngine==6.140.1
-PyQt6-Fluent-Widgets==1.11.3（社区版）
+Python >= 3.14
+PyQt6>=6.12.1
+PyQt6-WebEngine>=6.140.1
+PyQt6-Fluent-Widgets>=1.11.3（社区版）
 ```
 
 - 不需要 QFluentWidgets Pro，不调用付费组件。
-- 不擅自升级 Qt、WebEngine 或 Fluent Widgets；升级属于单独迁移任务，必须重跑全部测试与真实渲染。
+- 不锁定具体小版本，但升级 Qt、WebEngine 或 Fluent Widgets 属于单独迁移任务：必须重跑全部测试与真实渲染，再更新本基线。
 - 主题基座由 QFluentWidgets 管理；QSS 用于容器、纯 Qt 控件和局部语义色，不能全局覆盖 Fluent 自绘控件。
 - Windows 真实 Acrylic 使用 `AcrylicLabel`；`QGraphicsBlurEffect` 只允许出现在离线预览实验中，不作为主程序实现。
 

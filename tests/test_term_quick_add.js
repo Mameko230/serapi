@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'app', 'bridge.js'), 'utf8');
+const SRC = require('./_page_source');
 const PRJ = '33333333-3333-3333-3333-333333333333';
 const DOC = '44444444-4444-4444-4444-444444444444';
 const TB1 = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';

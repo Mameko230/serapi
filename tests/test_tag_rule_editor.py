@@ -42,6 +42,19 @@ editor.set_tokens(tokens + [
     {"t": "tag", "name": "mq:ch", "display": "", "tagKind": "empty"},
 ])
 assert len(editor._tag_buttons) == 3
+# 新版 tag 的 attrs 是 dict：之前直接塞进 set 会 TypeError，点击 Tag 规则即崩。
+editor.set_tokens([
+    {"t": "tag", "name": "mq:rxt", "display": "2", "tagKind": "empty",
+     "attrs": {"name": "mq:rxt", "attributes": {"val": {"value": "${a}"}}}},
+    {"t": "tag", "name": "mq:rxt", "display": "2", "tagKind": "empty",
+     "attrs": {"name": "mq:rxt", "attributes": {"val": {"value": "${a}"}}}},
+])
+assert len(editor._tag_buttons) == 1  # 相同 dict attrs 去重，不重复建按钮
+editor.set_tokens(tokens + [
+    {"t": "text", "v": "不是 tag"},
+    {"t": "tag", "name": "mq:ch", "display": "", "tagKind": "empty"},
+])
+assert len(editor._tag_buttons) == 3
 assert not editor.advanced_frame.isVisible() or editor.advanced_frame.isHidden()
 editor._tag_buttons[0].click()
 assert editor.pattern.text() == "[Color:Red=]"

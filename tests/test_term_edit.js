@@ -118,7 +118,7 @@ const context = {
 };
 context.window = context;
 vm.createContext(context);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'app', 'bridge.js'), 'utf8'), context,
+vm.runInContext(require('./_page_source'), context,
   { filename: 'bridge.js' });
 
 const tick = () => new Promise(resolve => setImmediate(resolve));

@@ -48,8 +48,35 @@ def install_bridge(page, win) -> int:
     page.setWebChannel(channel)
 
     scripts: QWebEngineScriptCollection = page.scripts()
+    page_rules = (APP_DIR / "page_rules.json").read_text(encoding="utf-8")
     for name, source, world in (
         ("qwebchannel.js", _read_qwebchannel_js(), QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-page-rules", "window.__MD_PAGE_RULES = " + page_rules + ";",
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-api-client", (APP_DIR / "api_client.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-editor-state", (APP_DIR / "editor_state.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-row-status", (APP_DIR / "row_status.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-symbols", (APP_DIR / "symbols.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-comments", (APP_DIR / "comments.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-hits", (APP_DIR / "hits.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-rows-store", (APP_DIR / "rows_store.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-rows-api", (APP_DIR / "rows_api.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-filter", (APP_DIR / "filter_api.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-legacy-api", (APP_DIR / "legacy_api.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-terms-model", (APP_DIR / "terms_model.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-terms-api", (APP_DIR / "terms_api.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
         ("serapi-bridge", (APP_DIR / "bridge.js").read_text(encoding="utf-8"),
          QWebEngineScript.ScriptWorldId.MainWorld),
     ):

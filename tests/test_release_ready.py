@@ -26,7 +26,15 @@ assert "tag" in version_py.lower(), "版本文件应说明 tag 与 APP_VERSION �
 
 # 2) PyInstaller：入口、bridge.js、assets、onedir 名称、无控制台。
 spec = read("Serapi.spec")
-for token in ['"app/main.py"', '("app/bridge.js", "app")', '("assets", "assets")',
+for token in ['"app/main.py"', '("app/bridge.js", "app")',
+              '("app/api_client.js", "app")', '("app/editor_state.js", "app")',
+              '("app/row_status.js", "app")', '("app/symbols.js", "app")',
+              '("app/comments.js", "app")', '("app/hits.js", "app")',
+              '("app/rows_store.js", "app")', '("app/rows_api.js", "app")',
+              '("app/filter_api.js", "app")', '("app/legacy_api.js", "app")',
+              '("app/terms_model.js", "app")', '("app/terms_api.js", "app")',
+              '("app/page_rules.json", "app")',
+              '("assets", "assets")',
               'name="Serapi"', "console=False"]:
     assert token in spec, f"Serapi.spec 缺少 {token!r}"
 
@@ -49,10 +57,12 @@ assert re.search(r"\$wanted\s*-ne\s*\$appVer", workflow), \
 assert "tests\\test_*.py" in workflow and "tests\\test_*.js" in workflow, \
     "CI 应自动发现并运行全部离线测试"
 
-# 5) 运行依赖版本固定（打包可复现）。
+# 5) 运行依赖使用最低版本约束（允许跟随更新；升级需跑全量回归）。
 requirements = read("requirements.txt")
-for token in ["PyQt6==", "PyQt6-WebEngine==", "PyQt6-Fluent-Widgets=="]:
-    assert token in requirements, f"requirements.txt 缺少固定版本: {token!r}"
+for token in ["PyQt6>=6.12.1", "PyQt6-WebEngine>=6.140.1",
+              "PyQt6-Fluent-Widgets>=1.11.3"]:
+    assert token in requirements, f"requirements.txt 缺少最低版本: {token!r}"
+assert "==" not in requirements, "requirements.txt 不应再锁定具体版本"
 
 # 6) 发布说明/更新检查使用同一版本来源。
 updater = read(os.path.join("app", "updater.py"))

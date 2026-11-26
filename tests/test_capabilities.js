@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'app', 'bridge.js'), 'utf8');
+const SRC = require('./_page_source');
 
 function load(pathname, setup) {
   const context = {
@@ -98,5 +98,12 @@ assert.ok(nc.reasons.listRows);
 assert.strictEqual(nc.reasons.filter, undefined);
 assert.strictEqual(nc.fingerprint.ok, false);
 assert.ok(nc.fingerprint.missing.indexOf('proseMirror') >= 0);
+// 端点表与文档状态是写策略/能力判断的输入。
+assert.strictEqual(nc.features.endpoints.rows, true);
+assert.strictEqual(nc.features.endpoints.lock, true);
+assert.strictEqual(nc.features.endpoints.splitJoin, true);
+assert.ok(nc.features.document);
+assert.strictEqual(nc.features.writePolicy.canWrite, true);
+assert.strictEqual(nc.features.version, '');
 
 console.log('CAPABILITIES_TEST: PASS');

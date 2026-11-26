@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app', 'bridge.js'), 'utf8');
+const source = require('./_page_source');
 
 function load(kind, elements, oldBarText) {
   const context = {

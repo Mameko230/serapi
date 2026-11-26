@@ -37,11 +37,26 @@ assert model.update_rows(updated) == 1
 assert "审校者 1" in model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
 assert changes == [(1, 1), (1, 1)]
 
-# 缓存扩容属于结构变化，仍走完整重置并保留已查询 TM 率。
+# 缓存扩容属于结构变化，但新版走键控增量：不整表 reset，只插入新增行。
 expanded = updated + [{"rowNo": 3, "src": "丙", "tgt": "", "status": "untranslated"}]
-assert model.update_rows(expanded, {1: 85}) == 3
-assert len(resets) == 1 and model.rowCount() == 3
+assert model.update_rows(expanded, {1: 85}) == 2
+assert len(resets) == 0 and model.rowCount() == 3
 assert model.index(0, 3).data() == "85%"
+
+# 缓存窗整体换到 3..4：删 1..2、插入 4，仍然不 reset。
+window = [
+    {"rowNo": 3, "src": "丙", "tgt": "", "status": "untranslated"},
+    {"rowNo": 4, "src": "丁", "tgt": "D", "status": "edited"},
+]
+assert model.update_rows(window) == 1
+assert len(resets) == 0 and model.rowCount() == 2
+assert [model.row_no_at(i) for i in range(2)] == [3, 4]
+
+# 换缓存窗时也要套用本地动作的权威状态：旧快照不能把刚确认的状态盖回去。
+model.set_row_status(3, "confirmed")
+model.set_rows([{"rowNo": 3, "src": "丙", "tgt": "", "status": "untranslated"},
+                {"rowNo": 5, "src": "戊", "tgt": "", "status": "untranslated"}])
+assert "译者已确认" in model.index(0, 0).data(Qt.ItemDataRole.ToolTipRole)
 
 # 保存/确认前发出的旧 listRows 响应不得回落地状态；新同步仍正常更新。
 class SyncHost:

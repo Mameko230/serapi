@@ -22,19 +22,27 @@ if not exist ".venv\Scripts\python.exe" (
     set "BASE_PY="
     where py >nul 2>nul
     if not errorlevel 1 (
-        py -3.14 -c "import sys" >nul 2>nul
-        if not errorlevel 1 set "BASE_PY=py -3.14"
+        rem 首选默认 py -3（可能是 3.15/3.16），只接受 >=3.14
+        py -3 -c "import sys; raise SystemExit(0 if sys.version_info>=(3,14) else 1)" >nul 2>nul
+        if not errorlevel 1 set "BASE_PY=py -3"
+    )
+    if not defined BASE_PY (
+        where py >nul 2>nul
+        if not errorlevel 1 (
+            py -3.14 -c "import sys" >nul 2>nul
+            if not errorlevel 1 set "BASE_PY=py -3.14"
+        )
     )
     if not defined BASE_PY (
         where python >nul 2>nul
         if not errorlevel 1 (
-            python -c "import sys" >nul 2>nul
+            python -c "import sys; raise SystemExit(0 if sys.version_info>=(3,14) else 1)" >nul 2>nul
             if not errorlevel 1 set "BASE_PY=python"
         )
     )
     if not defined BASE_PY (
-        echo [错误] 未检测到 Python。
-        echo 请先安装 Python 3.14，并在安装时勾选 Add to PATH。
+        echo [错误] 未检测到 Python 3.14 或更高版本。
+        echo 请先安装 Python 3.14+，并在安装时勾选 Add to PATH。
         goto :fail
     )
 

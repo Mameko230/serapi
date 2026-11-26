@@ -79,6 +79,13 @@ class SaveCoordinator:
             if on_done:
                 on_done(False)
             return
+        decision_fn = getattr(port, "write_decision", None)
+        if callable(decision_fn):
+            decision = decision_fn("save")
+            if decision is not None and not getattr(decision, "allowed", True):
+                if on_done:
+                    on_done(False)
+                return
         if not force and not port.has_actual_edits():
             port.clear_modified()
             if on_done:

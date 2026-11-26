@@ -361,7 +361,7 @@ class MqEditor(QTextEdit):
         # 后两种均读取原文，但判定互相独立，也可与手动上限同时启用。
         self._line_limit = 0
         self._max_lines = 0
-        self._line_style = "bplus"   # bplus=细分隔线；cells=一行一格
+        self._line_style = "zebra"   # zebra=轻隔行；focus=当前行聚焦（兼容旧 bplus/cells）
         self._src_counts = None
         self._src_max_limit = 0
         self._nl_ids = []      # 载入时按序记住换行 tag id，写回时按序放回
@@ -376,8 +376,10 @@ class MqEditor(QTextEdit):
         self.cursorPositionChanged.connect(self.viewport().update)
 
     def set_line_style(self, style):
-        """切换中间编辑框行视觉（B+ 细分隔线 / C 一行一格），立即重排重绘。"""
-        style = style if style in ("bplus", "cells") else "bplus"
+        """切换行视觉：A 轻隔行 / B 当前行聚焦（旧 bplus→zebra，cells→focus）。"""
+        legacy = {"bplus": "zebra", "cells": "focus"}
+        style = legacy.get(style, style)
+        style = style if style in ("zebra", "focus") else "zebra"
         if style == self._line_style:
             return
         self._line_style = style
@@ -385,13 +387,11 @@ class MqEditor(QTextEdit):
         self.viewport().update()
 
     def _apply_line_readability(self):
-        """B+ / C 共用的行距/字号基础；C 需要更高的行盒来容纳大格子。"""
+        """两种行视觉共用同一套字号/行距，只有分隔方式不同。"""
         fmt = QTextBlockFormat()
-        pct = 205 if self._line_style == "cells" else 170
-        fmt.setLineHeight(pct, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
-        margin = 8 if self._line_style == "cells" else 6
-        fmt.setTopMargin(margin)
-        fmt.setBottomMargin(margin)
+        fmt.setLineHeight(170, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+        fmt.setTopMargin(7)
+        fmt.setBottomMargin(7)
         cur = QTextCursor(self.document())
         cur.select(QTextCursor.SelectionType.Document)
         cur.mergeBlockFormat(fmt)
@@ -431,27 +431,20 @@ class MqEditor(QTextEdit):
                     continue
                 top = rect.top() + 1
                 height = max(22.0, float(rect.height()) - 2.0)
-                if self._line_style == "cells":
-                    # C：一行一格，大格子 + 当前行高亮；文本仍由编辑器自动换行。
-                    if current:
-                        painter.setBrush(QColor(59, 130, 246, 40))
-                        painter.setPen(QPen(QColor(59, 130, 246, 145), 1.3))
-                    else:
-                        painter.setBrush(QColor(255, 255, 255, 235) if idx % 2 == 0
-                                         else QColor(244, 248, 253, 235))
-                        painter.setPen(QPen(QColor(220, 230, 242), 1))
-                    painter.drawRoundedRect(QRectF(6, top, width, height), 11, 11)
+                if self._line_style == "zebra":
+                    # A：极淡隔行底色，不画线、不装盒子；靠明度差建立节奏。
+                    if idx % 2 == 0:
+                        painter.setPen(Qt.PenStyle.NoPen)
+                        painter.setBrush(QColor(15, 23, 42, 10))
+                        painter.drawRoundedRect(QRectF(6, top, width, height), 8, 8)
+                else:
+                    # B：只标记当前行，不降低其他行对比度（日中合并句式时仍能读邻行）。
                     if current:
                         painter.setPen(Qt.PenStyle.NoPen)
+                        painter.setBrush(QColor(37, 99, 235, 14))
+                        painter.drawRoundedRect(QRectF(6, top, width, height), 8, 8)
                         painter.setBrush(QColor(37, 99, 235))
-                        painter.drawRoundedRect(QRectF(6, top, 4, height), 2, 2)
-                else:
-                    # B+：去掉斑马纹底色，只保留细分隔线；分隔线再下移几像素，
-                    # 给译文行尾（含下伸笔画）留出呼吸空间。
-                    sep_y = int(rect.bottom() + 5)
-                    if sep_y <= self.viewport().height() + 1:
-                        painter.setPen(QPen(QColor(148, 163, 184, 68), 1))
-                        painter.drawLine(9, sep_y, int(width + 8), sep_y)
+                        painter.drawRoundedRect(QRectF(6, top, 2.5, height), 1.2, 1.2)
         except Exception:
             pass
         finally:
