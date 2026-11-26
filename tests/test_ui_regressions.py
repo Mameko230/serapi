@@ -579,4 +579,37 @@ whost._tb_hits = []
 whost._update_term_count_warning()
 assert not whost.term_warning.isVisible() and wbox.height() == box_h
 
+# 16) 过滤栏：按钮/快捷键切换可见性，展开后聚焦输入框并记录提示。
+from PyQt6.QtWidgets import QWidget as _QW
+
+fh = Dummy()
+fh.filter_bar = _QW()
+fh.filter_bar.setVisible(False)
+fh.filter_src = types.SimpleNamespace(setFocus=lambda: None)
+fh.logs = []
+fh.log = lambda text: fh.logs.append(str(text))
+fh._toggle_filter_bar = types.MethodType(MainWindow._toggle_filter_bar, fh)
+fh._toggle_filter_bar(True)
+assert fh.filter_bar.isVisible()
+assert any("过滤栏已展开" in line for line in fh.logs), fh.logs
+fh._toggle_filter_bar(False)
+assert not fh.filter_bar.isVisible()
+assert any("过滤栏已收起" in line for line in fh.logs), fh.logs
+
+# 17) Ctrl+Shift+F 快捷键等价于点漏斗（按钮不可用时只提示）。
+fbtn = types.SimpleNamespace(enabled=True, checked=False, text="", logs=[])
+fbtn.isEnabled = lambda: fbtn.enabled
+fbtn.isChecked = lambda: fbtn.checked
+fbtn.setChecked = lambda value: setattr(fbtn, "checked", bool(value))
+fh.btn_filter = fbtn
+fh._toggle_filter_shortcut = types.MethodType(MainWindow._toggle_filter_shortcut, fh)
+fh.logs.clear()
+fh._toggle_filter_shortcut()
+assert fbtn.checked is True
+fh._toggle_filter_shortcut()
+assert fbtn.checked is False
+fbtn.enabled = False
+fh._toggle_filter_shortcut()
+assert any("不支持原生过滤" in line for line in fh.logs), fh.logs
+
 print("UI_REGRESSIONS_TEST: PASS")

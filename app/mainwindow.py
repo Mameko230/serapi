@@ -1786,6 +1786,9 @@ class MainWindow(QMainWindow):
         sc_goto.activated.connect(self.jump_to_row)
         sc_save = QShortcut(QKeySequence("Ctrl+S"), self)
         sc_save.activated.connect(self.save_segment)
+        # 过滤栏没有按钮快捷键时只能点漏斗；给一个键盘入口，也方便真机/无障碍使用。
+        sc_filter = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
+        sc_filter.activated.connect(self._toggle_filter_shortcut)
         sc_term = QShortcut(QKeySequence("Ctrl+E"), self)
         sc_term.activated.connect(self.open_term_editor)
         sc_quick_term = QShortcut(QKeySequence("Ctrl+Q"), self)
@@ -4503,6 +4506,18 @@ class MainWindow(QMainWindow):
         self.filter_bar.setVisible(bool(on))
         if on:
             self.filter_src.setFocus()
+            self.log("过滤栏已展开：输入原文/译文包含内容后回车")
+        else:
+            self.log("过滤栏已收起")
+
+    def _toggle_filter_shortcut(self):
+        btn = getattr(self, "btn_filter", None)
+        if btn is None:
+            return
+        if not btn.isEnabled():
+            self.log("当前编辑器不支持原生过滤")
+            return
+        btn.setChecked(not btn.isChecked())
 
     def _apply_filter_from_ui(self):
         if getattr(self, "_filter_busy", False) or self._save_coordinator().busy:
