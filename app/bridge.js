@@ -390,6 +390,78 @@
       }
       return true;
     }
+    // 长文档跳行：不要从第 1 行慢慢滚，直接把缓存窗换成目标附近的一段连续行。
+    // 列表仍显示原始行号；向下滚到底再按 st.next 继续扩批（向上不回补，再跳一次即可）。
+    function newRowsApiJump(rowNo) {
+      var base = newDocApiBase();
+      if (!base) return { ok: false, err: '文档 API 未就绪' };
+      var f = newFilterState();
+      if (f.active) return { ok: false, err: '过滤状态下暂不支持跳行' };
+      var target = parseInt(rowNo, 10);
+      if (!isFinite(target) || target < 1) return { ok: false, err: '行号无效' };
+      var st = newRowsApiState();
+      var total = newRowTotal() || st.total || 0;
+      var chunk = st.chunk || 100;
+      var rid = target - 1;
+      var start = Math.max(0, rid - Math.floor(chunk / 3));
+      var end = start + chunk;
+      if (total && end > total) {
+        end = total;
+        start = Math.max(0, end - chunk);
+      }
+      if (!total) total = end;
+      var ids = [];
+      for (var i = start; i < end; i++) ids.push(i);
+      if (!ids.length) return { ok: false, err: '行号超出范围' };
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      var docKey = location.pathname;
+      st.fetching = true;
+      try {
+        fetch(base + '/rows', {
+          method: 'POST', credentials: 'same-origin', headers: headers,
+          body: JSON.stringify({ rowIds: ids, scope: 'entireRow' }),
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        }).then(function (rows) {
+          if (st.doc !== docKey) return;
+          if (!Array.isArray(rows)) throw new Error('行数据返回不是数组');
+          st.rows = {};
+          st.mode = 'window';
+          st.windowStart = start;
+          st.windowEnd = end - 1;
+          st.next = end;
+          st.total = total;
+          st.fetching = false;
+          st.status = 'done';
+          st.error = '';
+          st.done = !!(total && end >= total);
+          for (var j = 0; j < rows.length; j++) {
+            var entry = newRowApiEntry(rows[j]);
+            if (entry) st.rows[entry.rowNo] = entry;
+          }
+          try { __md.push('rows-updated', { source: 'jump' }); } catch (e) {}
+          try {
+            __md.push('jump-ready', {
+              rowNo: target, windowStart: start + 1, windowEnd: end,
+            });
+          } catch (e) {}
+        }).catch(function (e) {
+          if (st.doc !== docKey) return;
+          st.fetching = false;
+          st.error = String(e.message || e).slice(0, 160);
+          try {
+            __md.push('jump-error', { rowNo: target, err: st.error });
+          } catch (e2) {}
+        });
+      } catch (e) {
+        st.fetching = false;
+        st.error = String(e.message || e).slice(0, 160);
+        return { ok: false, err: st.error };
+      }
+      return { ok: true, pending: true, windowStart: start + 1, windowEnd: end };
+    }
     function newRowsApiList() {
       var st = newRowsApiState();
       var f = newFilterState();
@@ -402,7 +474,9 @@
       var total = filteredTotal || st.total || newRowTotal();
       var done = !!st.done || (total > 0 && st.next >= total);
       return { rows: list, total: total, cached: list.length,
-               done: done, error: st.error || '', filtered: !!filteredTotal };
+               done: done, error: st.error || '', filtered: !!filteredTotal,
+               mode: st.mode || 'prefix',
+               windowStart: st.windowStart || 0, windowEnd: st.windowEnd || 0 };
     }
     // 写回/确认后刷新单行缓存：段列表走 API 缓存，不刷新会一直显示保存前的旧译文。
     function newRefreshRowCache(rowId) {
@@ -718,7 +792,8 @@
         if (api.rows.length) {
           return { ok: true, rows: api.rows, total: api.total, cached: api.cached,
                    source: 'new-api', done: api.done, error: api.error,
-                   filtered: !!api.filtered };
+                   filtered: !!api.filtered, mode: api.mode,
+                   windowStart: api.windowStart, windowEnd: api.windowEnd };
         }
         var filterState = newFilterState();
         if (filterState.active && !api.rows.length) {
@@ -1855,6 +1930,10 @@
 
     window.__md.api.refreshRowCacheByRow = function (rowNo) {
       return newRefreshRowCache(newRowIdFor(rowNo));
+    };
+
+    window.__md.api.jumpToRow = function (rowNo) {
+      return newRowsApiJump(rowNo);
     };
 
     window.__md.api.readSegment = function (rowId) {

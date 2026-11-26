@@ -147,6 +147,7 @@ class BridgeHost:
         self.logs = []
         self._segments = types.SimpleNamespace(
             busy=False, auto_loading=False,
+            invalidate=lambda: None,
             refresh=lambda **kw: self.refreshes.append(dict(kw)))
 
     def log(self, text):
@@ -173,6 +174,39 @@ MainWindow.on_bridge_event(bh, 7, json.dumps({
 }))
 assert bh.refreshes == [{"background": True}], bh.refreshes
 assert bh.schedules == [] and bh.reads == []
+
+# 长文档跳行：jump-ready 事件清 pending、刷新段列表并延迟激活目标行。
+from PyQt6.QtCore import QEventLoop, QTimer
+
+
+def spin(ms):
+    loop = QEventLoop()
+    QTimer.singleShot(ms, loop.quit)
+    loop.exec()
+
+
+jbh = BridgeHost()
+jbh._jump_pending_row = 120
+jbh.activated = []
+jbh.activate_row = lambda row: jbh.activated.append(int(row))
+MainWindow.on_bridge_event(jbh, 7, json.dumps({
+    "type": "jump-ready",
+    "data": {"editor": "new", "rowNo": 120, "windowStart": 87, "windowEnd": 186},
+}))
+assert jbh._jump_pending_row is None
+assert (0, True) in jbh.schedules, jbh.schedules
+spin(650)
+assert jbh.activated == [120], jbh.activated
+
+# jump-error：清 pending 并记录日志，不激活。
+jbh2 = BridgeHost()
+jbh2._jump_pending_row = 88
+MainWindow.on_bridge_event(jbh2, 7, json.dumps({
+    "type": "jump-error",
+    "data": {"editor": "new", "rowNo": 88, "err": "HTTP 500"},
+}))
+assert jbh2._jump_pending_row is None
+assert any("跳转第 88 行失败" in line for line in jbh2.logs), jbh2.logs
 
 # 重载/每条编辑器事件不得重复安排能力探测与首次段列表刷新（P0：命中被清空）。
 MainWindow.on_bridge_event(bh, 7, json.dumps({

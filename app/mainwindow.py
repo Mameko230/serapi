@@ -2099,6 +2099,7 @@ class MainWindow(QMainWindow):
         self._cur_row = 1  # 当前段行号（1 起），段列表落地后由列表选择驱动
         self._read_gen = 0  # 读段代际号：异步回调返回时比对，过期响应直接丢弃（防切换后旧响应覆盖新内容）
         self._activating_row = None  # 程序切行期间忽略重复 row-changed，避免双读取互相取消
+        self._jump_pending_row = None  # 新版长文档跳行：等待缓存窗换到目标行
         self._tm_rates = {}  # 本次文档内已实际查询的 memoQ 最佳 TM 匹配率：rowNo -> rate
         self._editor_url = ""  # 同一标签页换文档时也据此清空 TM 缓存
         # 保存状态机：行号+编辑代际+文档身份共同约束异步回调，防止迟到写回/清脏。
@@ -2667,7 +2668,31 @@ class MainWindow(QMainWindow):
         import re as _re
         n = _re.sub(r"\D", "", self.row_edit.text())
         if n:
-            self.activate_row(int(n))
+            self._jump_to_row(int(n))
+
+    def _jump_to_row(self, row_no: int):
+        """长文档跳行：新版先把 API 缓存窗换到目标附近，再激活目标行。"""
+        if getattr(self, "_jump_pending_row", None) is not None:
+            self.log("正在跳转，请稍候…")
+            return
+        if (getattr(self, "_cap_editor", None) == "new"
+                and not self.filter_active()):
+            self._jump_pending_row = int(row_no)
+            self.log(f"正在跳到第 {row_no} 行…")
+            try:
+                backend_for(self).jump_rows(int(row_no))
+            except Exception as exc:
+                self._jump_pending_row = None
+                self.log(f"跳转失败：{exc}")
+                return
+            QTimer.singleShot(4000, lambda: self._jump_timeout(row_no))
+            return
+        self.activate_row(int(row_no))
+
+    def _jump_timeout(self, row_no: int):
+        if getattr(self, "_jump_pending_row", None) == int(row_no):
+            self._jump_pending_row = None
+            self.log(f"跳转第 {row_no} 行超时，请重试")
 
     # ---------------- TM/术语快捷键插入 ----------------
     def _insert_hit_by_index(self, idx: int):
@@ -3914,6 +3939,22 @@ class MainWindow(QMainWindow):
                 self._segments.refresh(background=True)
             else:
                 self._schedule_seg_refresh(600, background=True)
+            return
+        if msg.get("type") in ("jump-ready", "jump-error"):
+            try:
+                row = int(data.get("rowNo") or 0)
+            except (TypeError, ValueError):
+                row = 0
+            if row and getattr(self, "_jump_pending_row", None) == row:
+                self._jump_pending_row = None
+                if msg.get("type") == "jump-error":
+                    self.log(f"跳转第 {row} 行失败：{data.get('err') or '未知错误'}")
+                    return
+                self.log(f"已定位到第 {row} 行（缓存窗 {data.get('windowStart')}–"
+                         f"{data.get('windowEnd')}）")
+                self._segments.invalidate()
+                self._schedule_seg_refresh(0, background=True)
+                QTimer.singleShot(500, lambda r=row: self.activate_row(r))
             return
         if msg.get("type") in ("concordance-results", "concordance-error"): 
             try:

@@ -49,6 +49,8 @@ b.reject_segment(callback)
 assert h.last == ("JSON.stringify(__md.api.rejectSegment())", callback)
 b.refresh_row_cache(9)
 assert h.last == ("JSON.stringify(__md.api.refreshRowCacheByRow(9))", None)
+b.jump_rows(120)
+assert h.last == ("JSON.stringify(__md.api.jumpToRow(120))", None)
 
 # 2) 段列表 / 统计 / 标签 / 过滤。
 b.list_rows(callback)

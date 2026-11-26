@@ -67,6 +67,13 @@ class JsBridgeBackend:
     def reject_segment(self, callback):
         self._call("JSON.stringify(__md.api.rejectSegment())", callback)
 
+    def jump_rows(self, row_no, callback=None):
+        expr = f"JSON.stringify(__md.api.jumpToRow({int(row_no)}))"
+        if callback is None:
+            self._call(expr)
+        else:
+            self._call(expr, callback)
+
     def refresh_row_cache(self, row_no, callback=None):
         expr = f"JSON.stringify(__md.api.refreshRowCacheByRow({int(row_no)}))"
         if callback is None:

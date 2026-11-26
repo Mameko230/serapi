@@ -289,6 +289,34 @@ pushes.length = 0;   // bridge 启动时的 bridge-ready 不计入
   assert.strictEqual(byNo2[6].status, 'reviewer1', byNo2[6]);
   assert.strictEqual(byNo2[7].status, 'rejected', byNo2[7]);
 
+  // 8) 长文档跳行：直接把缓存窗换成目标附近 100 行，并通知 jump-ready。
+  ctx.__md._rowsApi = null;
+  state.override = null;
+  pushes.length = 0;
+  const jump = api.jumpToRow(120);
+  assert.strictEqual(jump.ok, true);
+  assert.strictEqual(jump.pending, true);
+  assert.strictEqual(jump.windowStart, 87);   // total=250，120-33 → 87..186
+  assert.strictEqual(jump.windowEnd, 186);
+  await tick();
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  assert.strictEqual(res.source, 'new-api');
+  assert.strictEqual(res.mode, 'window');
+  assert.strictEqual(res.rows.length, 100);
+  assert.strictEqual(res.rows[0].rowNo, 87);
+  assert.ok(res.rows.some((r) => r.rowNo === 120), '目标行必须在窗口内');
+  assert.strictEqual(res.total, 250);
+  assert.ok(pushes.map((p) => JSON.parse(p)).some((j) => {
+    return j.type === 'jump-ready' && j.data.rowNo === 120;
+  }), pushes);
+  // 窗口后继续向下扩批，不应回到第 1 行。
+  assert.strictEqual(api.expandRows(), true);
+  await tick();
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  assert.strictEqual(res.rows.length, 164);   // 187..250
+  assert.strictEqual(res.rows[0].rowNo, 87);
+  assert.strictEqual(res.done, true);
+
   console.log('NEW_EDITOR_ROWS_API_TEST: PASS (offline only)');
 })().catch((err) => {
   console.error(err);
