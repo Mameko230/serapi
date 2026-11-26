@@ -24,6 +24,7 @@ TESTS = ROOT / "tests"
 FAST_PY = {
     "test_autoreplace.py",
     "test_appconfig_theme.py",
+    "test_detail_coordinator.py",
     "test_editor_session.py",
     "test_hit_coordinator.py",
     "test_incremental_sync.py",

@@ -11,6 +11,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from app.mainwindow import MainWindow, ResRow
+from app.detail_coordinator import TbDetailCoordinator
 
 app = QApplication([])
 
@@ -66,12 +67,14 @@ class Host(QWidget):
     _edit_term = MainWindow._edit_term
     _term_selection_text = staticmethod(MainWindow._term_selection_text)
     on_bridge_event = MainWindow.on_bridge_event
+    forget_tb_detail = MainWindow.forget_tb_detail
 
     def __init__(self):
         super().__init__()
         self.resize(1000, 720)
         self._term_overlay = None
         self._term_req = 0
+        self._tb_details = TbDetailCoordinator(self)
         self._cur_row = 4
         self.calls = []
         self.logs = []
@@ -238,15 +241,16 @@ res.close()
 
 # 8) 主窗口侧：懒加载请求、在途去重、过期丢弃、缓存命中
 mw = types.SimpleNamespace()
-mw._term_detail_seq = 0
-mw._tb_detail_pending = None
 mw.calls = []
 mw.logs = []
 mw.call_js = lambda expr, cb=None: mw.calls.append(expr)
 mw.log = mw.logs.append
 mw.res_panel = ResPanel()
-mw._request_tb_detail = types.MethodType(MainWindow._request_tb_detail, mw)
-mw._on_term_detail = types.MethodType(MainWindow._on_term_detail, mw)
+mw._tb_details = TbDetailCoordinator(mw)
+for name in ("tb_detail", "request_term_detail", "apply_tb_detail",
+             "apply_tb_detail_error", "forget_tb_detail",
+             "_request_tb_detail", "_on_term_detail"):
+    setattr(mw, name, types.MethodType(getattr(MainWindow, name), mw))
 mw._request_tb_detail(detail_payload)
 assert "termDetailReq(1" in mw.calls[-1]
 mw._request_tb_detail(detail_payload)          # 同一请求在途 → 不重复发

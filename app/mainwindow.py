@@ -15,6 +15,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEngineSettings
 
 from .bridge import install_bridge
+from .detail_coordinator import SegmentInfoCoordinator, TbDetailCoordinator
 from .drafts import DraftStore
 from .editor_session import EditorSession
 from .hit_coordinator import HitCoordinator
@@ -2068,8 +2069,8 @@ class MainWindow(QMainWindow):
         self._conflict_overlay = None
         self._term_overlay = None
         self._term_req = 0
-        self._term_detail_seq = 0
-        self._tb_detail_pending = None
+        self._info = SegmentInfoCoordinator(self)   # 段信息请求身份
+        self._tb_details = TbDetailCoordinator(self)  # TB 条目定义/示例请求身份
         self._account_overlay = None
         self._theme_panel = None
         self._update_checker = None
@@ -2283,6 +2284,8 @@ class MainWindow(QMainWindow):
         if self._term_overlay is not None:
             self._term_overlay.hide()
         self._term_req += 1  # 使旧文档的术语列表/提交响应失效
+        self._info.reset()   # 旧文档的段信息响应不得落到新文档
+        self._tb_details.reset()
         timer = getattr(self, "_tb_highlight_timer", None)
         if timer is not None:
             timer.stop()
@@ -2781,11 +2784,13 @@ class MainWindow(QMainWindow):
         if callable(_upd):
             _upd()
 
-    def _fetch_segment_info(self, row_no: int):
+    # ---------------- 详情请求端口（状态机在 detail_coordinator.py） ----------------
+    # 这里只提供“读能力 / 发请求 / 渲染详情”，不做请求身份判断。
+    def supports_segment_info(self):
         caps = getattr(self, "_caps", {})
-        if caps and not caps.get("segmentInfo"):
-            return
-        """读取当前段上下文/注释；文档注释由 JS 按文档缓存，切行不重复请求。"""
+        return not (caps and not caps.get("segmentInfo"))
+
+    def show_info_loading(self):
         self._seg_info_has_content = False
         self.seg_info_frame.setVisible(False)
         _upd = getattr(self, "_update_seg_info_height", None)
@@ -2794,13 +2799,32 @@ class MainWindow(QMainWindow):
         self.btn_seginfo.setText("段信息")
         self.seg_info.setHtml("<span style='color:#94a3b8'>段信息读取中…</span>")
 
-        def done(r):
-            try:
-                res = json.loads(r) if isinstance(r, str) else r
-            except Exception:
-                res = {"ok": False, "err": "段信息返回解析失败"}
-            self._update_segment_info(res or {})
-        self.call_js(f"JSON.stringify(__md.api.segmentInfo({int(row_no)}))", done)
+    def request_segment_info(self, row_no, callback):
+        self.call_js(f"JSON.stringify(__md.api.segmentInfo({int(row_no)}))", callback)
+
+    def apply_segment_info(self, info):
+        self._update_segment_info(info)
+
+    def tb_detail(self, key):
+        return self.res_panel.tb_detail(key)
+
+    def request_term_detail(self, req, key):
+        body = json.dumps({"tbGuid": key[0], "entryId": key[1]}, ensure_ascii=False)
+        self.call_js(f"JSON.stringify(__md.api.termDetailReq({req}, "
+                     f"JSON.parse({json.dumps(body, ensure_ascii=False)})))")
+
+    def apply_tb_detail(self, key, data):
+        self.res_panel.set_tb_detail(key, data)
+
+    def apply_tb_detail_error(self, key, message):
+        self.res_panel.set_tb_detail_error(key, message)
+
+    def forget_tb_detail(self, key):
+        self.res_panel.forget_tb_detail(key)
+
+    def _fetch_segment_info(self, row_no: int):
+        """读取当前段上下文/注释；文档注释由 JS 按文档缓存，切行不重复请求。"""
+        self._info.fetch(row_no)
 
     def _update_segment_info(self, info: dict):
         """只落地当前行信息；不自动展开、不弹窗、不移动编辑器焦点。"""
@@ -3083,37 +3107,11 @@ class MainWindow(QMainWindow):
         self._term_call("termEditReq", dict(params))
 
     def _request_tb_detail(self, payload):
-        """详情栏显示 TB 命中时，按条目懒加载定义/示例（带缓存、过期响应丢弃）。"""
-        payload = dict(payload or {})
-        key = ResPanel._detail_key(payload)
-        if not key[0] or not key[1]:
-            return
-        if self.res_panel.tb_detail(key) is not None:
-            return  # show_detail 渲染时已经用到缓存
-        if self._tb_detail_pending and self._tb_detail_pending[1] == key:
-            return
-        self._term_detail_seq += 1
-        req = self._term_detail_seq
-        self._tb_detail_pending = (req, key)
-        body = json.dumps({"tbGuid": key[0], "entryId": key[1]}, ensure_ascii=False)
-        self.call_js(f"JSON.stringify(__md.api.termDetailReq({req}, "
-                     f"JSON.parse({json.dumps(body, ensure_ascii=False)})))")
+        """详情栏显示 TB 命中时，按条目懒加载定义/示例（请求身份在 detail_coordinator.py）。"""
+        self._tb_details.request(ResPanel._detail_key(payload))
 
     def _on_term_detail(self, data):
-        try:
-            req = int(data.get("req") or -1)
-        except (TypeError, ValueError):
-            return
-        pending = self._tb_detail_pending
-        if not pending or req != pending[0]:
-            return  # 连续点条目时丢弃过期响应
-        key = pending[1]
-        self._tb_detail_pending = None
-        if data.get("err"):
-            self.res_panel.set_tb_detail_error(key, data.get("err"))
-            self.log(f"术语定义/示例读取失败：{data.get('err')}")
-        else:
-            self.res_panel.set_tb_detail(key, data)
+        self._tb_details.accept(data)
 
     # ---------------- 切换账号 ----------------
     # ---------------- 全局样式 / 主题 / 账号 ----------------
@@ -3768,7 +3766,7 @@ class MainWindow(QMainWindow):
                 if kind == "term-edit-result":
                     detail_key = (str(data.get("tbGuid") or ""),
                                   str(data.get("entryId") or ""))
-                    self.res_panel.forget_tb_detail(detail_key)
+                    self._tb_details.forget(detail_key)
                     self.log(f"已更新术语：{data.get('source', '')} → {data.get('target', '')}")
                 else:
                     self.log(f"已添加术语：{data.get('source', '')} → {data.get('target', '')}")
