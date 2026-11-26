@@ -17,6 +17,7 @@ from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEngineS
 from .bridge import install_bridge
 from .drafts import DraftStore
 from .editor_session import EditorSession
+from .save_coordinator import SaveCoordinator, SaveSnapshot
 from . import appconfig, tooltips
 from .overlays import AccountOverlay, ThemePanel, UpdateOverlay
 from .updater import (
@@ -1561,6 +1562,13 @@ class MainWindow(QMainWindow):
     def _loading_editor(self, value):
         self._session.loading_editor = bool(value)
 
+    def _save_coordinator(self) -> SaveCoordinator:
+        """取得保存协调器；只绑定部分方法的测试 Host 也能惰性创建。"""
+        coord = getattr(self, "_save", None)
+        if coord is None:
+            coord = self._save = SaveCoordinator(self)
+        return coord
+
     def __init__(self, selftest: bool = False, rt_url: str | None = None,
                  probe_js: str | None = None, rt_row: int = 1, rt_modify: bool = False):
         super().__init__()
@@ -1751,7 +1759,7 @@ class MainWindow(QMainWindow):
         self.seg_table.setModel(self.seg_model)
         self.seg_table.can_activate = (
             lambda: getattr(self, "_activating_row", None) is None
-            and not getattr(self, "_save_busy", False)
+            and not self._save_coordinator().busy
             and not getattr(self, "_filter_busy", False))
         self.seg_table.anchor_row_no = lambda: getattr(self, "_cur_row", None)
         self.seg_table.activateRequested.connect(self.activate_row)
@@ -2043,16 +2051,11 @@ class MainWindow(QMainWindow):
         self._edit_rev = 0
         self._loading_editor = False
         self._has_loaded_segment = False
-        self._save_busy = False
+        self._save = SaveCoordinator(self)
         self._confirm_busy = False  # 原生确认后，读到新段前禁止重复确认
         self._confirm_seq = 0
-        self._save_seq = 0
         self._stats_seq = 0
-        self._active_save_id = 0
-        self._pending_row = None
         self._conflict_overlay = None
-        self._save_conflict_after = None
-        self._save_conflict_snapshot = None
         self._term_overlay = None
         self._term_req = 0
         self._term_detail_seq = 0
@@ -2235,17 +2238,12 @@ class MainWindow(QMainWindow):
         self._persist_current_draft()
         self._draft_timer.stop()
         self._next_read_gen()
-        self._save_seq += 1
+        self._save_coordinator().reset()  # 在途保存/冲突回包全部失效
         self._stats_seq = getattr(self, "_stats_seq", 0) + 1
         if hasattr(self, "doc_stats"):
             self.doc_stats.setText("—")
-        self._active_save_id = 0
-        self._save_busy = False
         self._confirm_busy = False
         self._confirm_seq = getattr(self, "_confirm_seq", 0) + 1
-        self._pending_row = None
-        self._save_conflict_after = None
-        self._save_conflict_snapshot = None
         self._has_loaded_segment = False
         self._last_tokens = []
         self._remote_tokens = []
@@ -3923,7 +3921,7 @@ class MainWindow(QMainWindow):
             self.filter_src.setFocus()
 
     def _apply_filter_from_ui(self):
-        if getattr(self, "_filter_busy", False) or getattr(self, "_save_busy", False):
+        if getattr(self, "_filter_busy", False) or self._save_coordinator().busy:
             self.log("正在保存/过滤，请稍候……")
             return
         direction = self._filter_last_direction
@@ -3937,7 +3935,7 @@ class MainWindow(QMainWindow):
         self._begin_filter_change(direction, text, clear=False)
 
     def _clear_filter(self):
-        if getattr(self, "_filter_busy", False) or getattr(self, "_save_busy", False):
+        if getattr(self, "_filter_busy", False) or self._save_coordinator().busy:
             self.log("正在保存/过滤，请稍候……")
             return
         if self._filter_active:
@@ -3950,7 +3948,7 @@ class MainWindow(QMainWindow):
         self.filter_status.setText("")
 
     def _begin_filter_change(self, direction, text, clear):
-        if self._filter_busy or self._save_busy:
+        if self._filter_busy or self._save_coordinator().busy:
             return
         self._filter_busy = True
         self._filter_pending = (direction, text, clear)
@@ -4085,18 +4083,18 @@ class MainWindow(QMainWindow):
                     for i in range(self.seg_model.rowCount()))
         if not known and self._total_rows > self.seg_model.rowCount():
             self._load_more_rows()
-        if (row_no == self._cur_row and not self._save_busy
+        save = self._save_coordinator()
+        if (row_no == self._cur_row and not save.busy
                 and self._has_loaded_segment):
             return
-        if self._save_busy:
-            self._pending_row = row_no  # 快速连点只保留最后一个目标
+        if save.busy:
+            save.pending_row = row_no  # 快速连点只保留最后一个目标
             self.log(f"正在保存，完成后切到第 {row_no} 行……")
             return
         if self._has_loaded_segment and row_no != self._cur_row:
             if self._has_actual_edits():
                 self._persist_current_draft()
-                self._pending_row = row_no
-                self.save_segment(on_done=self._save_before_switch_done)
+                save.save_before_switch(row_no)
                 return
             # 仅视觉层置脏：清掉 Qt 标记，直接切行，不触碰 memoQ 内容或状态。
             self.editor.document().setModified(False)
@@ -4327,7 +4325,8 @@ class MainWindow(QMainWindow):
 
     def _read_confirmed_next(self, read_gen: int, doc_url: str):
         """确认后的兜底读取；若 row-changed 已驱动读取，代际号变化会自然取消本次。"""
-        if read_gen != self._read_gen or doc_url != self._editor_url or self._save_busy:
+        if (read_gen != self._read_gen or doc_url != self._editor_url
+                or self._save_coordinator().busy):
             return
         self.read_segment(auto=True)
 
@@ -4376,167 +4375,108 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(3500, release_if_stuck)
         self.call_js("JSON.stringify(__md.api.confirmSegment())", done)
 
-    def save_segment(self, on_done=None, force=False, skip_conflict=False):
-        """只保存、不确认。写前核对行号和远端快照；回调参数为是否已安全保存。"""
-        if self._save_busy:
-            self.log("正在保存，请稍候……")
-            return
-        if not self._has_loaded_segment:
-            self.log("尚未读取可保存的段")
-            if on_done:
-                on_done(False)
-            return
-        if not force and not self._has_actual_edits():
-            self.editor.document().setModified(False)
-            if on_done:
-                on_done(True)
-            return
+    # ---------------- 保存协调器端口（状态机在 save_coordinator.py） ----------------
+    # 这里只提供“取值 / 落草稿 / 调桥接 / 更新界面”，不做任何保存时机的判断。
+    def has_loaded_segment(self):
+        return bool(self._has_loaded_segment)
 
-        snapshot = {
-            "row": self._cur_row, "doc": self._editor_url,
-            "tokens": self.editor.to_tokens(), "base": list(self._remote_tokens),
-            "rev": self._edit_rev,
-        }
+    def has_actual_edits(self):
+        return bool(self._has_actual_edits())
+
+    def clear_modified(self):
+        self.editor.document().setModified(False)
+
+    def current_doc(self):
+        return self._editor_url
+
+    def is_current(self, snapshot: SaveSnapshot):
+        return self._editor_url == snapshot.doc and self._cur_row == snapshot.row
+
+    def save_snapshot(self) -> SaveSnapshot:
+        """冻结本次要写回的内容与冲突基准；编辑代际用于识别保存期间的新输入。"""
+        return SaveSnapshot(
+            row=int(self._cur_row), doc=self._editor_url,
+            tokens=self.editor.to_tokens(), base=list(self._remote_tokens),
+            rev=self._edit_rev)
+
+    def put_draft(self, snapshot: SaveSnapshot):
         try:
-            self._drafts.put(snapshot["doc"], snapshot["row"], snapshot["tokens"], snapshot["base"])
+            self._drafts.put(snapshot.doc, snapshot.row,
+                             list(snapshot.tokens), list(snapshot.base))
         except Exception as exc:
             self.log(f"本地草稿保存失败：{exc}")
-        self._save_seq += 1
-        save_id = self._save_seq
-        self._active_save_id = save_id
-        self._save_busy = True
 
-        def alive():
-            return self._active_save_id == save_id and self._editor_url == snapshot["doc"]
+    def discard_draft(self, snapshot: SaveSnapshot, tokens=None):
+        """保存成功后删除对应草稿；带 expected_tokens 时不会误删期间的新编辑。"""
+        try:
+            self._drafts.discard(snapshot.doc, snapshot.row,
+                                 expected_tokens=None if tokens is None else list(tokens))
+        except Exception:
+            pass
 
-        def parse(r):
-            try:
-                return json.loads(r) if isinstance(r, str) else (r or {})
-            except Exception:
-                return {"ok": False, "err": f"返回解析失败: {r!r}"[:200]}
+    def request_remote(self, callback):
+        self.call_js("JSON.stringify(__md.api.readSegment())", callback)
 
-        def fail(message, remote_tokens=None):
-            if not alive():
-                return
-            self._save_busy = False
-            self.log(f"保存失败：{message}")
-            self._show_save_conflict(snapshot, remote_tokens or snapshot["base"], message, on_done)
+    def request_write(self, tokens, callback):
+        inner = json.dumps(list(tokens), ensure_ascii=False)
+        expr = f"JSON.stringify(__md.api.writeSegment(JSON.parse({json.dumps(inner)})))"
+        self.call_js(expr, callback)
 
-        def write_now(remote_tokens):
-            if not alive():
-                return
-            tokens = snapshot["tokens"]
-            inner = json.dumps(tokens, ensure_ascii=False)
-            expr = f"JSON.stringify(__md.api.writeSegment(JSON.parse({json.dumps(inner)})))"
+    def apply_written(self, snapshot: SaveSnapshot, tokens):
+        """写回成功：更新基准、TM 列与标题；保存期间的新输入保持 dirty。"""
+        self._seg_sync_seq = getattr(self, "_seg_sync_seq", 0) + 1
+        row_no = snapshot.row
+        if row_no not in self._tm_rates:
+            self._tm_rates[row_no] = 0
+            self.seg_model.set_tm_rate(row_no, 0)
+        if self._editor_url == snapshot.doc and self._cur_row == row_no:
+            self._last_tokens = list(tokens)
+            self._remote_tokens = list(tokens)
+            if self._edit_rev == snapshot.rev:
+                self._draft_timer.stop()
+                self.editor.document().setModified(False)
+                self.ed_label.setText(f"第 {row_no} 行 · 已保存")
+            else:
+                self._persist_current_draft()
+                self.ed_label.setText(f"第 {row_no} 行 · 已保存前序版本，新编辑未保存")
+        self._schedule_seg_refresh(500)
 
-            def written(r):
-                if not alive():
-                    return
-                res = parse(r)
-                if not res.get("ok"):
-                    fail(res.get("err") or "memoQ 未接受写回", remote_tokens)
-                    return
-                self._save_busy = False
-                self._seg_sync_seq = getattr(self, "_seg_sync_seq", 0) + 1
-                try:
-                    self._drafts.discard(snapshot["doc"], snapshot["row"], expected_tokens=tokens)
-                except Exception:
-                    pass
-                row_no = snapshot["row"]
-                if row_no not in self._tm_rates:
-                    self._tm_rates[row_no] = 0
-                    self.seg_model.set_tm_rate(row_no, 0)
-                if self._editor_url == snapshot["doc"] and self._cur_row == row_no:
-                    # 已保存快照成为新基准；保存期间的新输入仍保持 dirty 并另存草稿。
-                    self._last_tokens = list(tokens)
-                    self._remote_tokens = list(tokens)
-                    if self._edit_rev == snapshot["rev"]:
-                        self._draft_timer.stop()
-                        self.editor.document().setModified(False)
-                        self.ed_label.setText(f"第 {row_no} 行 · 已保存")
-                    else:
-                        self._persist_current_draft()
-                        self.ed_label.setText(f"第 {row_no} 行 · 已保存前序版本，新编辑未保存")
-                self._schedule_seg_refresh(500)
-                self.log(f"第 {row_no} 行已保存（未确认）")
-                if on_done:
-                    on_done(True)
-
-            self.log(f"保存第 {snapshot['row']} 行……（{len(tokens)} 个 token）")
-            self.call_js(expr, written)
-
-        def checked(r):
-            if not alive():
-                return
-            res = parse(r)
-            remote_tokens = res.get("tokens") or []
-            import re as _re
-            remote_row = _re.sub(r"\D", "", str(res.get("rowNo") or ""))
-            if not res.get("ok") or remote_row != str(snapshot["row"]):
-                fail(res.get("err") or "memoQ 当前活动行已经变化", remote_tokens)
-                return
-            if not skip_conflict and remote_tokens != snapshot["base"]:
-                fail("memoQ 版本与载入时不同，为避免覆盖其他修改，已暂停保存", remote_tokens)
-                return
-            write_now(remote_tokens)
-
-        self.call_js("JSON.stringify(__md.api.readSegment())", checked)
-
-    def _show_save_conflict(self, snapshot, remote_tokens, reason, on_done=None):
+    def open_conflict(self, snapshot: SaveSnapshot, remote_tokens, reason: str):
+        """冲突浮层：本地版本留在编辑器，memoQ 版本只读对比。"""
         from .overlays import ConflictOverlay
         overlay = self._conflict_overlay
         if overlay is None:
             overlay = self._conflict_overlay = ConflictOverlay(self, self._tag_cfg)
             overlay.actionRequested.connect(self._resolve_save_conflict)
-        self._save_conflict_after = on_done
-        self._save_conflict_snapshot = snapshot
-        overlay.open(snapshot["row"], snapshot["tokens"], remote_tokens, reason)
+        overlay.open(snapshot.row, list(snapshot.tokens), list(remote_tokens), reason)
+
+    def adopt_remote_version(self, snapshot: SaveSnapshot):
+        """用户选择 memoQ 版本：放弃本地草稿并以远端内容重建当前段。"""
+        overlay = self._conflict_overlay
+        if overlay is None:
+            tokens = list(snapshot.base)
+        else:
+            try:
+                tokens = list(overlay.remote.to_tokens())
+            except Exception:
+                tokens = list(snapshot.base)
+        self._present_segment(snapshot.row, tokens)
+        self.ed_label.setText(f"第 {snapshot.row} 行 · 已使用 memoQ 版本")
+        self.log("已放弃本地未保存版本，使用 memoQ 当前版本")
+
+    def activate_row_now(self, row_no):
+        return self._activate_row_now(row_no)
+
+    def refresh_rows(self, delay: int):
+        self._schedule_seg_refresh(delay)
+
+    def save_segment(self, on_done=None, force=False, skip_conflict=False):
+        """只保存、不确认。写前核对行号和远端快照；回调参数为是否已安全保存。"""
+        self._save_coordinator().save(on_done=on_done, force=force,
+                                      skip_conflict=skip_conflict)
 
     def _resolve_save_conflict(self, choice):
-        action = choice.get("action")
-        after = getattr(self, "_save_conflict_after", None)
-        snapshot = getattr(self, "_save_conflict_snapshot", None)
-        self._save_conflict_after = None
-        self._save_conflict_snapshot = None
-        if snapshot is None:
-            if after:
-                after(False)
-            return
-        same_context = self._editor_url == snapshot["doc"] and self._cur_row == snapshot["row"]
-        if action == "local":
-            if not same_context:
-                self.log("文档或活动行已变化，未覆盖保存；本地草稿仍保留")
-                if after:
-                    after(False)
-                return
-            self.save_segment(on_done=after, force=True, skip_conflict=True)
-            return
-        if action == "remote":
-            pending = self._pending_row
-            self._pending_row = None
-            try:
-                self._drafts.discard(snapshot["doc"], snapshot["row"])
-            except Exception:
-                pass
-            if pending is not None and self._editor_url == snapshot["doc"]:
-                self._activate_row_now(pending)
-            elif same_context:
-                overlay = self._conflict_overlay
-                self._present_segment(snapshot["row"], overlay.remote.to_tokens())
-                self.ed_label.setText(f"第 {snapshot['row']} 行 · 已使用 memoQ 版本")
-                self.log("已放弃本地未保存版本，使用 memoQ 当前版本")
-            return
-        self._pending_row = None
-        if after:
-            after(False)
-
-    def _save_before_switch_done(self, ok):
-        pending = self._pending_row
-        self._pending_row = None
-        if ok and pending is not None:
-            self._activate_row_now(pending)
-        elif not ok:
-            self._schedule_seg_refresh(100)
+        self._save_coordinator().resolve_conflict(choice)
 
     def write_segment(self):
         """Ctrl+Enter：没有真实内容差异时只原生确认，绝不读/写当前段。"""

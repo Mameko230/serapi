@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QLabel
 
 from app.mainwindow import MainWindow
 from app.qtedit import MqEditor
+from app.save_coordinator import SaveCoordinator
 
 app = QApplication([])
 
@@ -54,14 +55,29 @@ class RateModel:
 
 class SaveHost:
     _total_rows = 0
+    _save_coordinator = MainWindow._save_coordinator
     _has_actual_edits = MainWindow._has_actual_edits
     _on_editor_contents_changed = MainWindow._on_editor_contents_changed
     _persist_current_draft = MainWindow._persist_current_draft
     _present_segment = MainWindow._present_segment
     _next_read_gen = MainWindow._next_read_gen
+    # 保存协调器端口：状态机在 app/save_coordinator.py，这里只提供落地方法。
+    has_loaded_segment = MainWindow.has_loaded_segment
+    has_actual_edits = MainWindow.has_actual_edits
+    clear_modified = MainWindow.clear_modified
+    current_doc = MainWindow.current_doc
+    is_current = MainWindow.is_current
+    save_snapshot = MainWindow.save_snapshot
+    put_draft = MainWindow.put_draft
+    discard_draft = MainWindow.discard_draft
+    request_remote = MainWindow.request_remote
+    request_write = MainWindow.request_write
+    apply_written = MainWindow.apply_written
+    adopt_remote_version = MainWindow.adopt_remote_version
+    activate_row_now = MainWindow.activate_row_now
+    refresh_rows = MainWindow.refresh_rows
     save_segment = MainWindow.save_segment
     activate_row = MainWindow.activate_row
-    _save_before_switch_done = MainWindow._save_before_switch_done
     _resolve_save_conflict = MainWindow._resolve_save_conflict
     read_segment = MainWindow.read_segment
     closeEvent = MainWindow.closeEvent
@@ -77,16 +93,12 @@ class SaveHost:
         self._edit_rev = 0
         self._loading_editor = False
         self._has_loaded_segment = True
-        self._save_busy = False
+        self._save = SaveCoordinator(self)
         self._confirm_busy = False
         self._confirm_seq = 0
-        self._save_seq = 0
-        self._active_save_id = 0
-        self._pending_row = None
         self._conflict_overlay = None
         self._term_overlay = None
         self._term_req = 0
-        self._save_conflict_after = None
         self._cur_row = 1
         self._editor_url = "doc-A"
         self._read_gen = 0
@@ -115,10 +127,8 @@ class SaveHost:
     def _activate_row_now(self, row):
         self.activated.append(row)
 
-    def _show_save_conflict(self, snapshot, remote_tokens, reason, on_done=None):
+    def open_conflict(self, snapshot, remote_tokens, reason):
         self.conflicts.append((snapshot, list(remote_tokens or []), reason))
-        self._save_conflict_snapshot = snapshot
-        self._save_conflict_after = on_done
         self._conflict_overlay = types.SimpleNamespace(remote=types.SimpleNamespace(
             to_tokens=lambda: list(remote_tokens or [])))
 
@@ -167,7 +177,7 @@ h.responses = [read(), {"ok": False, "err": "模拟写回失败"}]
 h.activate_row(3)
 assert h.activated == []
 assert h.editor.document().isModified()
-assert len(h.conflicts) == 1 and h._pending_row == 3
+assert len(h.conflicts) == 1 and h._save.pending_row == 3
 assert h._drafts.get("doc-A", 1)["tokens"] == h.editor.to_tokens()
 
 # 4) 保存期间继续输入：只保存旧快照，dirty 与新草稿必须保留。
@@ -265,10 +275,10 @@ def hold_read(expr, callback=None):
 
 h.call_js = hold_read
 h.save_segment()
-assert len(h.calls) == 1 and h._save_busy
+assert len(h.calls) == 1 and h._save.busy
 h._reset_editor_context("doc-B", 2)
 assert h._editor_url == "doc-B" and h._editor_pid == 2
-assert not h._has_loaded_segment and not h._save_busy
+assert not h._has_loaded_segment and not h._save.busy
 assert h._drafts.get("doc-A", 1) is not None
 pending_callbacks[0](read())
 assert len(h.calls) == 1  # 没有旧 read → 新文档 write 的危险链路

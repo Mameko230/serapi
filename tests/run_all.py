@@ -26,6 +26,7 @@ FAST_PY = {
     "test_appconfig_theme.py",
     "test_editor_session.py",
     "test_incremental_sync.py",
+    "test_save_coordinator.py",
     "test_save_flow.py",
     "test_seg_nav.py",
     "test_filter_ui.py",

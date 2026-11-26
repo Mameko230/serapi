@@ -107,11 +107,14 @@ python -u tests/render_main_ui.py main_ui_preview.png
 memoQ 网页（QWebEngineView）
   └─ bridge.js 注入：页面适配层 / 能力探测 / 结构指纹 / 读写段 / 统计 / TM·TB / 术语
        ↕ QWebChannel
-app/bridge.py  →  app/mainwindow.py（状态机 / UI）  →  app/qtedit.py（token ↔ QTextDocument）
+app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（token ↔ QTextDocument）
+                        ├─ app/editor_session.py     当前行 / 读取代际 / 激活与装载状态
+                        └─ app/save_coordinator.py   保存 / 冲突 / 切行前保存状态机
 ```
 
 - 页面选择器集中在 `bridge.js` 的 `PAGE` 表中，按旧版/新版分别注册；页面改版时先看结构指纹缺了哪个选择器。
-- `EditorSession` 先承接当前行、读取代际与激活/装载状态；后续保存协调、段列表会继续从主窗口拆出，给新版编辑器留接口边界。
+- `EditorSession` 承接当前行、读取代际与激活/装载状态；`SaveCoordinator` 承接保存、冲突与切行前保存。两者都通过端口与主窗口解耦，后续段列表/详情/浮层会继续从主窗口拆出。
+- `SaveCoordinator` 只在远端行号与载入快照一致、且远端 token 未变化时才写回；否则先弹冲突浮层，由用户选择本地或 memoQ 版本，绝不静默覆盖。
 - `capabilities()` 只返回布尔能力，`fingerprint()` 只返回选择器命中和数量，不读取任何项目文本；能力缺失时 UI 置灰/提示，不静默写入。
 - 内容以统一 token 流往返（`{t: text | tag | newline}`），Tag 用 `(id, tagKind)` 配对。
 - 是否「有真实编辑」只由 token 差异判断，不由 Qt 的 dirty 标志判断；视觉重绘绝不写回。

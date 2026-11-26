@@ -24,6 +24,7 @@ class FilterHost(QWidget):
     _begin_filter_change = MainWindow._begin_filter_change
     _start_filter_req = MainWindow._start_filter_req
     _after_filter_applied = MainWindow._after_filter_applied
+    _save_coordinator = MainWindow._save_coordinator
 
     def __init__(self):
         super().__init__()
@@ -33,7 +34,6 @@ class FilterHost(QWidget):
         self._filter_busy = False
         self._filter_pending = None
         self._activating_row = None
-        self._save_busy = False
         self.filter_src = FLineEdit(self)
         self.filter_tgt = FLineEdit(self)
         self.filter_status = QLabel(self)
