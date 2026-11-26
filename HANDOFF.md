@@ -8,7 +8,7 @@
 - GitHub：`Mameko230/serapi`（public）
 - 当前版本：`1.0.0`（`app/version.py`）
 - 适配基线：memoQ WebTrans **12.5.20**（此前抓包/回归确认）；没有版本白名单，靠能力探测 + 结构指纹。
-- 当前提交：`199a7bd` 重构第四步：抽出 HitCoordinator 命中请求状态机
+- 当前提交：`952fba1` 重构第五步：抽出详情请求状态机
 - Release/tag：**无**（发版必须等用户明确说）
 - 本地目录：仍叫 `memodesk`；远程仓库已是 Serapi
 - 配置目录：沿用历史路径 `~/.memodesk/`（登录态、草稿、Tag 规则）；这是兼容路径，不要随手改
@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 18/18 约 25s；full 35/35 约 53–67s。
+   - 最近结果：fast 19/19 约 24s；full 36/36 约 53–67s。
 
 ### 重构第一步
 
@@ -63,10 +63,18 @@
 - 新增 `app/jsresult.py`：桥接回包解析（JSON 字符串 / 已解析对象）与行号归一，供保存与命中两个状态机共用。
 - 新增 `tests/test_hit_coordinator.py`：纯 Python 假 port，锁定能力/排障开关、行身份、超时、旧定时器与旧错误回包丢弃。
 
+### 重构第五步
+
+- `app/detail_coordinator.py`：
+  - `SegmentInfoCoordinator`：段信息请求代际；快速切行/换文档后旧回包不得覆盖当前段信息（换文档时 `reset()`）。
+  - `TbDetailCoordinator`：TB 条目定义/示例的请求编号、在途去重、缓存命中不重发、过期响应丢弃；术语编辑成功后 `forget()` 旧缓存。
+- `_fetch_segment_info`、`_request_tb_detail`、`_on_term_detail` 现在是委托；`_term_detail_seq` / `_tb_detail_pending` 属性已删除。
+- 新增 `tests/test_detail_coordinator.py`：纯 Python 假 port，锁定段信息代际、TB 详情缓存/在途/过期/错误/忘记语义。
+
 ## 关键红线
 
 - **防抖动**：`_cur_row` 是权威行；`_activating_row` 期间忽略 `row-changed`；`SegmentSync.invalidate()` / `_read_gen` 丢弃过期快照；程序化 `selectRow` 不得反向触发激活。
-- **保存状态**只在 `SaveCoordinator` 里（`busy` / `seq+active_id` / `pending_row` / `conflict_snapshot`）；**段列表状态**只在 `SegmentSync` 里（`busy` / `seq` / `total_rows` / `auto_loading`）；**命中请求状态**只在 `HitCoordinator` 里（`row` / `gen`）。`MainWindow` 只实现端口，不要在端口里另做时机判断。
+- **保存状态**只在 `SaveCoordinator` 里（`busy` / `seq+active_id` / `pending_row` / `conflict_snapshot`）；**段列表状态**只在 `SegmentSync` 里（`busy` / `seq` / `total_rows` / `auto_loading`）；**命中请求状态**只在 `HitCoordinator` 里（`row` / `gen`）；**详情请求状态**只在 `DetailCoordinator` 里（段信息 `gen` / TB 详情 `seq+pending`）。`MainWindow` 只实现端口，不要在端口里另做时机判断。
 - 切行/保存/确认/过滤/草稿冲突属于红线；改动后跑 `--full`。
 - 写回前必须核对行号与远端快照；宁可拒绝，不允许静默写错。
 - 浮层一律用窗口内 `QWidget`，**不要用 QDialog**（当前 Qt 环境会 fail-fast）。
@@ -93,11 +101,11 @@ python tests/run_all.py --only test_seg_nav.py --only test_filter.js
 
 ## 下一步（按顺序）
 
-1. **段详情 / 术语浮层**继续从 `MainWindow` 拆出（`_fetch_segment_info`、`_update_segment_info`、`ResPanel` 详情联动、`_ensure_term_overlay` / `_request_tb_detail` 的请求身份）。
+1. **术语 / 语词检索浮层**的请求身份继续收口（`_term_req`、`_concordance_gen` 与 `on_bridge_event` 里的分发分支）；分发主要是 UI 变更，可只抽“哪次请求有效”的判断。
 2. 定义 **EditorBackend** 接口（旧版先实现），把新版编辑器作为独立后端接入。
 3. 再做新版编辑器完整支持（行列表、TM/TB、术语、过滤等）。
 
-不要等 `mainwindow.py` 全部拆完才做新版：保存、读取代际、段列表、命中四个边界已经就位，再拆到 EditorBackend 即可开始接新版。
+不要等 `mainwindow.py` 全部拆完才做新版：保存、读取代际、段列表、命中、详情五个边界已经就位，再拆到 EditorBackend 即可开始接新版。
 
 ## 本地目录/工作区
 
@@ -116,9 +124,10 @@ python tests/run_all.py --only test_seg_nav.py --only test_filter.js
 3. `app/save_coordinator.py`（保存/冲突状态机；端口在哪、代际怎么算）
 4. `app/segment_sync.py`（段列表同步/加载更多；旧快照怎么丢弃）
 5. `app/hit_coordinator.py`（TM/TB 命中请求身份与超时）
-6. `app/bridge.js` 顶部的 `PAGE` / `capabilities` / `fingerprint`
-7. `app/mainwindow.py` 的 `_reset_editor_context`、`activate_row`、`read_segment`、保存/段列表/命中端口区、`save_segment`（委托）
-8. `tests/test_save_coordinator.py`、`tests/test_segment_sync.py`、`tests/test_hit_coordinator.py`、`tests/test_capabilities.js`、`tests/test_capabilities_ui.py`
+6. `app/detail_coordinator.py`（段信息 / TB 详情请求身份）
+7. `app/bridge.js` 顶部的 `PAGE` / `capabilities` / `fingerprint`
+8. `app/mainwindow.py` 的 `_reset_editor_context`、`activate_row`、`read_segment`、保存/段列表/命中/详情端口区、`save_segment`（委托）
+9. `tests/test_save_coordinator.py`、`tests/test_segment_sync.py`、`tests/test_hit_coordinator.py`、`tests/test_detail_coordinator.py`、`tests/test_capabilities.js`、`tests/test_capabilities_ui.py`
 
 ## 发版规则
 
