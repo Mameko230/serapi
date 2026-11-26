@@ -3,7 +3,7 @@
 import json
 import time
 
-from PyQt6.QtCore import Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint
+from PyQt6.QtCore import Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint, QSize
 from PyQt6.QtWidgets import (
     QMainWindow, QSplitter, QTabWidget, QPlainTextEdit,
     QTextEdit, QVBoxLayout, QWidget, QLabel, QLineEdit, QHBoxLayout,
@@ -439,7 +439,7 @@ class SegStatusDelegate(QStyledItemDelegate):
         bg = index.data(Qt.ItemDataRole.BackgroundRole) or QColor("#f8fafc")
         fg = index.data(Qt.ItemDataRole.ForegroundRole) or QColor("#64748b")
         locked = bool(index.data(SegModel.LOCK_ROLE))
-        card = rect.adjusted(3, 5, -3, -5)
+        card = rect.adjusted(3, 2, -3, -2)
         # 卡片本体自绘圆角；用稳定的矩形裁剪限制文字，避免部分 Qt 构建在
         # QPainterPath 裁剪 + 选中重绘时发生原生 fail-fast。
         painter.setClipRect(card, Qt.ClipOperation.IntersectClip)
@@ -1100,8 +1100,11 @@ class ResPanel(QWidget):
         self.cc_input = FLineEdit()
         self.cc_input.setPlaceholderText("语词检索 · memoQ TM（Ctrl+K）")
         self.cc_input.setClearButtonEnabled(True)
-        self.btn_cc = PushButton("检索")
-        self.btn_cc.setToolTip("在当前 memoQ 项目的翻译记忆中检索（Ctrl+K 聚焦）")
+        self.btn_cc = TransparentToolButton(FluentIcon.SEARCH_MIRROR, self)
+        self.btn_cc.setFixedSize(32, 32)
+        self.btn_cc.setIconSize(QSize(17, 17))
+        self.btn_cc.setToolTip("语词检索：在当前 memoQ 项目的翻译记忆中检索（Ctrl+K）")
+        self.btn_cc.setAccessibleName("语词检索")
         self.cc_input.returnPressed.connect(lambda: self.concordanceRequested.emit(self.cc_input.text()))
         self.btn_cc.clicked.connect(lambda: self.concordanceRequested.emit(self.cc_input.text()))
         cc_lay.addWidget(self.cc_input, 1)
@@ -1936,32 +1939,28 @@ class MainWindow(QMainWindow):
         primary.addWidget(self.cap_label)
         self._update_conn_tooltip()
         primary.addWidget(self.conn_label)
-        self.btn_engine = PushButton("引擎"); self.btn_engine.setCheckable(True); self.btn_engine.setChecked(True)
-        self.btn_engine.setToolTip("显示/隐藏 memoQ 引擎（登录、选项目用；连接成功会自动隐藏）")
+        self.btn_engine = self._icon_button(
+            FluentIcon.ROBOT, "引擎：显示/隐藏 memoQ 页面", checkable=True)
+        self.btn_engine.setChecked(True)
         self.btn_engine.toggled.connect(self._apply_engine_visibility)
-        self.btn_account = PushButton("账号")
-        self.btn_account.setToolTip("切换 memoQ 服务器（可命名、可删除）或退出当前账号；再次点击关闭")
-        self.btn_account.setCheckable(True)
+        self.btn_account = self._icon_button(
+            FluentIcon.PEOPLE, "账号：切换 memoQ 服务器 / 退出账号", checkable=True)
         self.btn_account.toggled.connect(self._apply_account_visibility)
         primary.addWidget(self.btn_engine); primary.addWidget(self.btn_account)
-        self.btn_theme = PushButton("主题")
-        self.btn_theme.setToolTip("整体界面风格与编辑器配色（再次点击关闭）")
-        self.btn_theme.setCheckable(True)
+        self.btn_theme = self._icon_button(
+            FluentIcon.PALETTE, "主题：界面风格与编辑器配色", checkable=True)
         self.btn_theme.toggled.connect(self._apply_theme_visibility)
         primary.addWidget(self.btn_theme)
-        self.btn_settings = PushButton("设置")
-        self.btn_settings.setToolTip("确认后跳转等偏好（再次点击关闭）")
-        self.btn_settings.setCheckable(True)
+        self.btn_settings = self._icon_button(
+            FluentIcon.SETTING, "设置：确认后跳转、引擎自动关闭等", checkable=True)
         self.btn_settings.toggled.connect(self._apply_settings_visibility)
         primary.addWidget(self.btn_settings)
-        self.btn_shortcuts = PushButton("快捷键")
-        self.btn_shortcuts.setToolTip("查看当前版本所有快捷键（再次点击关闭）")
-        self.btn_shortcuts.setCheckable(True)
+        self.btn_shortcuts = self._icon_button(
+            FluentIcon.COMMAND_PROMPT, "快捷键：查看全部快捷键", checkable=True)
         self.btn_shortcuts.toggled.connect(self._apply_shortcuts_visibility)
         primary.addWidget(self.btn_shortcuts)
-        self.btn_tagrules = PushButton("Tag 规则")
-        self.btn_tagrules.setToolTip("换行符 / 标色 / 加粗等 tag 格式定义（主窗口内切换，不开新窗口）")
-        self.btn_tagrules.setCheckable(True)
+        self.btn_tagrules = self._icon_button(
+            FluentIcon.TAG, "Tag 规则：换行符 / 标色 / 加粗等格式定义", checkable=True)
         self.btn_tagrules.toggled.connect(self._toggle_rules_page)
         primary.addWidget(self.btn_tagrules)
 
@@ -2001,18 +2000,17 @@ class MainWindow(QMainWindow):
         self.seg_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.seg_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.seg_table.verticalHeader().setVisible(False)
-        # 译员反馈行距太密：行高从 32 提到 42，配合更大竖向留白，长文本更容易扫读。
-        self.seg_table.verticalHeader().setDefaultSectionSize(42)
+        self.seg_table.verticalHeader().setDefaultSectionSize(32)
         self.seg_table.setShowGrid(False)
         self.seg_table.setWordWrap(False)
         self.seg_table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.seg_table.setStyleSheet(
-            f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 13px; border: none;"
+            f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 12.5px; border: none;"
             f" background: transparent; }}"
-            f"QTableView::item {{ padding: 9px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
+            f"QTableView::item {{ padding: 5px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
             f"QTableView::item:selected {{ background: rgba(37,99,235,28); color: {pal['title']}; }}"
             f"QHeaderView::section {{ background: transparent; border: none;"
-            f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 9px 10px; color: {pal['header']};"
+            f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 8px 10px; color: {pal['header']};"
             f" font-weight: normal; font-size: 12px; }}")
         hh = self.seg_table.horizontalHeader()
         # 行号列不用 ResizeToContents：内容变化会让列宽来回跳、拖宽也会被重置。
@@ -2059,28 +2057,23 @@ class MainWindow(QMainWindow):
         self.row_edit.setPlaceholderText("输入行号跳转")
         self.row_edit.setToolTip("输入行号回车跳转（Ctrl+G 聚焦这里）")
         self.row_edit.returnPressed.connect(self._goto_row_edit)
-        self.btn_seginfo = PushButton("段信息")
-        self.btn_seginfo.setCheckable(True)
+        self.btn_seginfo = self._icon_button(
+            FluentIcon.INFO, "段信息：当前段上下文 / 原始 ID / 注释", checkable=True)
         self._seg_info_expanded = bool(self._load_ui_state().get("segmentInfoExpanded", True))
         self._seg_info_has_content = False
         self.btn_seginfo.setChecked(self._seg_info_expanded)
-        self.btn_seginfo.setToolTip("显示当前段的上下文 ID、原始 ID 与注释；展开状态会自动记忆")
         tb_lay.addWidget(self.ed_label)
         tb_lay.addWidget(self.row_edit)
         tb_lay.addWidget(self.btn_seginfo)
         # 图标型动作按钮：TransparentToolButton 自带 16px 图标与 hover/checked 背景。
         # 不要用空文本 PillPushButton + 固定宽度，否则漏斗图标会被裁成一条。
-        self.btn_filter = TransparentToolButton(FluentIcon.FILTER)
-        self.btn_filter.setCheckable(True)
-        self.btn_filter.setFixedSize(32, 32)
-        self.btn_filter.setToolTip("过滤（按原文/译文包含内容过滤整份文件）")
-        self.btn_filter.setAccessibleName("过滤")
+        self.btn_filter = self._icon_button(
+            FluentIcon.FILTER, "过滤（按原文/译文包含内容过滤整份文件，Ctrl+Shift+F）",
+            checkable=True)
         self.btn_filter.toggled.connect(self._toggle_filter_bar)
         tb_lay.addWidget(self.btn_filter)
-        self.btn_find = TransparentToolButton(FluentIcon.SEARCH)
-        self.btn_find.setFixedSize(32, 32)
-        self.btn_find.setToolTip("查找替换（memoQ 原生，Ctrl+H）")
-        self.btn_find.setAccessibleName("查找替换")
+        self.btn_find = self._icon_button(
+            FluentIcon.SEARCH, "查找替换（memoQ 原生，Ctrl+H）")
         self.btn_find.clicked.connect(self.open_find_replace)
         tb_lay.addWidget(self.btn_find)
         tb_lay.addStretch(1)
@@ -2806,6 +2799,30 @@ class MainWindow(QMainWindow):
             # 登录/选文档结束后再提示新版本，避免在引擎浮层上叠一层
             QTimer.singleShot(1200, self._prompt_pending_if_ready)
 
+    def _icon_button(self, icon, tooltip, checkable=False):
+        """统一图标按钮：无文字，悬停显示说明；checkable 自动带选中背景。"""
+        btn = TransparentToolButton(icon, self)
+        btn.setFixedSize(34, 34)
+        btn.setIconSize(QSize(18, 18))
+        btn.setToolTip(tooltip)
+        btn.setAccessibleName(str(tooltip).split("：")[0])
+        if checkable:
+            btn.setCheckable(True)
+        return btn
+
+    def _set_seginfo_hint(self, comments=False):
+        """图标按钮无文字：用图标 + tooltip 表示段信息是否有注释。"""
+        btn = getattr(self, "btn_seginfo", None)
+        if btn is None:
+            return
+        tip = ("段信息 · 有注释：当前段上下文 / 原始 ID / 注释" if comments
+               else "段信息：当前段上下文 / 原始 ID / 注释")
+        try:
+            btn.setToolTip(tip)
+            btn.setIcon(FluentIcon.MESSAGE if comments else FluentIcon.INFO)
+        except Exception:
+            pass
+
     def _auto_close_engine_enabled(self) -> bool:
         return bool((getattr(self, "_app_cfg", None) or {}).get("engine_auto_close", True))
 
@@ -3191,7 +3208,7 @@ class MainWindow(QMainWindow):
         _upd = getattr(self, "_update_seg_info_height", None)
         if callable(_upd):
             _upd()
-        self.btn_seginfo.setText("段信息")
+        self._set_seginfo_hint()
         self.seg_info.setHtml("<span style='color:#94a3b8'>段信息读取中…</span>")
 
     def request_segment_info(self, row_no, callback):
@@ -3229,7 +3246,7 @@ class MainWindow(QMainWindow):
         if not info.get("ok"):
             self._seg_info_has_content = False
             self.seg_info_frame.setVisible(False)
-            self.btn_seginfo.setText("段信息")
+            self.btn_seginfo.setToolTip("段信息：读取失败，可展开查看错误")
             self.seg_info.setHtml("<span style='color:#b91c1c'>段信息读取失败："
                                   + str(info.get("err") or "未知错误") + "</span>")
             _upd = getattr(self, "_update_seg_info_height", None)
@@ -3265,7 +3282,9 @@ class MainWindow(QMainWindow):
         if info.get("commentsLoading"):
             parts.append("<div style='color:#94a3b8; margin-top:3px'>文档注释加载中…</div>")
         self.seg_info.setHtml("".join(parts))
-        self.btn_seginfo.setText("段信息 · 有注释" if comments else "段信息")
+        hint = getattr(self, "_set_seginfo_hint", None)
+        if callable(hint):
+            hint(comments=bool(comments))
         # 新版没有上下文/原始 ID 接口，但面板仍要能展开看到“新版不提供”和注释状态，
         # 不能因为两个 ID 为空就永远收起、让用户以为段信息坏了。
         self._seg_info_has_content = bool(new_editor or context_id or original_id or comments)

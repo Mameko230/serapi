@@ -235,13 +235,14 @@ w_info._seg_info_expanded = True
 w_info._seg_info_has_content = False
 w_info.saved_info_states = []
 w_info._save_ui_state = lambda patch: w_info.saved_info_states.append(patch)
+w_info._set_seginfo_hint = types.MethodType(MainWindow._set_seginfo_hint, w_info)
 MainWindow._update_segment_info(w_info, {"ok": True, "rowNo": 3, "comments": ["旧行注释"]})
 assert "旧行注释" not in w_info.seg_info.toPlainText()
 MainWindow._update_segment_info(w_info, {"ok": True, "rowNo": 4, "contextId": "CTX-4",
                                           "originalId": 3, "comments": ["24", "a < b"]})
 info_text = w_info.seg_info.toPlainText()
 assert "CTX-4" in info_text and "24" in info_text and "a < b" in info_text
-assert w_info.btn_seginfo.text() == "段信息 · 有注释"
+assert "有注释" in w_info.btn_seginfo.toolTip()
 assert not w_info.seg_info_frame.isHidden()
 MainWindow._on_seginfo_toggled(w_info, False)
 assert w_info.seg_info_frame.isHidden()
