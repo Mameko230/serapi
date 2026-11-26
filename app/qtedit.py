@@ -337,6 +337,7 @@ class QuoteHighlighter(QSyntaxHighlighter):
 # ---------------- 编辑器 ----------------
 class MqEditor(QTextEdit):
     confirmRequested = pyqtSignal()          # Ctrl+Enter：确认并跳下一段
+    rejectRequested = pyqtSignal()           # Shift+Enter：拒绝当前段（状态变已拒绝）
     countsChanged = pyqtSignal(str)          # 字数状态文本
 
     def __init__(self, parent=None):
@@ -927,6 +928,12 @@ class MqEditor(QTextEdit):
     def keyPressEvent(self, ev):
         if ev.modifiers() & Qt.KeyboardModifier.ControlModifier and ev.key() == Qt.Key.Key_Return:
             self.confirmRequested.emit()
+            return
+        if (ev.modifiers() & Qt.KeyboardModifier.ShiftModifier
+                and not (ev.modifiers() & (Qt.KeyboardModifier.ControlModifier
+                                           | Qt.KeyboardModifier.AltModifier))
+                and ev.key() == Qt.Key.Key_Return):
+            self.rejectRequested.emit()
             return
         # 空格 → 蓝色圆点对象（memoQ 式非打印字符可视化）；Ctrl/Alt+空格不拦
         if (ev.key() == Qt.Key.Key_Space

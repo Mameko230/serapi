@@ -271,6 +271,24 @@ pushes.length = 0;   // bridge 启动时的 bridge-ready 不计入
   res = JSON.parse(JSON.stringify(api.listRows()));
   assert.strictEqual(res.rows.length, 100);
 
+  // 7) 新版行状态枚举映射：reviewer1Confirmed → reviewer1，rejected → rejected。
+  ctx.__md._rowsApi = null;
+  state.override = {
+    5: { type: 'row', id: 5, meta: { matchRate: 100, status: 'reviewer1Confirmed' },
+         source: { symbols: [{ type: 1, value: cp('R')[0] }] },
+         target: { symbols: [{ type: 1, value: cp('甲')[0] }] } },
+    6: { type: 'row', id: 6, meta: { matchRate: 100, status: 'rejected' },
+         source: { symbols: [{ type: 1, value: cp('J')[0] }] },
+         target: { symbols: [{ type: 1, value: cp('乙')[0] }] } },
+  };
+  api.listRows();
+  await tick();
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  const byNo2 = {};
+  res.rows.forEach((r) => { byNo2[r.rowNo] = r; });
+  assert.strictEqual(byNo2[6].status, 'reviewer1', byNo2[6]);
+  assert.strictEqual(byNo2[7].status, 'rejected', byNo2[7]);
+
   console.log('NEW_EDITOR_ROWS_API_TEST: PASS (offline only)');
 })().catch((err) => {
   console.error(err);

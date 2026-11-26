@@ -300,12 +300,20 @@
       return st;
     }
     function newRowStatusFromMeta(meta, hasTarget) {
+      // 新版 row.meta.status 是 memoQ 枚举 camelCase：
+      // notStarted/edited/trConfirmed/manuallyConfirmed/reviewer1Confirmed/
+      // reviewer2Confirmed/rejected/assembled/pretranslated.../machineTranslated 等。
       var st = String((meta && meta.status) || '');
-      if (st === 'manuallyConfirmed' || st === 'confirmed') return 'confirmed';
-      if (st === 'notStarted') return 'untranslated';
-      if (st === 'partiallyEdited' || st === 'preTranslated' || st === 'edited') {
+      var low = st.toLowerCase();
+      if (/r2[-_\s]*confirmed|reviewer[-_\s]*2|proofreader[-_\s]*2/.test(low)) return 'reviewer2';
+      if (/r1[-_\s]*confirmed|reviewer[-_\s]*1|proofreader[-_\s]*1/.test(low)) return 'reviewer1';
+      if (/rejected/.test(low)) return 'rejected';
+      if (/manuallyconfirmed|tr[-_\s]*confirmed|(^|[^a-z])confirmed([^a-z]|$)/.test(low)) return 'confirmed';
+      if (/pre[-_\s]*translated|assembled|machine[-_\s]*translated|xtranslated/.test(low)) {
         return hasTarget ? 'edited' : 'untranslated';
       }
+      if (/not[-_\s]*started|untrans|empty/.test(low)) return 'untranslated';
+      if (/edited/.test(low)) return hasTarget ? 'edited' : 'untranslated';
       return hasTarget ? 'edited' : 'untranslated';
     }
     function newRowApiEntry(raw) {
@@ -552,13 +560,14 @@
         if (!Array.isArray(items)) throw new Error('注释返回不是数组');
         if (String(window.__md._infoRow) !== String(rowNo)) return;  // 已切行：丢弃
         var info = { ok: true, rowNo: Number(rowNo), contextId: '', originalId: '',
-                     comments: newCommentTexts(items), commentsLoading: false };
+                     comments: newCommentTexts(items), commentsLoading: false,
+                     newEditor: true };
         window.__md._info = info;
         __md.push('segment-info', info);
       }).catch(function (e) {
         if (String(window.__md._infoRow) !== String(rowNo)) return;
         var info = { ok: true, rowNo: Number(rowNo), contextId: '', originalId: '',
-                     comments: [], commentsLoading: false,
+                     comments: [], commentsLoading: false, newEditor: true,
                      err: String(e.message || e).slice(0, 160) };
         window.__md._info = info;
         __md.push('segment-info', info);
@@ -830,6 +839,7 @@
           f.rowChanged = true;
           f.docStats = !!(p && p.statusBar && document.querySelector(p.statusBar));
           f.confirm = !!pageConfirmInput();
+          f.reject = f.confirm;
           f.concordance = !!(window.WebTrans && WebTrans.Core);
           try {
             var core = termCore();
@@ -850,6 +860,9 @@
           f.segmentInfo = !!newApiNamespace('translation');
           // 过滤走原生 filter API（只改视图），不依赖旧版过滤面板。
           f.filter = !!newDocApiBase();
+          // 确认/拒绝用新版原生快捷键（Ctrl+Enter / Shift+Enter），跳转遵循 memoQ 设置。
+          f.confirm = true;
+          f.reject = true;
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -1025,6 +1038,8 @@
       var doc = view.state.doc;
       var row = newViewRow(view);
       var rowId = row ? newRowIdOf(row) : null;
+      // 确认/拒绝快捷键要发给当前活动编辑器：记住最近一次真正读过/聚焦的 PM。
+      try { window.__md._lastView = view; window.__md._lastPm = view.dom; } catch (e) {}
       var res = {
         rowId: (rowId !== null && rowId !== undefined) ? rowId : doc.attrs.rowId,
         rowNo: row ? newRowIndexOf(row) : null,
@@ -1040,6 +1055,36 @@
       } catch (e) {}
       return res;
     }
+    function newDispatchEditorShortcut(key, ctrl, shift) {
+      // 新版编辑器的确认/拒绝/跳行都由 memoQ 原生快捷键处理：
+      // 合成 Ctrl+Enter / Shift+Enter 即可复用用户的“确认后跳转”原生设置。
+      var el = null;
+      try {
+        var last = window.__md._lastPm;
+        if (last && last.isConnected) el = last;
+      } catch (e) {}
+      if (!el) {
+        try {
+          var active = document.activeElement;
+          if (active && active.closest && active.closest('div.ProseMirror')) el = active;
+        } catch (e) {}
+      }
+      if (!el) {
+        try { el = document.querySelector('div.ProseMirror'); } catch (e) {}
+      }
+      if (!el) return null;
+      var init = {
+        key: key, code: key === 'Enter' ? 'Enter' : key, keyCode: 13, which: 13,
+        ctrlKey: !!ctrl, shiftKey: !!shift, altKey: false,
+        bubbles: true, cancelable: true, composed: true,
+      };
+      var types = ['keydown', 'keypress', 'keyup'];
+      for (var i = 0; i < types.length; i++) {
+        try { el.dispatchEvent(new KeyboardEvent(types[i], init)); } catch (e) {}
+      }
+      return el;
+    }
+
     function newWriteSegment(view, tokens) {
       var schema = view.state.schema;
       // 克隆段内已有换行 tag 的 attrs 作为 Enter 的格式（与原文一致）
@@ -1746,6 +1791,17 @@
     // 注意：确认后 memoQ 会把活动行跳到下一个未确认段（原生行为）。
     window.__md.api.confirmSegment = function () {
       var kind = detectEditor();
+      if (kind === 'new') {
+        // 用原生 Ctrl+Enter：memoQ 自己负责确认、状态更新和“确认后跳转”设置。
+        var view = null;
+        try { view = newActiveView() || newAnyView() || window.__md._lastView; } catch (e) {}
+        var rowId = null;
+        try { rowId = view && view.state.doc.attrs.rowId; } catch (e) {}
+        if (view) { try { view.focus(); } catch (e) {} }
+        var target = newDispatchEditorShortcut('Enter', true, false);
+        if (!target) return { ok: false, err: '新版编辑器焦点未找到' };
+        return { ok: true, rowId: rowId, via: 'shortcut' };
+      }
       if (kind !== 'old') return { ok: false, err: 'confirmSegment 仅旧版支持' };
       try {
         var inp = pageConfirmInput();
@@ -1763,8 +1819,42 @@
       } catch (e) { return { ok: false, err: 'confirmSegment ERR ' + e.message }; }
     };
 
+    window.__md.api.rejectSegment = function () {
+      var kind = detectEditor();
+      if (kind === 'new') {
+        // 原生 Shift+Enter：memoQ 语义的“拒绝句段”，状态变 rejected。
+        var view = null;
+        try { view = newActiveView() || newAnyView() || window.__md._lastView; } catch (e) {}
+        var rowId = null;
+        try { rowId = view && view.state.doc.attrs.rowId; } catch (e) {}
+        if (view) { try { view.focus(); } catch (e) {} }
+        var target = newDispatchEditorShortcut('Enter', false, true);
+        if (!target) return { ok: false, err: '新版编辑器焦点未找到' };
+        return { ok: true, rowId: rowId, via: 'shortcut' };
+      }
+      if (kind !== 'old') return { ok: false, err: 'rejectSegment 仅旧版支持' };
+      try {
+        var inp = pageConfirmInput();
+        if (!inp) return { ok: false, err: '隐藏输入框未找到' };
+        inp.focus();
+        ['keydown', 'keypress', 'keyup'].forEach(function (t) {
+          try {
+            inp.dispatchEvent(new KeyboardEvent(t, {
+              key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+              shiftKey: true, bubbles: true, cancelable: true
+            }));
+          } catch (e) {}
+        });
+        return { ok: true };
+      } catch (e) { return { ok: false, err: 'rejectSegment ERR ' + e.message }; }
+    };
+
     window.__md.api.refreshRowCache = function (rowId) {
       return newRefreshRowCache(rowId);
+    };
+
+    window.__md.api.refreshRowCacheByRow = function (rowNo) {
+      return newRefreshRowCache(newRowIdFor(rowNo));
     };
 
     window.__md.api.readSegment = function (rowId) {
@@ -2381,7 +2471,7 @@
         window.__md._info = { status: 'pending', rowNo: Number(rowNo) };
         newFetchSegmentInfo(rowNo);
         return { ok: true, rowNo: Number(rowNo), contextId: '', originalId: '',
-                 comments: [], commentsLoading: true };
+                 comments: [], commentsLoading: true, newEditor: true };
       }
       if (detectEditor() !== 'old') return { ok: false, err: '段信息仅旧版支持' };
       window.__md._infoRow = rowNo;

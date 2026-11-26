@@ -176,6 +176,7 @@ function respond(index, status, body) {
   const sync = api.segmentInfo(1);
   assert.strictEqual(sync.ok, true);
   assert.strictEqual(sync.commentsLoading, true);
+  assert.strictEqual(sync.newEditor, true);
   sameJson(sync.comments, []);
   assert.strictEqual(fetches.length, 1);
   assert.ok(fetches[0].url.endsWith('/translation/projects/p/docs/d/comments'), fetches[0].url);
@@ -200,6 +201,7 @@ function respond(index, status, body) {
   assert.strictEqual(pushed.data.contextId, '');
   assert.strictEqual(pushed.data.originalId, '');
   assert.strictEqual(pushed.data.commentsLoading, false);
+  assert.strictEqual(pushed.data.newEditor, true);
   assert.strictEqual(ctx.__md._info.status, undefined);
   assert.strictEqual(ctx.__md._info.rowNo, 1);
 

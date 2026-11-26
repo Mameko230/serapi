@@ -84,7 +84,9 @@ assert.strictEqual(nc.features.tmHits, true);
 assert.strictEqual(nc.features.segmentInfo, true);
 assert.strictEqual(nc.features.filter, true);
 assert.strictEqual(nc.features.terms, false);
-assert.strictEqual(nc.features.confirm, false);
+// 新版确认/拒绝用原生快捷键实现，能力置真。
+assert.strictEqual(nc.features.confirm, true);
+assert.strictEqual(nc.features.reject, true);
 assert.ok(nc.reasons.listRows);
 assert.strictEqual(nc.reasons.filter, undefined);
 assert.strictEqual(nc.fingerprint.ok, false);

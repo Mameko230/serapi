@@ -148,6 +148,18 @@ for _i in range(empty_panel._hits_lay.count()):
         hint_texts.append(_w.text())
 assert any("空面板提示" in t for t in hint_texts), hint_texts
 
+# 6e) 快捷键：Shift+Enter 发拒绝，Ctrl+Enter 发确认（新版/旧版共用编辑器）。
+from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
+
+ed_keys = MqEditor()
+seen_keys = []
+ed_keys.confirmRequested.connect(lambda: seen_keys.append("confirm"))
+ed_keys.rejectRequested.connect(lambda: seen_keys.append("reject"))
+QTest.keyClick(ed_keys, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
+QTest.keyClick(ed_keys, Qt.Key.Key_Return, Qt.KeyboardModifier.ControlModifier)
+assert seen_keys == ["reject", "confirm"], seen_keys
+
 # 6d) 新版命中带 token：tag 按名字映射到当前原文 attrs；严格模式下缺 tag 拒绝插入。
 insert_host = Dummy()
 insert_host.editor = MqEditor()
@@ -240,6 +252,13 @@ assert w_info._seg_info_expanded is False  # 无内容不得篡改用户偏好
 MainWindow._on_seginfo_toggled(w_info, True)
 MainWindow._update_segment_info(w_info, {"ok": True, "rowNo": 4, "contextId": "CTX-4"})
 assert not w_info.seg_info_frame.isHidden()
+# 新版没有上下文/原始 ID：面板仍要能展开并明确写“新版不提供”。
+MainWindow._update_segment_info(w_info, {"ok": True, "rowNo": 4, "newEditor": True,
+                                          "contextId": "", "originalId": "",
+                                          "comments": []})
+assert not w_info.seg_info_frame.isHidden()
+info_text = w_info.seg_info.toPlainText()
+assert info_text.count("新版不提供") == 2, info_text
 
 # 9) 语词检索入口常驻，真实结果含原文/译文/来源，关键词高亮且 tag 不裸露。
 panel._last_clean = MainWindow._clean_editor_str

@@ -1892,6 +1892,7 @@ class MainWindow(QMainWindow):
         self.editor.viewport().setAutoFillBackground(False)
         self.editor.countsChanged.connect(lambda s: self.status.setText(s))
         self.editor.confirmRequested.connect(self.write_segment)
+        self.editor.rejectRequested.connect(self.reject_segment)
         # 左原文 = 只读 MqEditor：与译文同一套药丸渲染（setReadOnly 会禁程序化插入，
         # 所以每次载入时先解锁、载完再锁）
         self.src_view = MqEditor()
@@ -2919,12 +2920,21 @@ class MainWindow(QMainWindow):
         import html
         context_id = str(info.get("contextId") or "").strip()
         original_id = str(info.get("originalId") or "").strip()
+        new_editor = bool(info.get("newEditor"))
         comments = [str(c).strip() for c in (info.get("comments") or []) if str(c).strip()]
+
+        def id_cell(value):
+            if value:
+                return html.escape(value)
+            if new_editor:
+                return "<span style='color:#94a3b8'>新版不提供</span>"
+            return "<span style='color:#94a3b8'>无</span>"
+
         parts = [
             "<div style='margin:2px 0'><span style='color:#94a3b8'>上下文 ID</span>　"
-            + (html.escape(context_id) if context_id else "<span style='color:#94a3b8'>无</span>") + "</div>",
+            + id_cell(context_id) + "</div>",
             "<div style='margin:2px 0'><span style='color:#94a3b8'>原始 ID</span>　"
-            + (html.escape(original_id) if original_id else "<span style='color:#94a3b8'>无</span>") + "</div>",
+            + id_cell(original_id) + "</div>",
         ]
         if comments:
             parts.append("<div style='margin:3px 0 1px'><span style='color:#94a3b8'>注释</span></div>")
@@ -2937,7 +2947,9 @@ class MainWindow(QMainWindow):
             parts.append("<div style='color:#94a3b8; margin-top:3px'>文档注释加载中…</div>")
         self.seg_info.setHtml("".join(parts))
         self.btn_seginfo.setText("段信息 · 有注释" if comments else "段信息")
-        self._seg_info_has_content = bool(context_id or original_id or comments)
+        # 新版没有上下文/原始 ID 接口，但面板仍要能展开看到“新版不提供”和注释状态，
+        # 不能因为两个 ID 为空就永远收起、让用户以为段信息坏了。
+        self._seg_info_has_content = bool(new_editor or context_id or original_id or comments)
         expanded = bool(getattr(self, "_seg_info_expanded", True))
         self.seg_info_frame.setVisible(self._seg_info_has_content and expanded)
         _upd = getattr(self, "_update_seg_info_height", None)
@@ -4474,6 +4486,9 @@ class MainWindow(QMainWindow):
             if res.get("ok"):
                 self._segments.invalidate()
                 self.log("已发送 memoQ 原生确认，等待状态回执")
+                if getattr(self, "_cap_editor", None) == "new":
+                    # 行缓存是 API 快照：确认会改状态，稍后刷新该行，避免段列表回跳。
+                    QTimer.singleShot(700, lambda: self._refresh_row_cache(row_no))
                 # 某些旧版页面确认后焦点离开隐藏输入框，row-changed 轮询可能漏发。
                 # 450ms 后直接读当前活动行；若推送已先读取，read_gen 会阻止重复读取。
                 read_gen = self._read_gen
@@ -4485,6 +4500,79 @@ class MainWindow(QMainWindow):
             self._schedule_seg_refresh(1200)
         QTimer.singleShot(3500, release_if_stuck)
         backend_for(self).confirm_segment(done)
+
+    def _refresh_row_cache(self, row_no: int):
+        """确认/拒绝后刷新该行 API 缓存；失败不影响主流程。"""
+        try:
+            backend_for(self).refresh_row_cache(row_no)
+        except Exception:
+            pass
+
+    def reject_segment(self):
+        """Shift+Enter：先写回当前编辑，再把行状态改为已拒绝（同 memoQ 原生语义）。"""
+        if self._confirm_busy:
+            self.log("上一次确认/拒绝仍在等待 memoQ 响应，请稍候……")
+            return
+        row_no, doc_url = self._cur_row, self._editor_url
+        if self._has_loaded_segment and not self._has_actual_edits():
+            self.editor.document().setModified(False)
+            self._reject_after_write(expected_row=row_no, expected_doc=doc_url)
+            return
+        rev = self._edit_rev
+
+        def saved(ok):
+            if not ok:
+                return
+            if row_no != self._cur_row or doc_url != self._editor_url:
+                self.log("保存后文档或活动行已变化，本次未拒绝")
+                return
+            if rev != self._edit_rev:
+                self.log("保存后又有新编辑，本次未拒绝；请再次按 Shift+Enter")
+                return
+            self._reject_after_write(expected_row=row_no, expected_doc=doc_url)
+        self.save_segment(on_done=saved, force=True)
+
+    def _reject_after_write(self, expected_row=None, expected_doc=None):
+        """派发一次 memoQ 原生拒绝；状态回执同样靠随后读取/刷新行列表。"""
+        if self._confirm_busy:
+            self.log("上一次确认/拒绝仍在等待 memoQ 响应，请稍候……")
+            return
+        if not self._has_loaded_segment or self._activating_row is not None:
+            self.log("当前段尚未稳定读取，暂不能拒绝")
+            return
+        row_no = self._cur_row if expected_row is None else expected_row
+        doc_url = self._editor_url if expected_doc is None else expected_doc
+        if row_no != self._cur_row or doc_url != self._editor_url:
+            self.log("文档或活动行已变化，本次未拒绝")
+            return
+        self._confirm_busy = True
+        self._confirm_seq += 1
+        reject_id = self._confirm_seq
+
+        def release_if_stuck():
+            if reject_id == self._confirm_seq and self._confirm_busy:
+                self._confirm_busy = False
+                self.log("拒绝后尚未收到状态更新，已解除保护；请核对 memoQ 状态")
+
+        def done(r):
+            if reject_id != self._confirm_seq:
+                return
+            try:
+                res = json.loads(r) if isinstance(r, str) else r
+            except Exception:
+                res = {"ok": False}
+            res = res or {"ok": False}
+            if res.get("ok"):
+                self._segments.invalidate()
+                self.log("已发送 memoQ 原生拒绝，等待状态回执")
+                if getattr(self, "_cap_editor", None) == "new":
+                    QTimer.singleShot(700, lambda: self._refresh_row_cache(row_no))
+                self._schedule_seg_refresh(1200)
+            else:
+                self._confirm_busy = False
+                self.log(f"拒绝未生效: {res.get('err')}（可在 memoQ 页手动 Shift+Enter）")
+        QTimer.singleShot(3500, release_if_stuck)
+        backend_for(self).reject_segment(done)
 
     # ---------------- 保存协调器端口（状态机在 save_coordinator.py） ----------------
     # 这里只提供“取值 / 落草稿 / 调桥接 / 更新界面”，不做任何保存时机的判断。

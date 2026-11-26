@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 27/27 约 30s；full 44/44 约 75s。
+   - 最近结果：fast 28/28 约 32s；full 45/45 约 79s。
 
 ### 重构第一步
 
@@ -111,13 +111,15 @@
   - **TM 插入（tag 感知，已按用户确认语义）**：TM 命中带 `srcTokens/tgtTokens` 与 `strictTags/tagPlanOk/readOnly`。插入时命中 tag 按名字映射到当前原文 tag（复用原文 PM attrs 重建），**顺序按 TM**；TM 有 tag 而原文没有 → 对应 tag 略过、只插文本（不再整条阻止）；全部能配上时 `strictTags=true`（若仍发生丢弃则整体拒绝，防 bug 静默丢 tag），配不齐时 `strictTags=false` 允许略过。写回成功后 bridge 自动 `POST /rows` 刷新该行缓存并推 `rows-updated`，避免段列表显示保存前旧译文。
   - 文本符号是逐字符 Unicode 码点（数字/数字串）：优先用 `segment.text`，没有时按码点解码，不能直接拼数字串。
   - `HitCoordinator` 增加了 Qt 侧轮询兜底（首次 pending 时用 QTimer 轮询 `tmHitsPoll`，不依赖页面定时器；页面隐藏时 setTimeout 会被冻结/节流）。
-  - **段信息（注释）**：`POST /api/translation/projects/<prj>/docs/<doc>/comments`，body `{rowIds:[rowId]}`；上下文/原始 ID 新版行 meta 不暴露（只有 matchRate/status/结构信息），UI 显示“无”。注释文本兼容 `text/commentText/content/message/comment.text` 字段；响应回来时会校验 `_infoRow`，切行后丢弃旧响应。
+  - **确认/拒绝（原生快捷键）**：新版 Ctrl+Enter 确认、Shift+Enter 拒绝都通过合成 `KeyboardEvent` 派发给 ProseMirror（`newDispatchEditorShortcut`），由 memoQ 自己处理确认/拒绝、状态更新和“确认后跳转”原生设置；Qt 侧仍是先保存编辑再派发，成功后 700ms 刷新行缓存、450ms 兜底读取活动行。旧版继续对隐藏输入框派发 Ctrl/Shift+Enter。
+  - **新版行状态映射**：`row.meta.status` 是 camelCase 枚举（notStarted/edited/trConfirmed/manuallyConfirmed/reviewer1Confirmed/reviewer2Confirmed/rejected/assembled/preTranslated*/machineTranslated 等），按正则映射到段模型状态（reviewer1/reviewer2/rejected/confirmed/edited/untranslated）。
+  - **段信息（新版）**：info 带 `newEditor:true`；上下文/原始 ID 新版接口不提供，面板明确显示“新版不提供”但仍可展开看注释，不再因为两个 ID 为空而完全收起。
   - **过滤（原生 filter API，只读视图）**：`POST /api/editor/.../filter`，body `{filterSet:{content:{source:{text,isCaseSensitive:false,matchType:'any',shouldMatchExactWordOrder:false}, target:{...}, shouldIncludeSegments:true}}, sorting:'none'}` → `{rangesByRowIds:[{key: rowId, value:[ranges]}]}`；`key` 就是命中的 0 基 rowId。过滤后 `listRows` 只按命中 rowId 取行（`total`=命中数，行号保留原始 rowId+1，与旧版一致）；清除过滤用空 `filterSet:{}`。失败会 push `filter-error`，Qt 恢复过滤 UI 状态。
   - **POST 必须带认证头**：`X-CSRF-TOKEN`（cookie）+ `X-Requested-With: XMLHttpRequest`（有 Bearer 时再加 `Authorization`），否则行数据/注释接口一律 400。GET 不需要。
   - **行数据 API（已用于段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,isLocked,...},source:{symbols},target:{symbols}}]`。每批 100 行；`id` 即 0 基 rowId。
   - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，TB 详情显示条目 2487（只读）、原文「強化」/译文「強化哦」、定义/示例/字段（Subject: SNACK、Note: 111），底部“术语数量提醒”正常；第 3 行 5 条 TM（101/65%…）；第 4 行 TM 101% 命中带 3 个 tag（`strictTags=true/readOnly=false`，src/tgt tokens 各 4）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行；P0 修复后切到第 5 行等 7 秒，TM/TB 命中列表 6 行仍在、详情同屏。
 - **只读保护**：新版 TB 条目一律 `readOnly: true`（详情只读、不带旧版编辑接口）；TM 命中不再因 tag 问题整条只读：正常插入并可略过原文没有的 tag；`_res_insert` 仍拒绝 `readOnly` 命中。TM 插入离线契约已覆盖，真机插入冒烟可由用户双击验证。
-- **已知限制**：段列表每批 100 行按需加载（长文档滚到底再取下一批）；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签），过滤后跳行仍按原始行号估算滚动；TM 插入真机尚未人工冒烟；TB 命中详情只读（定义/示例/字段来自命中数据，术语编辑接口未接）；TB 条目若没有目标语言译文只显示源术语；原生确认仍未接入；段信息只有注释，没有上下文/原始 ID。
+- **已知限制**：段列表每批 100 行按需加载（长文档滚到底再取下一批）；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签），过滤后跳行仍按原始行号估算滚动；TM 插入真机尚未人工冒烟；确认/拒绝通过合成原生快捷键实现，真机尚未冒烟（settingsBased 跳转依赖 memoQ 原生）；TB 命中详情只读（定义/示例/字段来自命中数据，术语编辑接口未接）；原生确认/拒绝写操作只在授权文档冒烟；段信息只有注释，没有上下文/原始 ID（新版不提供）。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。
 
 ## 关键红线
@@ -167,10 +169,12 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 
 ## 下一步（按顺序）
 
-1. TM 命中插入（含 tag 映射）真机人工冒烟（需用户同意）；TB 术语编辑（`data/terms/*` 命令通道，写操作需用户同意）。
-2. 新版原生确认（“确认句段”按钮/命令通道）；写操作只在授权文档上人工冒烟。
-3. 过滤高级条件（状态/标签/正则、大小写）与过滤后跳行映射。
-4. 可选：语词检索浮层分发收口；`--selftest`/探针诊断里的 `call_js` 表达式不再收敛。
+1. 长文档行号跳转 + “小缓存窗跟随跳转”（bridge 按 rowNo 拉窗口、列表显示原始行号、向下扩批）。
+2. 主面板“设置”入口：跳转模式默认“跟随 memoQ 原生设置”，持久化到 ui.json。
+3. 行号列按状态过滤（段模型层多选过滤，不影响 rowNo/激活）。
+4. 行号列拖动抖动（表头 ResizeToContents 改交互式+持久宽度）与术语数量提醒闪动（固定高度/节流）。
+5. TB 术语编辑：复用旧 `QTermService/UpdateEntry`，新版 projectGuid 从 URL 取、tbGuid/entryId 从命中取；只读库判断与还原。
+6. 全量测试后真机冒烟（tag/术语/确认/拒绝/跳转/过滤）；发版等用户明确指示。
 
 不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。
 
