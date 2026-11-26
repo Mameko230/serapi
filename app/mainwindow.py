@@ -24,7 +24,8 @@ from .overlay_coordinator import RequestSequence, TermOverlayCoordinator
 from .save_coordinator import SaveCoordinator, SaveSnapshot
 from .segment_sync import SegmentSync
 from . import appconfig, tooltips
-from .overlays import AccountOverlay, ThemePanel, UpdateOverlay, SettingsPanel
+from .overlays import (AccountOverlay, ThemePanel, UpdateOverlay, SettingsPanel,
+                       TermBasePickerOverlay)
 from .updater import (
     ReleaseChecker, decide, reason_text, safe_release_url, should_auto_check, today_str,
 )
@@ -952,8 +953,13 @@ class EngineOverlay(QWidget):
         sub.setStyleSheet("color:#64748b;")
         self.btn_close = PushButton("返回翻译")
         self.btn_close.clicked.connect(self.closeRequested)
+        self.btn_close_x = TransparentToolButton(FluentIcon.CLOSE, self.card)
+        self.btn_close_x.setFixedSize(32, 32)
+        self.btn_close_x.setToolTip("关闭引擎浮层（Esc）")
+        self.btn_close_x.clicked.connect(self.closeRequested)
         head.addWidget(title); head.addWidget(sub); head.addStretch(1)
         head.addWidget(self.btn_close)
+        head.addWidget(self.btn_close_x)
         lay.addLayout(head)
         lay.addWidget(tabs, 1)
 
@@ -1782,6 +1788,8 @@ class MainWindow(QMainWindow):
         sc_save.activated.connect(self.save_segment)
         sc_term = QShortcut(QKeySequence("Ctrl+E"), self)
         sc_term.activated.connect(self.open_term_editor)
+        sc_quick_term = QShortcut(QKeySequence("Ctrl+Q"), self)
+        sc_quick_term.activated.connect(self.quick_add_term)
         # TM/术语命中插入快捷键：Ctrl+1..9 = 插入列表中第 N 条（与双击同效）
         for i in range(1, 10):
             sc_hit = QShortcut(QKeySequence(f"Ctrl+{i}"), self)
@@ -2201,6 +2209,9 @@ class MainWindow(QMainWindow):
         self._stats_seq = 0
         self._conflict_overlay = None
         self._term_overlay = None
+        self._quick_picker = None
+        self._quick_ctx = None
+        self._quick_remember_after = False
         self._term = TermOverlayCoordinator(self)  # 术语浮层请求编号与分发
         self._info = SegmentInfoCoordinator(self)   # 段信息请求身份
         self._tb_details = TbDetailCoordinator(self)  # TB 条目定义/示例请求身份
@@ -2368,6 +2379,8 @@ class MainWindow(QMainWindow):
             self._theme_panel.keep_inside()
         if getattr(self, "_settings_panel", None) is not None:
             self._settings_panel.keep_inside()
+        if getattr(self, "_quick_picker", None) is not None:
+            self._quick_picker.resize(self.size())
         if getattr(self, "_engine_overlay", None) is not None:
             self._engine_overlay.resize(self.size())
             if getattr(self, "_engine_parked", False):
@@ -2621,6 +2634,9 @@ class MainWindow(QMainWindow):
                 and getattr(self, "_pending_update", None)):
             # 登录/选文档结束后再提示新版本，避免在引擎浮层上叠一层
             QTimer.singleShot(1200, self._prompt_pending_if_ready)
+
+    def _auto_close_engine_enabled(self) -> bool:
+        return bool(self._app_cfg.get("engine_auto_close", True))
 
     def _set_engine_visible(self, visible: bool):
         self.btn_engine.blockSignals(True)
@@ -3326,6 +3342,118 @@ class MainWindow(QMainWindow):
             return
         self._term_call("termAddReq", dict(params))
 
+    # ---------------- Ctrl+Q 快速添加术语 ----------------
+    def _ensure_quick_picker(self):
+        if self._quick_picker is None:
+            self._quick_picker = TermBasePickerOverlay(self)
+            self._quick_picker.picked.connect(self._on_quick_tb_picked)
+            self._quick_picker.resize(self.size())
+        return self._quick_picker
+
+    def quick_add_term(self):
+        """Ctrl+Q：原文/译文各选中术语后直接加入术语库；多库时先选库。"""
+        caps = getattr(self, "_caps", {})
+        if caps and not (caps.get("termQuickAdd", caps.get("terms"))):
+            msg = "当前编辑器不支持快速添加术语"
+            self.log(msg)
+            self.res_panel.set_status(msg)
+            return
+        if not self._has_loaded_segment:
+            self.log("当前段尚未读取完成，暂不能添加术语")
+            return
+        source = self._term_selection_text(self.src_view.selected_tokens())
+        target = self._term_selection_text(self.editor.selected_tokens())
+        if not source or not target:
+            self.log("Ctrl+Q：请分别在原文、译文选中要添加的术语")
+            return
+        req = self._term.next_request()
+        self._quick_ctx = {"req": req, "source": source, "target": target}
+        self._quick_remember_after = False
+        params = {
+            "source": source,
+            "target": target,
+            "tbGuid": str(self._app_cfg.get("quick_term_tb") or ""),
+        }
+        backend_for(self).term_call("termQuickAddReq", req, params)
+
+    def _handle_quick_term(self, kind, data):
+        data = data or {}
+        if not self._term.requests.is_current(data.get("req")):
+            return
+        if kind == "term-pick-tb":
+            ctx = self._quick_ctx or {}
+            items = data.get("items") or []
+            if not items:
+                self.log("没有可用的术语库")
+                return
+            if data.get("stale"):
+                # 记住的库已不可用：清掉记忆，重新让用户选。
+                self._app_cfg["quick_term_tb"] = ""
+                self._app_cfg["quick_term_tb_name"] = ""
+                appconfig.save(self._app_cfg)
+            self._quick_ctx = {
+                "req": data.get("req"),
+                "source": str(data.get("source") or ctx.get("source") or ""),
+                "target": str(data.get("target") or ctx.get("target") or ""),
+                "srcLang": str(data.get("srcLang") or ""),
+                "tgtLang": str(data.get("tgtLang") or ""),
+                "projectGuid": str(data.get("projectGuid") or ""),
+            }
+            picker = self._ensure_quick_picker()
+            picker.resize(self.size())
+            picker.open(items, self._quick_ctx["source"], self._quick_ctx["target"],
+                        selected=str(data.get("selected") or data.get("primary") or ""),
+                        stale=bool(data.get("stale")))
+            return
+        if kind == "term-quick-err":
+            self.log(f"添加术语失败：{data.get('err') or '未知错误'}")
+            if self._quick_picker is not None:
+                self._quick_picker.hide()
+            self.res_panel.set_status(f"添加术语失败：{data.get('err') or '未知错误'}")
+            self._quick_ctx = None
+            return
+        # term-quick-result
+        ctx = self._quick_ctx or {}
+        if self._quick_picker is not None:
+            self._quick_picker.hide()
+        if self._quick_remember_after:
+            self._app_cfg["quick_term_tb"] = str(data.get("tbGuid") or "")
+            self._app_cfg["quick_term_tb_name"] = str(data.get("tbName") or "")
+            appconfig.save(self._app_cfg)
+            if getattr(self, "_settings_panel", None) is not None:
+                self._settings_panel.open(
+                    str(self._app_cfg.get("jump_mode") or "follow"),
+                    bool(self._app_cfg.get("engine_auto_close", True)),
+                    self._app_cfg["quick_term_tb_name"])
+            self._quick_remember_after = False
+        tb_name = str(data.get("tbName") or "")
+        self.log(f"已快速添加术语：{data.get('source', '')} → "
+                 f"{data.get('target', '')}" + (f"（{tb_name}）" if tb_name else ""))
+        self.res_panel.set_status("术语已添加")
+        try:
+            self._fetch_res(self._cur_row)
+        except Exception:
+            pass
+        self._quick_ctx = None
+
+    def _on_quick_tb_picked(self, tb_guid, remember):
+        ctx = self._quick_ctx or {}
+        if not ctx:
+            return
+        req = self._term.next_request()
+        self._quick_ctx = dict(ctx, req=req)
+        self._quick_remember_after = bool(remember)
+        self._quick_picker.hide()
+        params = {
+            "source": ctx.get("source") or "",
+            "target": ctx.get("target") or "",
+            "tbGuid": str(tb_guid),
+            "sourceLang": ctx.get("srcLang") or "",
+            "targetLang": ctx.get("tgtLang") or "",
+            "projectGuid": ctx.get("projectGuid") or "",
+        }
+        backend_for(self).term_call("termQuickAddReq", req, params)
+
     def _edit_term(self, payload):
         caps = getattr(self, "_caps", {})
         can_edit = caps.get("termEdit")
@@ -3825,8 +3953,14 @@ class MainWindow(QMainWindow):
         if getattr(self, "_settings_panel", None) is None:
             self._settings_panel = SettingsPanel(self)
             self._settings_panel.jumpModeChanged.connect(self._set_jump_mode)
+            self._settings_panel.engineAutoCloseChanged.connect(self._set_engine_auto_close)
+            self._settings_panel.clearQuickTermRequested.connect(self._clear_quick_term_memory)
             self._settings_panel.closed.connect(lambda: self._set_settings_visible(False))
-        self._settings_panel.open(str(self._app_cfg.get("jump_mode") or "follow"))
+        self._settings_panel.open(
+            str(self._app_cfg.get("jump_mode") or "follow"),
+            bool(self._app_cfg.get("engine_auto_close", True)),
+            str(self._app_cfg.get("quick_term_tb_name") or ""),
+        )
 
     def _set_settings_visible(self, visible):
         btn = getattr(self, "btn_settings", None)
@@ -3847,6 +3981,23 @@ class MainWindow(QMainWindow):
         labels = {"follow": "跟随 memoQ 原生设置", "next": "下一行",
                   "previous": "上一行", "stay": "不跳转"}
         self.log(f"确认后跳转：{labels[mode]}")
+
+    def _set_engine_auto_close(self, enabled: bool):
+        self._app_cfg["engine_auto_close"] = bool(enabled)
+        appconfig.save(self._app_cfg)
+        self.log("选中行后自动关闭引擎页：" + ("开" if enabled else "关（用浮层右上角 × 或 Esc 手动关闭）"))
+
+    def _clear_quick_term_memory(self):
+        self._app_cfg["quick_term_tb"] = ""
+        self._app_cfg["quick_term_tb_name"] = ""
+        appconfig.save(self._app_cfg)
+        self.log("已清除快捷添加术语记住的术语库；Ctrl+Q 将恢复每次询问")
+        if getattr(self, "_settings_panel", None) is not None:
+            self._settings_panel.open(
+                str(self._app_cfg.get("jump_mode") or "follow"),
+                bool(self._app_cfg.get("engine_auto_close", True)),
+                "",
+            )
 
     def switch_account(self):
         # 兼容旧入口：统一走「账号」浮层。
@@ -4037,8 +4188,8 @@ class MainWindow(QMainWindow):
                 # 同页换文档、整页重载或新编辑器实例都使旧异步回调失效。
                 self._reset_editor_context(url, page_id)
             self._editor_pid = page_id
-            # 编辑器就绪 → 引擎隐藏起来，工作区独占空间
-            if self._engine_visible:
+            # 编辑器就绪 → 引擎隐藏起来，工作区独占空间（可在设置里关闭自动关闭）
+            if self._engine_visible and self._auto_close_engine_enabled():
                 QTimer.singleShot(500, lambda: self._set_engine_visible(False))
             self.conn_label.setText("已连接 · 编辑器就绪")
             self.conn_label.setStyleSheet("color: #059669;")
@@ -4074,6 +4225,9 @@ class MainWindow(QMainWindow):
                 self.read_segment(auto=True)
         if msg.get("type") == "term-detail":
             self._on_term_detail(data)
+            return
+        if msg.get("type") in ("term-pick-tb", "term-quick-result", "term-quick-err"):
+            self._handle_quick_term(msg.get("type"), data)
             return
         if msg.get("type") in ("term-context", "term-add-result",
                                "term-entry", "term-edit-result"):

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from qfluentwidgets import (
     PrimaryPushButton, PushButton, ComboBox as FComboBox, LineEdit as FLineEdit,
-    RadioButton,
+    RadioButton, CheckBox,
 )
 
 from .qtedit import MqEditor
@@ -898,6 +898,8 @@ class _ClickLabel(QLabel):
 class SettingsPanel(QWidget):
     """悬浮「设置」面板：先放确认后跳转逻辑，后续继续扩充。"""
     jumpModeChanged = pyqtSignal(str)
+    engineAutoCloseChanged = pyqtSignal(bool)
+    clearQuickTermRequested = pyqtSignal()
     closed = pyqtSignal()
 
     MODES = [
@@ -948,9 +950,38 @@ class SettingsPanel(QWidget):
             rb.clicked.connect(lambda _checked=False, k=key: self._pick(k))
             self._radios[key] = rb
             lay.addWidget(rb)
+        lay.addWidget(self._sep())
+        engine_label = QLabel("引擎浮层")
+        engine_label.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
+        lay.addWidget(engine_label)
+        self.chk_engine_close = CheckBox("选中行/编辑器就绪后自动关闭引擎页")
+        self.chk_engine_close.setToolTip(
+            "关闭后引擎浮层保持打开，可用浮层右上角 × 或 Esc 手动返回翻译")
+        self.chk_engine_close.toggled.connect(self.engineAutoCloseChanged)
+        lay.addWidget(self.chk_engine_close)
+        lay.addWidget(self._sep())
+        quick_label = QLabel("Ctrl+Q 快捷添加术语")
+        quick_label.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
+        lay.addWidget(quick_label)
+        self.quick_term_label = QLabel("术语库：每次询问")
+        self.quick_term_label.setStyleSheet("color:#64748b; font-size:12px; background:transparent;")
+        lay.addWidget(self.quick_term_label)
+        self.btn_clear_quick = PushButton("恢复每次询问（清除记住的术语库）")
+        self.btn_clear_quick.setToolTip("清除后，Ctrl+Q 在多个术语库时会重新弹出选择浮窗")
+        self.btn_clear_quick.clicked.connect(self.clearQuickTermRequested)
+        lay.addWidget(self.btn_clear_quick)
         lay.addStretch(1)
         self.adjustSize()
         self.hide()
+
+    @staticmethod
+    def _sep():
+        f = QFrame()
+        f.setFrameShape(QFrame.Shape.HLine)
+        f.setStyleSheet("color: rgba(120,130,160,60); background: transparent; border: none;")
+        f.setFixedHeight(1)
+        f.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        return f
 
     def _pick(self, key):
         for k, rb in self._radios.items():
@@ -962,8 +993,15 @@ class SettingsPanel(QWidget):
         for k, rb in self._radios.items():
             rb.setChecked(k == mode)
 
-    def open(self, mode):
+    def open(self, mode, engine_auto_close=True, quick_term_name=""):
         self.set_current(mode)
+        self.chk_engine_close.blockSignals(True)
+        self.chk_engine_close.setChecked(bool(engine_auto_close))
+        self.chk_engine_close.blockSignals(False)
+        name = str(quick_term_name or "").strip()
+        self.quick_term_label.setText(
+            f"术语库：{name}（已记住）" if name else "术语库：每次询问")
+        self.btn_clear_quick.setEnabled(bool(name))
         self.adjustSize()
         par = self.parentWidget()
         if par is not None and not self._placed:
@@ -1016,6 +1054,102 @@ class SettingsPanel(QWidget):
             self.hide()
             return
         super().keyPressEvent(event)
+
+
+class TermBasePickerOverlay(QWidget):
+    """Ctrl+Q 多术语库时的选择浮窗：选库 + 可记住，避免直接写错库。"""
+    picked = pyqtSignal(str, bool)   # (tbGuid, remember)
+    closed = pyqtSignal()
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setObjectName("tbPickerShade")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("QWidget#tbPickerShade { background: rgba(15,23,42,90); }")
+        self.card = QFrame(self)
+        self.card.setObjectName("tbPickerCard")
+        self.card.setStyleSheet(
+            "QFrame#tbPickerCard { background:#f8fafc; border:1px solid rgba(255,255,255,235);"
+            " border-radius:18px; }")
+        lay = QVBoxLayout(self.card)
+        lay.setContentsMargins(22, 18, 22, 18)
+        lay.setSpacing(12)
+        head = QHBoxLayout()
+        title = QLabel("选择术语库")
+        title.setStyleSheet("font-size:17px; font-weight:700; color:#1e293b;")
+        self.btn_x = PushButton("关闭")
+        self.btn_x.clicked.connect(self.hide)
+        head.addWidget(title)
+        head.addStretch(1)
+        head.addWidget(self.btn_x)
+        lay.addLayout(head)
+        self.term_label = QLabel("")
+        self.term_label.setWordWrap(True)
+        self.term_label.setStyleSheet("color:#334155; font-size:13px;")
+        lay.addWidget(self.term_label)
+        self.combo = FComboBox(self.card)
+        self.combo.setMinimumWidth(360)
+        lay.addWidget(self.combo)
+        self.chk_remember = CheckBox("记住选中的术语库（下次 Ctrl+Q 不再询问）")
+        lay.addWidget(self.chk_remember)
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        self.status.setStyleSheet("color:#b45309; font-size:12px;")
+        lay.addWidget(self.status)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self.btn_cancel = PushButton("取消")
+        self.btn_cancel.clicked.connect(self.hide)
+        self.btn_add = PrimaryPushButton("添加术语")
+        self.btn_add.clicked.connect(self._submit)
+        buttons.addWidget(self.btn_cancel)
+        buttons.addWidget(self.btn_add)
+        lay.addLayout(buttons)
+        self.adjustSize()
+
+    def open(self, items, source, target, selected="", stale=False):
+        self.combo.clear()
+        for item in items or []:
+            self.combo.addItem(str(item.get("name") or item.get("guid") or ""),
+                               userData=str(item.get("guid") or ""))
+        if selected:
+            idx = self.combo.findData(str(selected))
+            if idx >= 0:
+                self.combo.setCurrentIndex(idx)
+        self.term_label.setText(f"{source} → {target}")
+        self.chk_remember.setChecked(False)
+        self.status.setText(
+            "之前记住的术语库已不可用，请重新选择。" if stale else "")
+        self.show()
+        self.raise_()
+        self.setFocus()
+        self.resizeEvent(None)
+
+    def _submit(self):
+        guid = str(self.combo.currentData() or "")
+        if not guid:
+            self.status.setText("请选择一个术语库。")
+            return
+        self.picked.emit(guid, bool(self.chk_remember.isChecked()))
+        self.hide()
+
+    def resizeEvent(self, event):
+        if event is not None:
+            super().resizeEvent(event)
+        w = min(560, max(420, self.width() - 80))
+        h = self.card.sizeHint().height()
+        self.card.setGeometry((self.width() - w) // 2,
+                              max(40, (self.height() - h) // 2), w, h)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.hide()
+            return
+        super().keyPressEvent(event)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.closed.emit()
 
 
 class ThemePanel(QWidget):

@@ -32,6 +32,11 @@ DEFAULTS = {
     "editor_theme": "light",
     # 确认后的跳转逻辑：follow=跟随 memoQ 原生设置；next/previous/stay=Serapi 覆盖
     "jump_mode": "follow",
+    # 编辑器就绪/选中行后是否自动关闭引擎浮层（默认保持旧行为）
+    "engine_auto_close": True,
+    # Ctrl+Q 快捷添加术语记住的术语库（空=每次询问）
+    "quick_term_tb": "",
+    "quick_term_tb_name": "",
     # 检测更新：上次检查日期（YYYY-MM-DD）与用户点过「稍后/打开发布页」的版本
     "update_last_checked": "",
     "update_skipped_version": "",
@@ -67,6 +72,10 @@ def load() -> dict:
         cfg["editor_theme"] = "light"
     if cfg.get("jump_mode") not in ("follow", "next", "previous", "stay"):
         cfg["jump_mode"] = "follow"
+    if not isinstance(cfg.get("engine_auto_close"), bool):
+        cfg["engine_auto_close"] = True
+    cfg["quick_term_tb"] = str(cfg.get("quick_term_tb") or "").strip()[:64]
+    cfg["quick_term_tb_name"] = str(cfg.get("quick_term_tb_name") or "").strip()[:120]
     return cfg
 
 

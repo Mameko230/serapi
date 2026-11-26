@@ -29,13 +29,16 @@ assert cfg["memoq_url"] == appconfig.DEFAULT_URL
 assert cfg["server_history"] == []  # 不写死服务器，首次启动由用户填写
 assert cfg["server_names"] == {}    # 旧配置兼容：没有名称键时给空表
 assert cfg["jump_mode"] == "follow"  # 确认后跳转默认跟随 memoQ 原生设置
+assert cfg["engine_auto_close"] is True
+assert cfg["quick_term_tb"] == "" and cfg["quick_term_tb_name"] == ""
 cfg.update({"memoq_url": "https://x/memoqweb",
             "server_history": ["https://x/memoqweb", "https://y/memoqweb"],
             "server_names": {"https://y/memoqweb": "测试环境",
                              "https://x/memoqweb": "  ",
                              "": "空地址", "https://z/memoqweb": ""},
             "outer_theme": "warm", "editor_theme": "dark",
-            "jump_mode": "next"})
+            "jump_mode": "next", "engine_auto_close": False,
+            "quick_term_tb": " tb-guid ", "quick_term_tb_name": " 游戏术语库 "})
 assert appconfig.save(cfg) is None
 loaded = appconfig.load()
 assert loaded["memoq_url"] == "https://x/memoqweb"
@@ -43,12 +46,17 @@ assert loaded["server_history"][0] == "https://x/memoqweb"
 assert loaded["server_names"] == {"https://y/memoqweb": "测试环境"}  # 空名称 / 空地址被过滤
 assert loaded["outer_theme"] == "warm" and loaded["editor_theme"] == "dark"
 assert loaded["jump_mode"] == "next"
+assert loaded["engine_auto_close"] is False
+assert loaded["quick_term_tb"] == "tb-guid"
+assert loaded["quick_term_tb_name"] == "游戏术语库"
 # 非法键回退到默认
 assert appconfig.save(dict(loaded, outer_theme="nope", editor_theme="nope",
-                           jump_mode="nope")) is None
+                           jump_mode="nope", engine_auto_close="nope")) is None
 fixed = appconfig.load()
 assert fixed["outer_theme"] == "blue" and fixed["editor_theme"] == "light"
 assert fixed["jump_mode"] == "follow"
+assert fixed["engine_auto_close"] is True
+assert fixed["quick_term_tb"] == "tb-guid"  # 非主题类记忆不清空
 
 # 1b) 旧 app.json（只有 memoq_url / server_history）完全兼容，不丢地址
 with open(appconfig._PATH, "w", encoding="utf-8") as f:
@@ -243,19 +251,57 @@ tp2.keep_inside()
 tp2.hide()
 assert tp2.isHidden()
 
-# 8) 设置面板：确认后跳转单选，默认跟随 memoQ；切换发信号并记忆选中项。
+# 8) 设置面板：确认后跳转单选、引擎自动关闭开关、快捷术语记忆清理。
 from app.overlays import SettingsPanel
 sp = SettingsPanel(host)
 seen_modes = []
 sp.jumpModeChanged.connect(seen_modes.append)
-sp.open("next")
+sp.open("next", False, "游戏术语库")
 assert sp._radios["next"].isChecked(), sp._radios
 assert 300 <= sp.width() < host.width()
+assert sp.chk_engine_close.isChecked() is False
+assert "游戏术语库" in sp.quick_term_label.text()
+assert sp.btn_clear_quick.isEnabled()
+engine_signals = []
+sp.engineAutoCloseChanged.connect(engine_signals.append)
+sp.chk_engine_close.setChecked(True)
+assert engine_signals == [True], engine_signals
+clear_signals = []
+sp.clearQuickTermRequested.connect(lambda: clear_signals.append(True))
+sp.btn_clear_quick.click()
+assert clear_signals == [True]
+sp.open("next", True, "")
+assert sp.chk_engine_close.isChecked() is True
+assert "每次询问" in sp.quick_term_label.text()
+assert not sp.btn_clear_quick.isEnabled()
 sp._radios["stay"].click()
 assert sp._radios["stay"].isChecked() and not sp._radios["next"].isChecked()
 assert seen_modes == ["stay"], seen_modes
 sp.hide()
 assert sp.isHidden()
+
+# 8b) Ctrl+Q 术语库选择浮窗：记住勾选随 picked 信号发出。
+from app.overlays import TermBasePickerOverlay
+parent2 = QWidget()
+picker = TermBasePickerOverlay(parent2)
+parent2.resize(1200, 800)
+parent2.show()
+picker.resize(parent2.size())
+invited = []
+picker.picked.connect(lambda guid, remember: invited.append((guid, remember)))
+picker.open(
+    [{"guid": "g1", "name": "主术语库"}, {"guid": "g2", "name": "游戏术语库"}],
+    "源词", "译词", selected="g2", stale=False)
+assert picker.combo.currentData() == "g2"
+assert "源词 → 译词" in picker.term_label.text()
+picker.chk_remember.setChecked(True)
+picker._submit()
+assert invited == [("g2", True)], invited
+assert picker.isHidden()
+picker.open([{"guid": "g1", "name": "主术语库"}], "甲", "A", stale=True)
+assert "不可用" in picker.status.text()
+picker.hide()
+parent2.close()
 
 print("APPCONFIG_THEME_TEST: PASS")
 if os.path.exists(appconfig._PATH):

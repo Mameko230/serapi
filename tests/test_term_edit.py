@@ -331,4 +331,22 @@ assert edits[-1]["projectGuid"] == "PRJ-1", edits[-1]
 ov.close()
 term_parent.close()
 
+# 11) Ctrl+Q 选库后重发请求：带上选中的 tbGuid 与从 bridge 带回的语言码/项目 GUID。
+qh = types.SimpleNamespace()
+qh.calls = []
+qh.call_js = lambda expr, cb=None: qh.calls.append(expr)
+qh._term = TermOverlayCoordinator(qh)
+qh.term_overlay = lambda: None
+qh._quick_picker = types.SimpleNamespace(hide=lambda: None)
+qh._quick_ctx = {"source": "源词", "target": "译词",
+                 "srcLang": "jpn", "tgtLang": "zho-CN", "projectGuid": "PRJ-1"}
+qh._quick_remember_after = False
+qh._on_quick_tb_picked = types.MethodType(MainWindow._on_quick_tb_picked, qh)
+qh._on_quick_tb_picked("TB-2", True)
+assert qh._quick_remember_after is True
+expr = qh.calls[-1]
+assert "termQuickAddReq" in expr, expr
+assert "TB-2" in expr and "jpn" in expr and "zho-CN" in expr and "PRJ-1" in expr, expr
+assert "源词" in expr and "译词" in expr, expr
+
 print("TERM_EDIT_TEST: PASS (offline only)")

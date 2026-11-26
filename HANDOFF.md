@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 29/29 约 40s；full 46/46 约 86s。
+   - 最近结果：fast 30/30 约 40s；full 47/47 约 83s。
 
 ### 重构第一步
 
@@ -116,6 +116,8 @@
   - **行号列状态过滤**：点击行号表头弹出状态菜单（未编辑/已编辑/含审校/已拒绝/已锁定，多选），只过滤段表显示，不改 rowNo/激活逻辑；选择持久化到 `ui.json(statusFilter)`，表头显示“行号 · 筛”。`SegmentSync.cached_rows()` 用完整缓存数，过滤不会误导自动扩容。
   - **行号列宽度**：表头 col0 改 `Interactive`，不再 `ResizeToContents`；按行号位数只增不减地给最小宽度，用户拖动后完全尊重用户宽度并保存 `ui.json(segCol0Width)`，编辑/状态变化不再抖回。
   - **术语数量提醒**：放进固定高度容器，出现/消失不再改变编辑区布局；文本/可见性没变化直接跳过，减少重绘与光标跳动。
+  - **引擎浮层自动关闭开关（新旧版）**：引擎浮层右上角新增 × 关闭按钮（保留“返回翻译”和 Esc）；是否在编辑器就绪/选中行后自动收起由 `appconfig.engine_auto_close` 控制，默认开（保持旧行为）。设置面板可关；关掉后选行只跳行、不再收起浮层，需手动 ×/Esc/返回翻译。引擎仍走“停放”逻辑保证新版页面持续渲染。
+  - **Ctrl+Q 快速添加术语（新旧版）**：bridge `termQuickAddReq` 复用旧 QTermService 链路 `ListServerProjectTBs → GetEmptyMetaList → AddNewEntry`；单术语库直接加入，多术语库 push `term-pick-tb` 弹选择浮窗，可勾选“记住选中的术语库”；记忆存 `appconfig.quick_term_tb/_name`，设置面板提供“恢复每次询问（清除记住的术语库）”。新版项目 GUID 从 URL 取，语言层优先用 TB 命中缓存/页面全局状态，找不到时按模板第一层原文、第二层译文兜底；只读库拒绝写入；`termQuickAdd` 能力位独立。
   - **TB 术语编辑（新版）**：复用旧 `QTermService/GetEntryForTerm → UpdateEntry`；新版没有 `WebTrans.Core`，projectGuid 从 URL `/projects/<guid>/docs/...` 取，语言层优先用 TB 命中 `detail.languages` 的 role/code，其次按命中术语文本反查，最后两语言层兜底 source/target。只改每条语言的第一条主术语 + 语言层 Definition + 术语层 Example，其余字段全量原样回传；`entry.ReadOnlyTb` 时只读展示、绝不发 UpdateEntry。能力位 `termEdit` 与“添加术语”（terms）分离，新版只开编辑。
   - **长文档跳行（小缓存窗）**：`jumpToRow(rowNo)` 直接 `POST /rows` 拉目标附近约 100 行（`rowNo-33` 起、不足时贴尾）替换 API 缓存窗，push `jump-ready`；MainWindow 收到后刷新段列表并延迟激活目标行。段列表显示原始行号（允许缺口），滚到底继续按 `st.next` 向下扩批；过滤状态下暂不支持跳行，回退普通激活。旧版跳行逻辑不变。
   - **主面板设置入口**：`SettingsPanel`（悬浮卡片）先放“确认后跳转”：follow（默认，跟随 memoQ 原生设置，含 settingsBased）/ next / previous / stay；保存到 `appconfig.jump_mode`。follow 完全交给原生 Ctrl+Enter；其它模式在确认后 900ms 校正目标行（新编辑器走 `jumpToRow` 小缓存窗）。后续设置项直接往这个面板加。
@@ -124,7 +126,7 @@
   - **行数据 API（已用于段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,isLocked,...},source:{symbols},target:{symbols}}]`。每批 100 行；`id` 即 0 基 rowId。
   - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，TB 详情显示条目 2487（只读）、原文「強化」/译文「強化哦」、定义/示例/字段（Subject: SNACK、Note: 111），底部“术语数量提醒”正常；第 3 行 5 条 TM（101/65%…）；第 4 行 TM 101% 命中带 3 个 tag（`strictTags=true/readOnly=false`，src/tgt tokens 各 4）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行；P0 修复后切到第 5 行等 7 秒，TM/TB 命中列表 6 行仍在、详情同屏。
 - **只读保护**：新版 TB 条目一律 `readOnly: true`（详情只读、不带旧版编辑接口）；TM 命中不再因 tag 问题整条只读：正常插入并可略过原文没有的 tag；`_res_insert` 仍拒绝 `readOnly` 命中。TM 插入离线契约已覆盖，真机插入冒烟可由用户双击验证。
-- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；行状态过滤只作用于已加载的缓存窗；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；确认/拒绝通过合成原生快捷键实现，真机尚未冒烟；自定义跳转模式（next/previous/stay）是对原生跳转的事后校正，可能看到一次多余跳转；TB 术语编辑已接（只改主术语/定义/示例，只读库拒绝写入），术语“添加”仍只支持旧版；段信息只有注释，没有上下文/原始 ID（新版不提供）。
+- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；行状态过滤只作用于已加载的缓存窗；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；确认/拒绝通过合成原生快捷键实现，真机尚未冒烟；自定义跳转模式（next/previous/stay）是对原生跳转的事后校正，可能看到一次多余跳转；TB 术语编辑已接（只改主术语/定义/示例，只读库拒绝写入），术语“添加”仍只支持旧版；Ctrl+Q 已接但新增术语会写真实术语库，真机冒烟前不要对正式库试；新版语言层找不到时按模板顺序兜底，顺序异常需冒烟确认；段信息只有注释，没有上下文/原始 ID（新版不提供）。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。过滤栏固定 34px 单行高、控件高 28px、去掉“原文/译文”标签改用占位符，并把多余垂直空间交给段列表（`addWidget(..., 0/1)`），不再展开成一大片空白。
 
 ## 关键红线
@@ -174,7 +176,7 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 
 ## 下一步（按顺序）
 
-1. 全量测试后真机冒烟（tag/术语编辑/确认/拒绝/跳行/过滤/设置/编辑），写操作只在授权文档，先确认用户方便的时间。
+1. 全量测试后真机冒烟（tag/术语编辑/Ctrl+Q 加术语/确认/拒绝/跳行/过滤/设置/编辑/引擎开关），写操作只在授权文档和授权术语库，先确认用户方便的时间。
 2. 发版（v1.0.0 tag/GitHub Release）等用户明确指示。
 
 不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。

@@ -54,8 +54,8 @@ const old = load('/memoqweb/webpm/webtrans/Translation.aspx', (c) => {
 const oc = old.__md.api.capabilities();
 assert.strictEqual(oc.editor, 'old');
 assert.strictEqual(oc.ok, true);
-for (const key of ['listRows', 'tmHits', 'segmentInfo', 'terms', 'termEdit', 'filter',
-                   'concordance', 'confirm', 'readSegment', 'writeSegment',
+for (const key of ['listRows', 'tmHits', 'segmentInfo', 'terms', 'termEdit', 'termQuickAdd',
+                   'filter', 'concordance', 'confirm', 'readSegment', 'writeSegment',
                    'docStats', 'rowChanged']) {
   assert.strictEqual(oc.features[key], true, key);
 }
@@ -86,6 +86,7 @@ assert.strictEqual(nc.features.filter, true);
 assert.strictEqual(nc.features.terms, false);
 // 新版 TB 术语编辑复用旧 QTermService：编辑能力开启，添加仍不支持。
 assert.strictEqual(nc.features.termEdit, true);
+assert.strictEqual(nc.features.termQuickAdd, true);
 // 新版确认/拒绝用原生快捷键实现，能力置真。
 assert.strictEqual(nc.features.confirm, true);
 assert.strictEqual(nc.features.reject, true);

@@ -741,6 +741,14 @@
                 }
               }
             }
+            var hitSrcCode = '', hitTgtCode = '';
+            for (var dc = 0; dc < detailLangs.length; dc++) {
+              if (detailLangs[dc].role === 'source') hitSrcCode = detailLangs[dc].code;
+              else if (detailLangs[dc].role === 'target') hitTgtCode = detailLangs[dc].code;
+            }
+            if (hitSrcCode && hitTgtCode) {
+              try { window.__md._termLangs = { src: hitSrcCode, tgt: hitTgtCode }; } catch (e) {}
+            }
             tb.push({
               s: sTerm, t: tTerm, res: String(res || ''),
               user: String(h.creator || ''), time: String(h.created || '').slice(0, 19),
@@ -920,6 +928,7 @@
             var core = termCore();
             f.terms = !!(core && core.lastUsedTBGuid);
             f.termEdit = f.terms;
+            f.termQuickAdd = !!core;
           } catch (e) {}
           try {
             var fe = pageFilterInput('source');
@@ -942,6 +951,7 @@
           // TB 术语编辑复用旧 QTermService（GetEntryForTerm/UpdateEntry），
           // 项目 GUID 从 URL 取；术语“添加”仍只支持旧版，所以 terms 保持 false。
           f.termEdit = !!newProjectGuidFromUrl();
+          f.termQuickAdd = !!newProjectGuidFromUrl();
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -2061,6 +2071,171 @@
         tgt: tgtLayer ? String(tgtLayer.LanguageCode || '') : '',
       };
     }
+    // 新版页面里没有 WebTrans.Core：从 TB 命中缓存/页面全局状态里找文档语言码，
+    // 找不到时由调用方退回术语库模板里的语言层顺序。
+    function scanLangFields(obj, depth, out, seen) {
+      if (!obj || typeof obj !== 'object' || depth > 4 || seen.indexOf(obj) >= 0) return;
+      seen.push(obj);
+      var keys = Object.keys(obj);
+      for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        var low = key.toLowerCase();
+        var val = obj[key];
+        if (typeof val === 'string' && val.trim()) {
+          var text = val.trim();
+          var isSource = /(source|src).*lang|lang.*(source|src)/.test(low);
+          var isTarget = /(target|tgt).*lang|lang.*(target|tgt)/.test(low);
+          if (isSource && !out.src) out.src = text;
+          if (isTarget && !out.tgt) out.tgt = text;
+        } else if (val && typeof val === 'object' && depth < 4) {
+          scanLangFields(val, depth + 1, out, seen);
+        }
+        if (out.src && out.tgt) return;
+      }
+    }
+    function newDocumentLanguageCodes() {
+      var cached = window.__md._docLangs;
+      if (cached && cached.src && cached.tgt) return cached;
+      var out = {};
+      var seen = [];
+      var roots = [];
+      try { if (window.__md._termLangs) roots.push(window.__md._termLangs); } catch (e) {}
+      var names = ['__INITIAL_STATE__', '__PRELOADED_STATE__', '__APP_STATE__',
+                   '__memoqState', '__APP_CONFIG__', '__DOCUMENT_STATE__'];
+      for (var i = 0; i < names.length; i++) {
+        try { if (window[names[i]]) roots.push(window[names[i]]); } catch (e) {}
+      }
+      for (var j = 0; j < roots.length && !(out.src && out.tgt); j++) {
+        scanLangFields(roots[j], 0, out, seen);
+      }
+      if (out.src && out.tgt) {
+        try { window.__md._docLangs = out; } catch (e) {}
+      }
+      return out;
+    }
+    function newTermProjectGuidFor(params) {
+      return String((params && params.projectGuid) || newProjectGuidFromUrl() || '');
+    }
+    function termTbList(prj, tgtLang) {
+      return apiPost('TranslationService/ListServerProjectTBs', {
+        projectGuid: prj, targetLanguage: tgtLang || '',
+      }).then(function (r) {
+        var b = r.body || {};
+        if (b.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
+        if (r.status !== 200 || b.Success === false) {
+          throw new Error(b.ErrorDetails || b.ErrorMessage || ('HTTP ' + r.status));
+        }
+        var raw = Array.isArray(b) ? b : (Array.isArray(b.Value) ? b.Value : []);
+        return raw.map(function (f) {
+          return { guid: String(f.TBGuid || ''), name: String(f.TBName || f.TBGuid || ''),
+                   primary: !!f.IsPrimary };
+        }).filter(function (f) { return !!f.guid; });
+      });
+    }
+    // 术语库模板（GetEmptyMetaList）→ AddNewEntry 需要的 camelCase EntryGui；
+    // 模板里每层通常已有一条空术语占位，缺了就补一条，其余重复项标记删除。
+    function termTemplateEntryGui(tpl, tbGuid) {
+      function guiMeta(m) { return termMetaToGui(m || {}); }
+      function guiTerm(t) {
+        return {
+          termId: t.TermId, termText: String(t.TermText || ''),
+          termWildText: String(t.TermWildText || t.TermText || ''),
+          isDeleted: !!t.IsDeleted, metaInfos: (t.MetaInfos || []).map(guiMeta),
+          isMetaListRendered: false,
+        };
+      }
+      function guiLang(lang) {
+        var terms = (lang.TermLevelMetaInfos || []).map(guiTerm);
+        if (!terms.length) {
+          terms.push({ termId: -1, termText: '', termWildText: '', isDeleted: false,
+                       metaInfos: [], isMetaListRendered: false });
+        }
+        return {
+          languageCode: String(lang.LanguageCode || ''), languageID: lang.LanguageID,
+          languageName: String(lang.LanguageName || ''), isDeleted: !!lang.IsDeleted,
+          metaInfos: (lang.MetaInfos || []).map(guiMeta),
+          termLevelMetaInfos: terms, isMetaListRendered: false,
+        };
+      }
+      return {
+        tbGuid: tbGuid, readOnlyTB: !!tpl.ReadOnlyTb, entryId: -1,
+        prettyPrintHtml: String(tpl.PrettyPrintHtml || ''),
+        relationships: (tpl.Relationships || []).slice(),
+        entryNeedsModeration: false,
+        entryLevelMetaInfos: (tpl.EntryLevelMetaInfos || []).map(guiMeta),
+        languageLevelMetaInfos: (tpl.LanguageLevelMetaInfos || []).map(guiLang),
+        isMetaListRendered: false,
+      };
+    }
+    function termAlignQuickLayers(entry, srcLang, tgtLang) {
+      var layers = entry.languageLevelMetaInfos || [];
+      function base(code) { return String(code || '').trim().toLowerCase().split('-')[0]; }
+      function find(code) {
+        var want = String(code || '').trim().toLowerCase();
+        if (!want) return null;
+        for (var i = 0; i < layers.length; i++) {
+          var have = String(layers[i].languageCode || '').trim().toLowerCase();
+          if (have && (have === want || base(have) === base(want))) return layers[i];
+        }
+        return null;
+      }
+      var src = find(srcLang);
+      var tgt = find(tgtLang);
+      if (src && tgt && src === tgt) tgt = null;
+      if (!src || !tgt) {
+        // 模板顺序兜底：第一层原文、第二层译文（旧版 qTerm.Entry 也按此顺序覆写）。
+        if (!src) src = layers[0] || null;
+        if (!tgt) {
+          for (var i = 0; i < layers.length; i++) {
+            if (layers[i] !== src) { tgt = layers[i]; break; }
+          }
+        }
+      }
+      return { src: src, tgt: tgt };
+    }
+    function termQuickAddEntry(req, tb, source, target, srcLang, tgtLang, prj) {
+      return apiPost('QTermService/GetEmptyMetaList', {
+        tbGuid: tb.guid, projectGuid: prj,
+      }).then(function (r) {
+        var b = r.body || {};
+        if (b.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
+        if (r.status !== 200 || b.Success === false) {
+          throw new Error(b.ErrorDetails || b.ErrorMessage || ('HTTP ' + r.status));
+        }
+        var data = Array.isArray(b) ? b : (b.Value || []);
+        if (!Array.isArray(data) || !data[0]
+            || !Array.isArray(data[0].LanguageLevelMetaInfos)) {
+          throw new Error('memoQ 返回了无法识别的术语库模板');
+        }
+        var entry = termTemplateEntryGui(data[0], tb.guid);
+        if (entry.readOnlyTB) throw new Error('所选术语库为只读，无法添加术语');
+        var pair = termAlignQuickLayers(entry, srcLang, tgtLang);
+        if (!pair.src || !pair.tgt) throw new Error('术语库缺少可用的原文/译文语言层');
+        if (srcLang) pair.src.languageCode = srcLang;
+        if (tgtLang) pair.tgt.languageCode = tgtLang;
+        pair.src.termLevelMetaInfos[0].termText = source;
+        pair.src.termLevelMetaInfos[0].termWildText = source;
+        pair.tgt.termLevelMetaInfos[0].termText = target;
+        pair.tgt.termLevelMetaInfos[0].termWildText = target;
+        return apiPost('QTermService/AddNewEntry', {
+          TBGuid: tb.guid, EntryGui: entry, ProjectGuid: prj,
+        });
+      }).then(function (r) {
+        var b = r.body || {};
+        if (b.SessionExpired) throw new Error('会话过期，请重新登录 memoQ');
+        if (r.status !== 200 || b.Success === false) {
+          throw new Error(b.ErrorDetails || b.ErrorMessage || ('HTTP ' + r.status));
+        }
+        var value = b.Value || {};
+        if (value.Result !== undefined && Number(value.Result) !== 0) {
+          throw new Error(value.ErrorMessage || 'memoQ 拒绝了这次术语添加');
+        }
+        __md.push('term-quick-result', {
+          req: req, ok: true, quick: true, tbGuid: tb.guid, tbName: tb.name,
+          source: source, target: target,
+        });
+      });
+    }
 
     /* ---- 术语条目结构（读取 PascalCase → 提交 camelCase，均来自真实抓包） ---- */
     function termMetaList(container) {
@@ -2546,6 +2721,72 @@
           });
         }).catch(function (e) { termFail('term-edit-result', req, e.message || e); });
       } catch (e) { termFail('term-edit-result', req, e.message || e); }
+      return { ok: true };
+    };
+
+    /* ---- Ctrl+Q 快速添加术语 ----
+       与 Ctrl+E 不同：不打开编辑浮层，直接复用旧 QTermService：
+       ListServerProjectTBs → GetEmptyMetaList → AddNewEntry。
+       单术语库直接加；多术语库 push term-pick-tb 让 Qt 弹选择浮窗（可记住）。
+       新版没有 Core：projectGuid 从 URL 取，语言层用命中缓存/全局状态，找不到时按模板顺序。 */
+    window.__md.api.termQuickAddReq = function (req, params) {
+      params = params || {};
+      var source = String(params.source || '').trim();
+      var target = String(params.target || '').trim();
+      if (!source || !target) {
+        return termFail('term-quick-err', req, '请分别在原文、译文选中要添加的术语');
+      }
+      try {
+        var kind = detectEditor();
+        if (kind !== 'old' && kind !== 'new') {
+          return termFail('term-quick-err', req, '快速添加术语仅新版/旧版支持');
+        }
+        var core = null, prj = '', srcLang = '', tgtLang = '';
+        if (kind === 'old') {
+          core = termCore();
+          prj = String(params.projectGuid || termProjectGuid(core));
+          srcLang = String(core.sourceLangCode || '');
+          tgtLang = String(core.targetLangCode || '');
+        } else {
+          prj = newTermProjectGuidFor(params);
+          var docLangs = newDocumentLanguageCodes();
+          srcLang = String(params.sourceLang || docLangs.src || '');
+          tgtLang = String(params.targetLang || docLangs.tgt || '');
+        }
+        if (!prj) throw new Error('项目 GUID 未找到');
+        var wanted = String(params.tbGuid || '').trim();
+        termTbList(prj, tgtLang).then(function (items) {
+          if (!items.length) throw new Error('当前项目没有可用的术语库');
+          var chosen = null;
+          if (wanted) {
+            for (var i = 0; i < items.length; i++) {
+              if (items[i].guid === wanted) { chosen = items[i]; break; }
+            }
+          }
+          if (!chosen && !wanted && items.length === 1) chosen = items[0];
+          if (!chosen) {
+            var primary = items.filter(function (x) { return x.primary; })[0];
+            __md.push('term-pick-tb', {
+              req: req, items: items, source: source, target: target,
+              selected: wanted,
+              stale: !!wanted,
+              primary: primary ? primary.guid : (items[0] ? items[0].guid : ''),
+              srcLang: srcLang, tgtLang: tgtLang, projectGuid: prj,
+            });
+            return;
+          }
+          return termQuickAddEntry(req, chosen, source, target, srcLang, tgtLang, prj)
+            .then(function () {
+              // 旧版仍同步 memoQ 的“上次使用术语库”，失败不影响添加结果。
+              if (core) {
+                core.lastUsedTBGuid = chosen.guid;
+                return apiPost('TranslationService/SaveLastUsedTBGuid', {
+                  docInstanceId: core.docInstanceId, lastUsedTBGuid: chosen.guid,
+                }).catch(function () {});
+              }
+            });
+        }).catch(function (e) { termFail('term-quick-err', req, e.message || e); });
+      } catch (e) { termFail('term-quick-err', req, e.message || e); }
       return { ok: true };
     };
 

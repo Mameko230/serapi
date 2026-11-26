@@ -10,6 +10,13 @@ from PyQt6.QtWidgets import QApplication, QLabel, QSplitter, QTabWidget, QWidget
 
 from app.mainwindow import EngineOverlay, MainWindow
 
+import types
+
+
+class Dummy:
+    pass
+
+
 app = QApplication([])
 host = QWidget()
 host.resize(1200, 800)
@@ -27,11 +34,20 @@ closed = []
 overlay.closeRequested.connect(lambda: closed.append(True))
 overlay.btn_close.click()
 assert closed == [True]
+# 右上角 × 关闭按钮：遵循浮窗关闭语义，不发 memoQ 页面动作。
+overlay.btn_close_x.click()
+assert closed == [True, True]
 
-
-class Dummy:
-    pass
-
+# 自动关闭开关：默认开；设置关掉时选中行不再强制收起引擎浮层。
+w_cfg = Dummy()
+w_cfg._app_cfg = {"engine_auto_close": False}
+w_cfg._auto_close_engine_enabled = types.MethodType(
+    MainWindow._auto_close_engine_enabled, w_cfg)
+assert w_cfg._auto_close_engine_enabled() is False
+w_cfg._app_cfg = {"engine_auto_close": True}
+assert w_cfg._auto_close_engine_enabled() is True
+w_cfg._app_cfg = {}
+assert w_cfg._auto_close_engine_enabled() is True
 
 w = Dummy()
 w._engine_overlay = overlay
@@ -55,8 +71,6 @@ assert w.main_split.count() == 3
 
 # 新版编辑器：隐藏引擎时必须“停放”（页面仍可见但移出窗口），不能真的 hide，
 # 否则 memoQ 新版 React 网格不会渲染，readSegment/listRows 全空。
-import types
-
 w2 = Dummy()
 w2._engine_overlay = overlay
 w2.size = host.size
