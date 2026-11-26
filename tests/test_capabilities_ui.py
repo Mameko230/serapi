@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import types
 from types import MethodType
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -59,6 +60,13 @@ h._apply_capabilities(json.dumps(new_rows))
 assert "段列表" in h.cap_label.text()
 assert "段列表/当前段读写可用" in h.res_panel.status
 
+# 新版段列表 + TM 命中都可用时：提示语继续升级，TB/术语/过滤依旧标注“仍在接入”。
+new_tm = dict(new, features=dict(new["features"], listRows=True, tmHits=True))
+h._apply_capabilities(json.dumps(new_tm))
+assert "TM 命中" in h.cap_label.text()
+assert "TM 命中可用" in h.res_panel.status
+assert "TB/术语、过滤仍在接入" in h.res_panel.status
+
 
 class ExpandHost:
     def __init__(self, editor):
@@ -75,6 +83,29 @@ assert "__md.api.expandRows" in expand_new.calls[-1]
 expand_old = ExpandHost("old")
 MainWindow.request_expand_grid(expand_old, None)
 assert "gridCtrl" in expand_old.calls[-1], expand_old.calls[-1]
+
+
+# 新版只读命中：双击不得插入（tag 结构未确认前宁可拒绝）。
+class InsertHost:
+    _res_insert = MainWindow._res_insert
+
+    def __init__(self):
+        self.logs = []
+        self.res_panel = PanelStub()
+        self.editor = types.SimpleNamespace(insert_tokens=_fail_insert)
+
+    def log(self, text):
+        self.logs.append(str(text))
+
+
+def _fail_insert(_tokens):
+    raise AssertionError("只读命中不应调用 insert_tokens")
+
+
+ih = InsertHost()
+MainWindow._res_insert(ih, {"kind": "tm", "readOnly": True, "tgtDecorated": "不应插入"})
+assert any("暂不支持直接插入" in line for line in ih.logs), ih.logs
+assert "插入功能待接入" in ih.res_panel.status
 
 old = {
     "ok": True, "editor": "old",

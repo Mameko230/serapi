@@ -3022,6 +3022,13 @@ class MainWindow(QMainWindow):
 
     def _res_insert(self, payload: dict):
         """双击 TM/术语行 → 插入编辑器；选中内容先覆盖再插入（核心约定，勿改顺序）"""
+        if payload.get("readOnly"):
+            # 新版命中先只读展示：tag 符号结构未完全确认，绝不盲目插入丢 tag 的内容。
+            self.log("新版命中暂不支持直接插入（tag 结构接入中）；内容仍保留在结果列表")
+            panel = getattr(self, "res_panel", None)
+            if panel is not None and hasattr(panel, "set_status"):
+                panel.set_status("新版命中可查看；插入功能待接入")
+            return
         kind = payload.get("kind")
         if kind == "tb":
             term = payload.get("t") or ""
@@ -3706,8 +3713,13 @@ class MainWindow(QMainWindow):
             if not ok:
                 btn.setToolTip(reasons.get(key) or "当前编辑器不支持此功能")
         if self._cap_editor == "new":
-            text = ("新版编辑器 · 段列表 + 当前段读写" if feats.get("listRows")
-                    else "新版编辑器 · 仅当前段读写")
+            bits = []
+            if feats.get("listRows"):
+                bits.append("段列表")
+            if feats.get("tmHits"):
+                bits.append("TM 命中")
+            bits.append("当前段读写")
+            text = "新版编辑器 · " + " + ".join(bits)
         elif missing:
             text = "页面结构变化：" + ", ".join(missing[:3]) + "（请适配）"
         elif any(not v for k, v in feats.items()
@@ -3720,7 +3732,10 @@ class MainWindow(QMainWindow):
         if self._cap_editor == "new":
             self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
             self.conn_label.setStyleSheet("color: #d97706;")
-            if feats.get("listRows"):
+            if feats.get("listRows") and feats.get("tmHits"):
+                self.res_panel.set_status(
+                    "新版编辑器：段列表/当前段读写/TM 命中可用；TB/术语、过滤仍在接入")
+            elif feats.get("listRows"):
                 self.res_panel.set_status(
                     "新版编辑器：段列表/当前段读写可用；TM/TB、术语、过滤仍在接入")
             else:

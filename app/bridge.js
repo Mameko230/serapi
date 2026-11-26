@@ -159,6 +159,92 @@
       if (badge === 'R2') return 'reviewer2';
       return hasTarget ? 'edited' : 'untranslated';
     }
+    /* ---- 新版翻译结果（TM/TB 命中）----
+       编辑器把当前行命中放在 React 状态 hits.rowHits = {rowId, entries} 里，
+       entries 的结构与命中卡片 props.hit 相同：type/matchRate/segments/meta/... */
+    function newHitsPanel() {
+      return document.getElementById('translationResultsListInner')
+        || document.querySelector('[data-testid="translationResultsContainer"]');
+    }
+    function newHitsState() {
+      var panel = newHitsPanel();
+      if (!panel) return null;
+      var fk = Object.keys(panel).filter(function (k) {
+        return k.indexOf('__reactFiber$') === 0;
+      })[0];
+      var f = fk ? panel[fk] : null, d = 0;
+      while (f && d < 40) {
+        var h = f.memoizedState, hi = 0;
+        while (h && hi < 30) {
+          var ms = h.memoizedState;
+          if (ms && typeof ms === 'object' && ms.hits && typeof ms.hits === 'object'
+              && ms.hits.rowHits && typeof ms.hits.rowHits === 'object') {
+            return ms.hits;
+          }
+          h = h.next; hi++;
+        }
+        f = f.return; d++;
+      }
+      return null;
+    }
+    function newSymbolsText(seg) {
+      var symbols = (seg && seg.segment && seg.segment.symbols) || [];
+      var out = [];
+      for (var i = 0; i < symbols.length; i++) {
+        var s = symbols[i] || {};
+        out.push(String(s.value == null ? '' : s.value));
+      }
+      return out.join('');
+    }
+    function newSymbolsHaveTags(seg) {
+      var symbols = (seg && seg.segment && seg.segment.symbols) || [];
+      for (var i = 0; i < symbols.length; i++) {
+        var type = symbols[i] && symbols[i].type;
+        if (type !== 1 && type !== 'text' && type !== 'Text') return true;
+      }
+      return false;
+    }
+    function newHitsForRow(rowNo) {
+      var state = newHitsState();
+      if (!state || !state.rowHits) return { err: '新版翻译结果面板未找到' };
+      var row = newRowByIndex(parseInt(rowNo, 10));
+      var wantId = row ? newRowIdOf(row) : null;
+      if (wantId !== null && String(state.rowHits.rowId) !== String(wantId)) {
+        return { err: '命中尚未切换到当前行（面板行 ' + state.rowHits.rowId + '）' };
+      }
+      if (state.isFetching || (state.status && state.status !== 'success')) {
+        return { err: '命中加载中（状态 ' + String(state.status || '') + '）' };
+      }
+      var tm = [], tb = [];
+      var entries = state.rowHits.entries || [];
+      for (var i = 0; i < entries.length; i++) {
+        var h = entries[i] || {};
+        var srcSeg = (h.segments && h.segments.source) || {};
+        var tgtSeg = (h.segments && h.segments.target) || {};
+        var srcText = newSymbolsText(srcSeg);
+        var tgtText = newSymbolsText(tgtSeg);
+        var hasTags = newSymbolsHaveTags(srcSeg) || newSymbolsHaveTags(tgtSeg);
+        var meta = h.meta || {};
+        var res = h.documentName || meta.project || '';
+        if (String(h.type || '') === 'transMemory') {
+          tm.push({
+            rate: Number(h.matchRate || 0), res: String(res || ''),
+            user: String(h.creator || ''), time: String(h.created || '').slice(0, 16),
+            srcDisp: srcText, srcDecorated: srcText, tgtDecorated: tgtText,
+            // 新版命中目前按纯文本回放；tag 符号结构未完全确认，插入先禁用。
+            readOnly: hasTags, tagDefs: [],
+          });
+        } else {
+          tb.push({
+            s: srcText, t: tgtText, res: String(res || ''),
+            user: String(h.creator || ''), time: String(h.created || '').slice(0, 19),
+            entryId: String(h.id || ''), tbGuid: String(h.resourceId || ''),
+            readOnly: true,
+          });
+        }
+      }
+      return { tm: tm, tb: tb, at: [] };
+    }
     function newListRows() {
       try {
         var rows = newRowElements();
@@ -291,6 +377,7 @@
           f.rowChanged = true;
           f.docStats = true;
           f.listRows = !!newRowsTable();
+          f.tmHits = !!newHitsPanel();
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -304,7 +391,11 @@
           ? '新版编辑器：段列表尚未渲染（等待文档网格）'
           : '需要旧版编辑器（段列表）';
       }
-      if (!f.tmHits) reasons.tmHits = '需要旧版编辑器（TM/TB 命中）';
+      if (!f.tmHits) {
+        reasons.tmHits = (kind === 'new')
+          ? '新版编辑器：翻译结果面板尚未就绪'
+          : '需要旧版编辑器（TM/TB 命中）';
+      }
       if (!f.segmentInfo) reasons.segmentInfo = '需要旧版编辑器（段信息）';
       if (!f.terms) reasons.terms = '需要旧版编辑器与已加载术语库';
       if (!f.filter) reasons.filter = '需要旧版编辑器的原生过滤面板';
@@ -354,6 +445,7 @@
           markers.rowsTable = !!newRowsTable();
           markers.rowCount = newRowElements().length;
           markers.rowTotal = newRowTotal() || 0;
+          markers.hitsPanel = !!newHitsPanel();
           if (!markers.proseMirror) missing.push('proseMirror');
           if (!markers.rowsTable) missing.push('rowsTable');
         }
@@ -1844,6 +1936,13 @@
       } catch (e) {}
       window.__md._tm = { status: 'pending', t: Date.now() };
       try {
+        if (detectEditor() === 'new') {
+          var packed = newHitsForRow(rowNo);
+          if (packed.err) return fail(packed.err);
+          window.__md._tm = { status: 'done', ok: true, tm: packed.tm, tb: packed.tb, at: packed.at };
+          try { __md.push('tm-hits', { row: rowNo, tm: packed.tm, tb: packed.tb, at: packed.at }); } catch (e) {}
+          return { ok: true };
+        }
         if (detectEditor() !== 'old') return fail('tmHits 仅旧版支持');
         var ctrl = oldGridCtrl();
         if (!ctrl) return fail('gridCtrl 未找到（编辑器未打开？）');

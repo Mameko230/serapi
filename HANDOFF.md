@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 22/22 约 28s；full 39/39 约 71s。
+   - 最近结果：fast 23/23 约 28s；full 40/40 约 67s。
 
 ### 重构第一步
 
@@ -107,8 +107,10 @@
   - `activateRow`：已渲染的行直接聚焦译文编辑器；未渲染的行先按 `scrollHeight/总行数` 估算滚动，再挂起，由 Qt 侧轮询 `readSegment()` 时重试聚焦（**不要用 setInterval**：隐藏页会节流）。
   - `readSegment`：新版返回 `rowNo`（aria-rowindex）、`rowId` 与同行 `srcTokens`；`writeSegment` 行为不变。
   - `expandRows`：新版“加载更多”滚动虚拟列表，步长略小于一屏，让相邻窗口重叠、缓存不断档。
-  - 真机验证：术语文档 5 行、长文档 2150 行；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`，原文/译文 tokens 齐全。
-- **已知限制**：长文档虚拟网格只渲染当前窗口，段列表缓存可能非连续（跳行后出现行号跳跃）；下一步优先找行数据 API / SignalR 行推送，按范围补全缓存。
+  - **TM 命中**：从命中面板的 React hook 状态 `hits.rowHits` 读取当前行条目（`status==='success'`、非 `isFetching` 才接受），校验 `rowHits.rowId` 与请求行一致后才推送 `tm-hits`；`transMemory` 转 TM，其余类型转 TB；`capabilities.tmHits` 与指纹 `hitsPanel` 同步。
+  - 真机验证：术语文档 5 行、长文档 2150 行；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`，原文/译文 tokens 齐全；新版 TM 命中 5 条（101%/65%…）可按行推送，请求错行时明确报“命中尚未切换到当前行”。
+- **只读保护**：新版命中目前按纯文本回放；命中含 tag 符号或 TB 条目时 payload 带 `readOnly: true`，`_res_insert` 直接拒绝插入并提示“插入功能待接入”，不允许丢 tag 静默插入。
+- **已知限制**：长文档虚拟网格只渲染当前窗口，段列表缓存可能非连续（跳行后出现行号跳跃）；TB 术语（“条目”面板 / `rows/<n>/hits` API）与术语高亮、过滤、原生确认仍未接入。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。
 
 ## 关键红线
@@ -117,6 +119,7 @@
 - **保存状态**只在 `SaveCoordinator` 里（`busy` / `seq+active_id` / `pending_row` / `conflict_snapshot`）；**段列表状态**只在 `SegmentSync` 里（`busy` / `seq` / `total_rows` / `auto_loading`）；**命中请求状态**只在 `HitCoordinator` 里（`row` / `gen`）；**详情请求状态**只在 `DetailCoordinator` 里（段信息 `gen` / TB 详情 `seq+pending`）。`MainWindow` 只实现端口，不要在端口里另做时机判断。
 - **页面操作**只走 `EditorBackend`（`backend_for(self)`）：新增/修改 `__md.api` 表达式只改 `app/editor_backend.py`，不要在 `mainwindow.py` 里散 `call_js`（`--selftest`/探针/往返诊断除外）。
 - **新版引擎页必须保持渲染**：新版 React 页面被 `hide()` 后会停止渲染网格/编辑器视图；隐藏引擎必须走“停放”（保持 visible、禁用交互、移出窗口可视区），不要改回直接 hide。
+- **新版命中只读保护**：命中 payload 带 `readOnly: true` 时 `_res_insert` 必须拒绝插入（tag 结构未确认，宁可拒绝也不能丢 tag 静默插入）。
 - **浮层请求编号**只在 `RequestSequence` 里（术语 `self._term`、语词检索 `self._concordance`）；结果分发只走 `TermOverlayCoordinator.handle()` 与对应 coordinator。
 - 切行/保存/确认/过滤/草稿冲突属于红线；改动后跑 `--full`。
 - 写回前必须核对行号与远端快照；宁可拒绝，不允许静默写错。
@@ -155,10 +158,11 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 
 ## 下一步（按顺序）
 
-1. 新版 TM/TB 命中与段信息：优先读右侧“翻译结果”/“焦点行”面板（或同源 API），再接术语与过滤；写操作（确认/保存/改术语）动手前先征得用户同意。
-2. 长文档行缓存补全：找行数据 API / SignalR 行推送，避免虚拟窗口造成的行号跳跃。
-3. 新版原生确认（确认句段按钮 / 命令通道）；验收时务必用授权的两个文档且先只读。
-4. 可选的继续收口：语词检索浮层的分发仍在 `MainWindow`（只有请求编号进了 `RequestSequence`），需要时再抽；`--selftest`/探针诊断里的 `call_js` 表达式也不再收敛。
+1. 新版 TB 术语与高亮：读“条目”面板或 `rows/<n>/hits` API，补术语列表、术语底色与术语数量提醒。
+2. 新版段信息（“焦点行”/注释面板）与过滤；过滤先做只读打开面板，真正应用前征得用户同意。
+3. 新版原生确认（“确认句段”按钮 / 命令通道）与 TM 命中插入（tag 结构）；写操作只在授权文档上做人工冒烟。
+4. 长文档行缓存补全：找行数据 API / SignalR 行推送，避免虚拟窗口造成的行号跳跃。
+5. 可选：语词检索浮层分发收口；`--selftest`/探针诊断里的 `call_js` 表达式不再收敛。
 
 不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。
 
