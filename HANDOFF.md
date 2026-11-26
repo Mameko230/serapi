@@ -8,7 +8,7 @@
 - GitHub：`Mameko230/serapi`（public）
 - 当前版本：`1.0.0`（`app/version.py`）
 - 适配基线：memoQ WebTrans **12.5.20**（此前抓包/回归确认）；没有版本白名单，靠能力探测 + 结构指纹。
-- 当前提交：`ec6a907` 过滤栏增加 Ctrl+Shift+F，并补展开/收起状态提示
+- 当前提交：`c8882e3` 1.0.0：确认/拒绝改 HTTP 行接口，补字数统计/复制原文/快捷键入口/能力清单收口
 - Release/tag：**无**（发版必须等用户明确说）
 - 本地目录：仍叫 `memodesk`；远程仓库已是 Serapi
 - 配置目录：沿用历史路径 `~/.memodesk/`（登录态、草稿、Tag 规则）；这是兼容路径，不要随手改
@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 30/30 约 40s；full 48/48 约 82s（`tests/test_release_ready.py` 自动进入全量）。
+   - 最近结果：fast 30/30 约 40s；full 48/48 约 75s（`tests/test_release_ready.py` 自动进入全量）。
 
 ### 重构第一步
 
