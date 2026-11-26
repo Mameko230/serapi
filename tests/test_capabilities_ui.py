@@ -24,6 +24,11 @@ class PanelStub:
     def set_status(self, text):
         self.status = text
 
+    def set_hint(self, text):
+        # 与真实 ResPanel 一致：仅在没有命中时显示能力提示。
+        if not getattr(self, "hits", None):
+            self.status = text
+
 
 class Host(QWidget):
     _apply_capabilities = MainWindow._apply_capabilities
@@ -74,6 +79,13 @@ h._apply_capabilities(json.dumps(new_all))
 assert "过滤" in h.cap_label.text()
 assert "过滤可用" in h.res_panel.status
 assert "仍在接入" in h.res_panel.status
+
+# 命中已加载时，能力探测重复回调不得清空命中文案（P0：切行后命中消失）。
+h.res_panel.hits = [{"kind": "tm"}]
+status_before = h.res_panel.status
+h._apply_capabilities(json.dumps(new_all))
+assert h.res_panel.status == status_before
+h.res_panel.hits = None
 
 
 class ExpandHost:
@@ -130,18 +142,27 @@ class BridgeHost:
     def __init__(self):
         self.conn_label = QLabel("")
         self.refreshes = []
+        self.schedules = []
+        self.reads = []
+        self.logs = []
         self._segments = types.SimpleNamespace(
             busy=False, auto_loading=False,
             refresh=lambda **kw: self.refreshes.append(dict(kw)))
 
-    def _schedule_seg_refresh(self, *_args, **_kwargs):
+    def log(self, text):
+        self.logs.append(str(text))
+
+    def _schedule_seg_refresh(self, delay, background=True):
+        self.schedules.append((delay, background))
+
+    def _reset_editor_context(self, url, page_id):
         pass
 
     def _set_engine_visible(self, _visible):
         pass
 
     def read_segment(self, auto=False):
-        raise AssertionError("rows-updated 不应触发读段")
+        self.reads.append(bool(auto))
 
 
 bh = BridgeHost()
@@ -151,6 +172,22 @@ MainWindow.on_bridge_event(bh, 7, json.dumps({
              "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
 }))
 assert bh.refreshes == [{"background": True}], bh.refreshes
+assert bh.schedules == [] and bh.reads == []
+
+# 重载/每条编辑器事件不得重复安排能力探测与首次段列表刷新（P0：命中被清空）。
+MainWindow.on_bridge_event(bh, 7, json.dumps({
+    "type": "bridge-ready",
+    "data": {"editor": "new",
+             "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
+}))
+assert bh.schedules == [(1500, False)], bh.schedules
+MainWindow.on_bridge_event(bh, 7, json.dumps({
+    "type": "row-changed",
+    "data": {"editor": "new",
+             "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
+}))
+assert bh.schedules == [(1500, False)], bh.schedules
+assert bh.reads == [True], bh.reads
 
 
 # 新版过滤失败：bridge 推 filter-error 时恢复过滤 UI 状态，不留“已过滤”假象。

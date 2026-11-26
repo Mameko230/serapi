@@ -131,6 +131,23 @@ html = w_hits.res_panel.cmp_box.toHtml()
 assert "源语言定义" in html and "译语言定义" in html, html
 assert "条目备注" in html and "财务" in html, html
 
+# 6c) 能力提示不得清空已加载的命中（P0：切行后命中显示约 1 秒又消失）。
+payloads_before = list(w_hits.res_panel._hit_payloads)
+html_before = w_hits.res_panel.cmp_box.toHtml()
+w_hits.res_panel.set_hint("新版编辑器：段列表/当前段读写/TM 命中可用")
+assert list(w_hits.res_panel._hit_payloads) == payloads_before
+assert w_hits.res_panel.cmp_box.toHtml() == html_before
+# 空面板时提示仍然正常显示，避免能力降级没人告诉用户。
+empty_panel = ResPanel()
+empty_panel.set_hint("空面板提示")
+assert empty_panel._hit_payloads == []
+hint_texts = []
+for _i in range(empty_panel._hits_lay.count()):
+    _w = empty_panel._hits_lay.itemAt(_i).widget()
+    if _w is not None and hasattr(_w, "text"):
+        hint_texts.append(_w.text())
+assert any("空面板提示" in t for t in hint_texts), hint_texts
+
 # 7) 行号列使用自绘 delegate，选中后仍由同一状态色绘制，不被 QSS 高亮替代。
 from app.mainwindow import SegStatusDelegate
 from PyQt6.QtWidgets import QTableView

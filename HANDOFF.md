@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 26/26 约 29s；full 43/43 约 79s。
+   - 最近结果：fast 26/26 约 33s；full 43/43 约 74s。
 
 ### 重构第一步
 
@@ -114,7 +114,7 @@
   - **过滤（原生 filter API，只读视图）**：`POST /api/editor/.../filter`，body `{filterSet:{content:{source:{text,isCaseSensitive:false,matchType:'any',shouldMatchExactWordOrder:false}, target:{...}, shouldIncludeSegments:true}}, sorting:'none'}` → `{rangesByRowIds:[{key: rowId, value:[ranges]}]}`；`key` 就是命中的 0 基 rowId。过滤后 `listRows` 只按命中 rowId 取行（`total`=命中数，行号保留原始 rowId+1，与旧版一致）；清除过滤用空 `filterSet:{}`。失败会 push `filter-error`，Qt 恢复过滤 UI 状态。
   - **POST 必须带认证头**：`X-CSRF-TOKEN`（cookie）+ `X-Requested-With: XMLHttpRequest`（有 Bearer 时再加 `Authorization`），否则行数据/注释接口一律 400。GET 不需要。
   - **行数据 API（已用于段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,isLocked,...},source:{symbols},target:{symbols}}]`。每批 100 行；`id` 即 0 基 rowId。
-  - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，TB 详情显示条目 2487（只读）、原文「強化」/译文「強化哦」、定义/示例/字段（Subject: SNACK、Note: 111），底部“术语数量提醒”正常；第 3 行 5 条 TM（101/65%…）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行。
+  - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，TB 详情显示条目 2487（只读）、原文「強化」/译文「強化哦」、定义/示例/字段（Subject: SNACK、Note: 111），底部“术语数量提醒”正常；第 3 行 5 条 TM（101/65%…）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行；P0 修复后切到第 5 行等 7 秒，TM/TB 命中列表 6 行仍在、详情同屏。
 - **只读保护**：新版 TM 命中按纯文本回放（含 tag 符号时 payload 带 `readOnly: true`）；TB 条目一律 `readOnly: true` 且不填 tbGuid/entryId（条目详情/编辑接口未接入，避免误触旧版 API）。`_res_insert` 遇到 readOnly 会拒绝并提示“插入功能待接入”。
 - **已知限制**：段列表每批 100 行按需加载（长文档滚到底再取下一批）；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签），过滤后跳行仍按原始行号估算滚动；TM 命中暂不能插入；TB 命中详情只读（定义/示例/字段来自命中数据，术语编辑接口未接）；TB 条目若没有目标语言译文只显示源术语；原生确认仍未接入；段信息只有注释，没有上下文/原始 ID。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。
@@ -125,6 +125,7 @@
 - **保存状态**只在 `SaveCoordinator` 里（`busy` / `seq+active_id` / `pending_row` / `conflict_snapshot`）；**段列表状态**只在 `SegmentSync` 里（`busy` / `seq` / `total_rows` / `auto_loading`）；**命中请求状态**只在 `HitCoordinator` 里（`row` / `gen`）；**详情请求状态**只在 `DetailCoordinator` 里（段信息 `gen` / TB 详情 `seq+pending`）。`MainWindow` 只实现端口，不要在端口里另做时机判断。
 - **页面操作**只走 `EditorBackend`（`backend_for(self)`）：新增/修改 `__md.api` 表达式只改 `app/editor_backend.py`，不要在 `mainwindow.py` 里散 `call_js`（`--selftest`/探针/往返诊断除外）。
 - **新版引擎页必须保持渲染**：新版 React 页面被 `hide()` 后会停止渲染网格/编辑器视图；隐藏引擎必须走“停放”（保持 visible、禁用交互、移出窗口可视区），不要改回直接 hide。
+- **命中面板不得被能力提示清空**：能力探测只在 `bridge-ready` 调度一次（1200/5000/15000ms）；`_apply_capabilities` 写提示必须用 `ResPanel.set_hint()`（仅在无命中时显示），`set_status()` 只用于加载中/空态。历史 P0：每条 row-changed/tm-hits/rows-updated 都重复排探测，1.2 秒后探测把刚加载的 TM/TB 列表清空，只剩详情。
 - **新版命中只读保护**：命中 payload 带 `readOnly: true` 时 `_res_insert` 必须拒绝插入（tag 结构未确认，宁可拒绝也不能丢 tag 静默插入）。
 - **浮层请求编号**只在 `RequestSequence` 里（术语 `self._term`、语词检索 `self._concordance`）；结果分发只走 `TermOverlayCoordinator.handle()` 与对应 coordinator。
 - 切行/保存/确认/过滤/草稿冲突属于红线；改动后跑 `--full`。

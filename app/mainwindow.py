@@ -1164,6 +1164,16 @@ class ResPanel(QWidget):
         self._last_hits = None
         self._empty(text)
 
+    def set_hint(self, text: str):
+        """能力提示：只在命中列表为空时显示，绝不覆盖已经加载的 TM/TB 命中。
+
+        能力探测可能在命中到达之后重复回调；用 set_status 会把命中列表清掉，
+        造成“切行后命中显示 1 秒又消失”的问题。
+        """
+        if self._hit_payloads:
+            return
+        self.set_status(text)
+
     def show_detail(self, payload: dict):
         """底部详情栏：单击命中条目时填入完整信息（memoQ 下部面板风格）。"""
         if not payload:
@@ -3774,16 +3784,16 @@ class MainWindow(QMainWindow):
             self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
             self.conn_label.setStyleSheet("color: #d97706;")
             if feats.get("listRows") and feats.get("tmHits") and feats.get("filter"):
-                self.res_panel.set_status(
+                self.res_panel.set_hint(
                     "新版编辑器：段列表/当前段读写/TM 命中/过滤可用；TB/术语仍在接入")
             elif feats.get("listRows") and feats.get("tmHits"):
-                self.res_panel.set_status(
+                self.res_panel.set_hint(
                     "新版编辑器：段列表/当前段读写/TM 命中可用；TB/术语、过滤仍在接入")
             elif feats.get("listRows"):
-                self.res_panel.set_status(
+                self.res_panel.set_hint(
                     "新版编辑器：段列表/当前段读写可用；TM/TB、术语、过滤仍在接入")
             else:
-                self.res_panel.set_status(
+                self.res_panel.set_hint(
                     "新版编辑器：仅支持当前段读写；段列表/TM/TB/术语/过滤暂不可用")
             if not getattr(self, "_engine_visible", True) and not getattr(
                     self, "_engine_parked", False):
@@ -3817,12 +3827,16 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(500, lambda: self._set_engine_visible(False))
             self.conn_label.setText("已连接 · 编辑器就绪")
             self.conn_label.setStyleSheet("color: #059669;")
-            probe = getattr(self, "_probe_capabilities", None)
-            if probe is not None:
-                QTimer.singleShot(1200, probe)
-                QTimer.singleShot(5000, probe)
-                QTimer.singleShot(15000, probe)
-            self._schedule_seg_refresh(1500, background=False)  # 首次完整读取并更新统计
+            # 能力探测/首次段列表刷新只在新页面就绪时做一次：
+            # 每条 row-changed/tm-hits/rows-updated 都触发会重复探测，
+            # 而探测会写命中面板提示（历史上把刚加载的命中清空——P0）。
+            if msg.get("type") == "bridge-ready":
+                probe = getattr(self, "_probe_capabilities", None)
+                if probe is not None:
+                    QTimer.singleShot(1200, probe)
+                    QTimer.singleShot(5000, probe)
+                    QTimer.singleShot(15000, probe)
+                self._schedule_seg_refresh(1500, background=False)  # 首次完整读取并更新统计
         elif msg.get("type") == "bridge-ready" and page_id == self._editor_pid:
             # 原编辑器页导航走了（新页面会重新上报身份）
             self._editor_pid = None
