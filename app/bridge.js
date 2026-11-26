@@ -213,6 +213,70 @@
       if (seg && typeof seg.text === 'string' && seg.text) return seg.text;
       return newSymbolsText(seg);
     }
+    // 新版命中符号 → token：文本按码点解码，type=2 是 tag（tagType/inlineTagType/name/display）。
+    function newSymbolsTokens(seg) {
+      var symbols = newSegmentSymbols(seg);
+      var out = [];
+      var text = '';
+      var flush = function () {
+        if (text) { out.push({ t: 'text', v: text }); text = ''; }
+      };
+      for (var i = 0; i < symbols.length; i++) {
+        var s = symbols[i] || {};
+        var type = String(s.type);
+        if (type === '2') {
+          flush();
+          var disp = (s.display && typeof s.display === 'object')
+            ? String(s.display.text == null ? '' : s.display.text)
+            : String(s.display == null ? '' : s.display);
+          var inline = String(s.inlineTagType == null ? '' : s.inlineTagType);
+          var tagType = (inline === '2') ? 'inline-self-closed' : 'inline-closed';
+          out.push({
+            t: 'tag', tagKind: 'empty', name: String(s.name || ''),
+            display: disp, tagType: tagType,
+            attrs: { type: tagType, name: String(s.name || ''),
+                     isSpecial: !!(s.display && s.display.isSpecial),
+                     displayText: disp },
+          });
+        } else if (type === '1' || type === 'text') {
+          text += newSymbolChar(s.value);
+        } else {
+          // 未知符号兜底：按文本拼
+          text += newSymbolChar(s.value);
+        }
+      }
+      flush();
+      return out;
+    }
+    // 命中 tag 能否全部按名字映射到当前原文 tag（严格插入前置校验）。
+    function newTagPlan(srcTokens, tgtTokens) {
+      var have = {}, need = {};
+      var count = function (list, bucket) {
+        for (var i = 0; i < list.length; i++) {
+          var t = list[i] || {};
+          if (t.t !== 'tag') continue;
+          var name = String(t.name || '');
+          bucket[name] = (bucket[name] || 0) + 1;
+        }
+      };
+      count(srcTokens || [], have);
+      count(tgtTokens || [], need);
+      for (var name in need) {
+        if (!Object.prototype.hasOwnProperty.call(need, name)) continue;
+        if (need[name] > (have[name] || 0)) return false;
+      }
+      return true;
+    }
+    function newCurrentSourceTokens() {
+      try {
+        var view = newActiveView() || newAnyView();
+        var row = view ? newViewRow(view) : null;
+        var seg = row ? newSegmentEl(row, 'source') : null;
+        var pm = seg && seg.querySelector ? seg.querySelector('div.ProseMirror') : null;
+        var srcView = pm ? newFindView(pm) : null;
+        return srcView ? newSegmentTokens(srcView) : [];
+      } catch (e) { return []; }
+    }
     function newSymbolsHaveTags(seg) {
       var symbols = newSegmentSymbols(seg);
       for (var i = 0; i < symbols.length; i++) {
@@ -473,6 +537,7 @@
     }
     function newMapHitsEntries(entries) {
       var tm = [], tb = [];
+      var sourceTokens = newCurrentSourceTokens();
       for (var i = 0; i < entries.length; i++) {
         var h = entries[i] || {};
         var meta = h.meta || {};
@@ -483,13 +548,17 @@
           var tgtSeg = (h.segments && h.segments.target) || {};
           var srcText = newSegText(srcSeg);
           var tgtText = newSegText(tgtSeg);
+          var srcTokens = newSymbolsTokens(srcSeg);
+          var tgtTokens = newSymbolsTokens(tgtSeg);
           var hasTags = newSymbolsHaveTags(srcSeg) || newSymbolsHaveTags(tgtSeg);
+          // 原文能按名字配齐的 tag 才允许插入；配不齐仍只读，避免静默丢 tag。
+          var planOk = !hasTags || newTagPlan(sourceTokens, tgtTokens);
           tm.push({
             rate: Number(h.matchRate || 0), res: String(res || ''),
             user: String(h.creator || ''), time: String(h.created || '').slice(0, 16),
             srcDisp: srcText, srcDecorated: srcText, tgtDecorated: tgtText,
-            // 新版命中目前按纯文本回放；tag 符号结构未完全确认，插入先禁用。
-            readOnly: hasTags, tagDefs: [],
+            srcTokens: srcTokens, tgtTokens: tgtTokens,
+            strictTags: hasTags, readOnly: hasTags && !planOk, tagDefs: [],
           });
         } else if (type === 'termBase') {
           // TB 条目：languages[lang].terms[{term}]，source 指明原文语言与词条序号。

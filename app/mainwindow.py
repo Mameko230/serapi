@@ -3062,9 +3062,13 @@ class MainWindow(QMainWindow):
             src = dict(candidates[i])
             used[key] = i + 1
             if src.get("id") in (None, ""):
-                dropped += 1
-                continue
-            src.pop("kind", None)
+                # 新版编辑器 tag token 没有数字 id，但带完整 PM attrs（dict）；
+                # 插入时直接复用原文 tag 的 attrs 重建节点。
+                if not isinstance(src.get("attrs"), dict):
+                    dropped += 1
+                    continue
+            else:
+                src.pop("kind", None)
             src.update({"t": "tag", "tagKind": kind})
             out.append(src)
         return out, dropped
@@ -3089,16 +3093,28 @@ class MainWindow(QMainWindow):
                      + ("（覆盖选中内容）" if had else ""))
             return
         if kind in ("tm", "at", "nt", "ar"):
-            decorated = payload.get("tgtDecorated") or ""
-            if not decorated.strip():
-                self.log("该命中译文为空，未插入")
-                return
-            row_no = self._cur_row
-            toks = self._parse_editor_tokens(decorated, payload.get("tagDefs"))
+            # 新版命中带 token 流（文本+tag）：优先用它，tag 按名字映射到当前原文；
+            # 旧版/旧缓存仍走 decorated 字符串解析。
+            hit_tokens = payload.get("tgtTokens")
+            if isinstance(hit_tokens, list) and hit_tokens:
+                toks = [dict(t) for t in hit_tokens if isinstance(t, dict)]
+                if not any(t.get("t") in ("text", "tag") for t in toks):
+                    self.log("该命中译文为空，未插入")
+                    return
+            else:
+                decorated = payload.get("tgtDecorated") or ""
+                if not decorated.strip():
+                    self.log("该命中译文为空，未插入")
+                    return
+                toks = self._parse_editor_tokens(decorated, payload.get("tagDefs"))
             mapped, dropped = self._map_hit_tokens(toks)
+            if dropped and payload.get("strictTags"):
+                self.log("命中 tag 无法全部映射到当前原文，已取消插入（避免丢 tag）")
+                return
             if not mapped:
                 self.log("命中未解析出可插入内容")
                 return
+            row_no = self._cur_row
             replace_all = (kind == "tm" and bool(getattr(
                 getattr(self, "res_panel", None), "_tm_replace_all", False)))
             if replace_all:

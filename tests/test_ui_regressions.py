@@ -148,6 +148,46 @@ for _i in range(empty_panel._hits_lay.count()):
         hint_texts.append(_w.text())
 assert any("空面板提示" in t for t in hint_texts), hint_texts
 
+# 6d) 新版命中带 token：tag 按名字映射到当前原文 attrs；严格模式下缺 tag 拒绝插入。
+insert_host = Dummy()
+insert_host.editor = MqEditor()
+insert_host.logs = []
+insert_host.log = lambda s: insert_host.logs.append(str(s))
+insert_host._last_src_tokens = [
+    {"t": "text", "v": "原文"},
+    {"t": "tag", "name": "mq:rxt", "display": "1", "tagType": "inline-closed",
+     "attrs": {"type": "inline-closed", "name": "mq:rxt", "output": "",
+               "isSpecial": False, "displayText": "1", "attributes": []}},
+    {"t": "text", "v": "尾"},
+]
+insert_host._cur_row = 1
+insert_host._tm_rates = {}
+insert_host.res_panel = ResPanel()
+insert_host.seg_model = types.SimpleNamespace(set_tm_rate=lambda n, r: None)
+insert_host._map_hit_tokens = types.MethodType(MainWindow._map_hit_tokens, insert_host)
+insert_host._parse_editor_tokens = types.MethodType(
+    MainWindow._parse_editor_tokens, insert_host)
+payload = {"kind": "tm", "rate": 101, "res": "R", "strictTags": True,
+           "tgtTokens": [{"t": "text", "v": "译文"},
+                         {"t": "tag", "name": "mq:rxt", "tagKind": "empty",
+                          "display": "1"}]}
+MainWindow._res_insert(insert_host, payload)
+assert "译文" in insert_host.editor.toPlainText()
+_toks = insert_host.editor.to_tokens()
+_tag = next((t for t in _toks if t.get("t") == "tag"), None)
+assert _tag is not None, _toks
+assert _tag.get("attrs", {}).get("name") == "mq:rxt", _tag
+assert insert_host._tm_rates == {1: 101}
+# 严格模式 + 原文没有对应 tag：必须整体拒绝，不能静默丢 tag 插入文本。
+before_text = insert_host.editor.toPlainText()
+MainWindow._res_insert(insert_host, {
+    "kind": "tm", "rate": 80, "strictTags": True,
+    "tgtTokens": [{"t": "text", "v": "不应插入"},
+                  {"t": "tag", "name": "mq:nope", "tagKind": "empty"}],
+})
+assert insert_host.editor.toPlainText() == before_text
+assert any("已取消插入" in line for line in insert_host.logs), insert_host.logs
+
 # 7) 行号列使用自绘 delegate，选中后仍由同一状态色绘制，不被 QSS 高亮替代。
 from app.mainwindow import SegStatusDelegate
 from PyQt6.QtWidgets import QTableView

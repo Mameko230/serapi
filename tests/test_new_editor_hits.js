@@ -211,6 +211,9 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   assert.strictEqual(pushed.data.tm[0].srcDisp, 'src-text');
   assert.strictEqual(pushed.data.tm[0].tgtDecorated, 'tgt-text');
   assert.strictEqual(pushed.data.tm[0].readOnly, false);
+  assert.strictEqual(pushed.data.tm[0].strictTags, false);
+  assert.ok(pushed.data.tm[0].tgtTokens.some((t) => t.t === 'text' && t.v === 'tgt-text'),
+            pushed.data.tm[0].tgtTokens);
   assert.strictEqual(pushed.data.tb[0].s, 'term');
   assert.strictEqual(pushed.data.tb[0].t, '术语');
   assert.strictEqual(pushed.data.tb[0].readOnly, true);
@@ -248,11 +251,16 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   assert.strictEqual(pushed.data.tm[0].srcDisp, 'こい');
   assert.strictEqual(pushed.data.tm[0].tgtDecorated, '你');
 
-  // 3) 命中里出现 tag 符号（type != 1）：只读，避免把 tag 结构插坏。
+  // 3) 命中里出现 tag 符号：token 流带上 tag 元数据；旧页面无源 token 时仍只读。
   state.entries = [Object.assign({}, TM_ENTRY, {
     segments: {
       source: TM_ENTRY.segments.source,
-      target: { text: 'x', segment: { symbols: [{ type: 2, value: 'x' }] } },
+      target: { text: 'x', segment: { symbols: [
+        { type: 1, value: 30002 },
+        { type: 2, tagType: 1, inlineTagType: 1, name: 'mq:rxt',
+          display: { isSpecial: false, text: '1' },
+          attributes: [{ type: 1, value: 'v', name: 'id' }] },
+      ] } },
     },
   })];
   pushes.length = 0;
@@ -261,6 +269,14 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   pushed = lastPush();
   assert.strictEqual(pushed.type, 'tm-hits');
   assert.strictEqual(pushed.data.tm[0].readOnly, true);
+  assert.strictEqual(pushed.data.tm[0].strictTags, true);
+  const hitTokens = pushed.data.tm[0].tgtTokens;
+  assert.ok(hitTokens.some((t) => t.t === 'text' && t.v === '甲'), hitTokens);
+  const hitTag = hitTokens.find((t) => t.t === 'tag');
+  assert.strictEqual(hitTag.name, 'mq:rxt');
+  assert.strictEqual(hitTag.display, '1');
+  assert.strictEqual(hitTag.tagType, 'inline-closed');
+  assert.strictEqual(hitTag.tagKind, 'empty');
 
   // 4) HTTP 失败：推 tm-err，不推空命中。
   state.entries = [];
