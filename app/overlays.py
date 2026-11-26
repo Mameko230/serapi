@@ -251,7 +251,15 @@ class TermOverlay(QWidget):
             "tbGuid": str(payload.get("tbGuid") or ""),
             "entryId": payload.get("entryId"),
             "projectGuid": str(payload.get("projectGuid") or ""),
+            "sourceLang": "",
+            "targetLang": "",
         }
+        for lang in ((payload.get("detail") or {}).get("languages") or []):
+            role = lang.get("role")
+            if role == "source" and not self._edit["sourceLang"]:
+                self._edit["sourceLang"] = str(lang.get("code") or "")
+            elif role == "target" and not self._edit["targetLang"]:
+                self._edit["targetLang"] = str(lang.get("code") or "")
         self.source.setText(str(payload.get("s") or ""))
         self.target.setText(str(payload.get("t") or ""))
         self.source_definition.setPlainText("")
@@ -294,6 +302,8 @@ class TermOverlay(QWidget):
             "tbGuid": str(data.get("tbGuid") or self._edit.get("tbGuid") or ""),
             "entryId": data.get("entryId"),
             "projectGuid": str(data.get("projectGuid") or self._edit.get("projectGuid") or ""),
+            "sourceLang": str(data.get("sourceLang") or self._edit.get("sourceLang") or ""),
+            "targetLang": str(data.get("targetLang") or self._edit.get("targetLang") or ""),
         })
         self.source.setText(str(data.get("source") or ""))
         self.target.setText(str(data.get("target") or ""))
@@ -362,6 +372,8 @@ class TermOverlay(QWidget):
                 "tbGuid": self._edit.get("tbGuid") or "",
                 "entryId": self._edit.get("entryId"),
                 "projectGuid": self._edit.get("projectGuid") or "",
+                "sourceLang": self._edit.get("sourceLang") or "",
+                "targetLang": self._edit.get("targetLang") or "",
             })
             if not params["tbGuid"] or params["entryId"] in (None, ""):
                 self.status.setText("缺少术语条目信息，无法保存。")

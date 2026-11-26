@@ -919,6 +919,7 @@
           try {
             var core = termCore();
             f.terms = !!(core && core.lastUsedTBGuid);
+            f.termEdit = f.terms;
           } catch (e) {}
           try {
             var fe = pageFilterInput('source');
@@ -938,6 +939,9 @@
           // 确认/拒绝用新版原生快捷键（Ctrl+Enter / Shift+Enter），跳转遵循 memoQ 设置。
           f.confirm = true;
           f.reject = true;
+          // TB 术语编辑复用旧 QTermService（GetEntryForTerm/UpdateEntry），
+          // 项目 GUID 从 URL 取；术语“添加”仍只支持旧版，所以 terms 保持 false。
+          f.termEdit = !!newProjectGuidFromUrl();
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -962,6 +966,7 @@
           : '需要旧版编辑器（段信息）';
       }
       if (!f.terms) reasons.terms = '需要旧版编辑器与已加载术语库';
+      if (!f.termEdit) reasons.termEdit = '需要旧版编辑器或新版文档项目（术语编辑）';
       if (!f.filter) {
         reasons.filter = (kind === 'new')
           ? '新版编辑器：过滤接口尚未就绪'
@@ -2022,6 +2027,40 @@
       if (!prj) throw new Error('项目 GUID 未找到');
       return String(prj);
     }
+    // 新版编辑器没有 WebTrans.Core：项目 GUID 直接从 URL /projects/<guid>/docs/... 取。
+    function newProjectGuidFromUrl() {
+      try {
+        var m = /\/projects\/([^/?#]+)/.exec(location.pathname || '');
+        if (m && m[1]) return String(m[1]);
+      } catch (e) {}
+      try { return String(new URL(location.href).searchParams.get('prj') || ''); } catch (e) {}
+      return '';
+    }
+    // 新版术语条目：优先用调用方给的语言码（TB 命中 detail.languages），
+    // 否则按命中术语文本在语言层里反查；两语言层时兜底 source/target。
+    function newTermLangCodes(entry, params) {
+      params = params || {};
+      var wantS = String(params.sourceLang || '').trim();
+      var wantT = String(params.targetLang || '').trim();
+      var srcText = String(params.sourceText || params.source || '').trim();
+      var tgtText = String(params.targetText || params.target || '').trim();
+      var layers = (entry && entry.LanguageLevelMetaInfos) || [];
+      var srcLayer = wantS ? termLanguage(entry, wantS) : null;
+      var tgtLayer = wantT ? termLanguage(entry, wantT) : null;
+      for (var i = 0; i < layers.length; i++) {
+        var texts = termLanguageTerms(layers[i]);
+        if (!srcLayer && srcText && texts.indexOf(srcText) >= 0) srcLayer = layers[i];
+        if (!tgtLayer && tgtText && texts.indexOf(tgtText) >= 0) tgtLayer = layers[i];
+      }
+      if ((!srcLayer || !tgtLayer) && layers.length === 2) {
+        if (!srcLayer) srcLayer = layers[0];
+        if (!tgtLayer) tgtLayer = layers[1];
+      }
+      return {
+        src: srcLayer ? String(srcLayer.LanguageCode || '') : '',
+        tgt: tgtLayer ? String(tgtLayer.LanguageCode || '') : '',
+      };
+    }
 
     /* ---- 术语条目结构（读取 PascalCase → 提交 camelCase，均来自真实抓包） ---- */
     function termMetaList(container) {
@@ -2325,15 +2364,27 @@
         return termFail('term-entry', req, '缺少术语条目信息');
       }
       try {
-        if (detectEditor() !== 'old') return termFail('term-entry', req, '编辑术语仅旧版支持');
-        var core = termCore();
-        if (!core.sourceLangCode || !core.targetLangCode) {
-          throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
+        var kind = detectEditor();
+        if (kind !== 'old' && kind !== 'new') return termFail('term-entry', req, '编辑术语仅新版/旧版支持');
+        var isNew = kind === 'new';
+        var core = null;
+        var prj = String(params.projectGuid || '');
+        if (isNew) {
+          prj = prj || newProjectGuidFromUrl();
+        } else {
+          core = termCore();
+          if (!core.sourceLangCode || !core.targetLangCode) {
+            throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
+          }
+          prj = prj || termProjectGuid(core);
         }
-        var prj = String(params.projectGuid || termProjectGuid(core));
+        if (!prj) throw new Error('项目 GUID 未找到');
         termGetEntry(tbGuid, entryId, prj).then(function (entry) {
-          var src = termLanguage(entry, core.sourceLangCode);
-          var tgt = termLanguage(entry, core.targetLangCode);
+          var codes = isNew
+            ? newTermLangCodes(entry, params)
+            : { src: core.sourceLangCode, tgt: core.targetLangCode };
+          var src = termLanguage(entry, codes.src);
+          var tgt = termLanguage(entry, codes.tgt);
           if (!src || !tgt) throw new Error('术语条目缺少原文或译文语言层');
           var srcTerm = termPrimaryTerm(src);
           var tgtTerm = termPrimaryTerm(tgt);
@@ -2369,15 +2420,27 @@
         return termFail('term-detail', req, '缺少术语条目信息');
       }
       try {
-        if (detectEditor() !== 'old') return termFail('term-detail', req, '术语详情仅旧版支持');
-        var core = termCore();
-        if (!core.sourceLangCode || !core.targetLangCode) {
-          throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
+        var kind = detectEditor();
+        if (kind !== 'old' && kind !== 'new') return termFail('term-detail', req, '术语详情仅新版/旧版支持');
+        var isNew = kind === 'new';
+        var core = null;
+        var prj = String(params.projectGuid || '');
+        if (isNew) {
+          prj = prj || newProjectGuidFromUrl();
+        } else {
+          core = termCore();
+          if (!core.sourceLangCode || !core.targetLangCode) {
+            throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
+          }
+          prj = prj || termProjectGuid(core);
         }
-        var prj = String(params.projectGuid || termProjectGuid(core));
+        if (!prj) throw new Error('项目 GUID 未找到');
         termGetEntry(tbGuid, entryId, prj).then(function (entry) {
-          var src = termLanguage(entry, core.sourceLangCode);
-          var tgt = termLanguage(entry, core.targetLangCode);
+          var codes = isNew
+            ? newTermLangCodes(entry, params)
+            : { src: core.sourceLangCode, tgt: core.targetLangCode };
+          var src = termLanguage(entry, codes.src);
+          var tgt = termLanguage(entry, codes.tgt);
           var languages = (entry.LanguageLevelMetaInfos || []).map(function (lang) {
             var role = 'other';
             if (lang === src) role = 'source';
@@ -2413,16 +2476,28 @@
       }
       if (!source || !target) return termFail('term-edit-result', req, '原文术语和译文术语都需要填写');
       try {
-        if (detectEditor() !== 'old') return termFail('term-edit-result', req, '编辑术语仅旧版支持');
-        var core = termCore();
-        if (!core.sourceLangCode || !core.targetLangCode) {
-          throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
+        var kind = detectEditor();
+        if (kind !== 'old' && kind !== 'new') return termFail('term-edit-result', req, '编辑术语仅新版/旧版支持');
+        var isNew = kind === 'new';
+        var core = null;
+        var prj = String(params.projectGuid || '');
+        if (isNew) {
+          prj = prj || newProjectGuidFromUrl();
+        } else {
+          core = termCore();
+          if (!core.sourceLangCode || !core.targetLangCode) {
+            throw new Error('memoQ 语言信息尚未就绪，请先点击原文或译文段后再试');
+          }
+          prj = prj || termProjectGuid(core);
         }
-        var prj = String(params.projectGuid || termProjectGuid(core));
+        if (!prj) throw new Error('项目 GUID 未找到');
         termGetEntry(tbGuid, entryId, prj).then(function (entry) {
           if (entry.ReadOnlyTb) throw new Error('该术语库为只读，无法编辑');
-          var src = termLanguage(entry, core.sourceLangCode);
-          var tgt = termLanguage(entry, core.targetLangCode);
+          var codes = isNew
+            ? newTermLangCodes(entry, params)
+            : { src: core.sourceLangCode, tgt: core.targetLangCode };
+          var src = termLanguage(entry, codes.src);
+          var tgt = termLanguage(entry, codes.tgt);
           if (!src || !tgt) throw new Error('术语条目缺少原文或译文语言层');
           var srcTerm = termPrimaryTerm(src);
           var tgtTerm = termPrimaryTerm(tgt);

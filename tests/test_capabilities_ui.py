@@ -72,6 +72,14 @@ assert "TM 命中" in h.cap_label.text()
 assert "TM 命中可用" in h.res_panel.status
 assert "TB/术语、过滤仍在接入" in h.res_panel.status
 
+# 新版段列表 + TM 命中 + TB 术语编辑都可用时：提示语升级。
+new_tm_edit = dict(new, features=dict(new["features"], listRows=True, tmHits=True,
+                                      termEdit=True))
+h._apply_capabilities(json.dumps(new_tm_edit))
+assert "TB 术语编辑" in h.cap_label.text()
+assert "TM 命中/TB 术语编辑可用" in h.res_panel.status
+assert "术语添加仍在接入" in h.res_panel.status
+
 # 新版段列表 + TM 命中 + 过滤都可用时：过滤也写进提示语。
 new_all = dict(new, features=dict(new["features"], listRows=True, tmHits=True,
                                   filter=True))

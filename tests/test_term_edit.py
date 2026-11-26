@@ -272,4 +272,63 @@ mw._request_tb_detail(detail_payload)          # 已缓存 → 不再请求
 assert len(mw.calls) == 1
 mw.res_panel.close()
 
+# 9) 新版 _edit_term：termEdit 能力放行，并把命中语言码/文本带给 bridge。
+tb_payload = {"kind": "tb", "tbGuid": "TB-1", "entryId": "1234",
+              "s": "源词", "t": "译词",
+              "detail": {"languages": [
+                  {"role": "source", "code": "jpn", "terms": ["源词"]},
+                  {"role": "target", "code": "zho-CN", "terms": ["译词"]},
+              ]}}
+mw2 = types.SimpleNamespace()
+mw2._caps = {"terms": False, "termEdit": True}
+mw2.logs = []
+mw2.log = mw2.logs.append
+mw2.res_panel = ResPanel()
+mw2.calls = []
+opened = []
+mw2._term_call = lambda api, params: mw2.calls.append((api, dict(params)))
+mw2._ensure_term_overlay = lambda: types.SimpleNamespace(
+    open_edit=lambda p: opened.append(dict(p)))
+mw2._edit_term = types.MethodType(MainWindow._edit_term, mw2)
+mw2._edit_term(tb_payload)
+assert mw2.calls and mw2.calls[-1][0] == "termEntryReq", mw2.calls
+params = mw2.calls[-1][1]
+assert params["sourceLang"] == "jpn" and params["targetLang"] == "zho-CN", params
+assert params["sourceText"] == "源词" and params["targetText"] == "译词", params
+assert opened and opened[-1]["tbGuid"] == "TB-1"
+# 能力没开时只提示，不得发起任何术语请求。
+mw3 = types.SimpleNamespace()
+mw3._caps = {"terms": False, "termEdit": False}
+mw3.logs = []
+mw3.log = mw3.logs.append
+mw3.res_panel = ResPanel()
+mw3.calls = []
+mw3._term_call = lambda api, params: mw3.calls.append((api, params))
+mw3._ensure_term_overlay = lambda: types.SimpleNamespace(open_edit=lambda p: None)
+mw3._edit_term = types.MethodType(MainWindow._edit_term, mw3)
+mw3._edit_term(tb_payload)
+assert mw3.calls == []
+assert any("不支持术语编辑" in line for line in mw3.logs), mw3.logs
+mw2.res_panel.close()
+mw3.res_panel.close()
+
+# 10) 术语浮层编辑提交参数必须带语言码（新版 bridge 靠它定位语言层）。
+from app.overlays import TermOverlay
+term_parent = QWidget()
+ov = TermOverlay(term_parent)
+edits = []
+ov.editRequested.connect(edits.append)
+ov.open_edit(tb_payload)
+ov.set_entry({"tbGuid": "TB-1", "entryId": "1234", "projectGuid": "PRJ-1",
+              "source": "源词", "target": "译词",
+              "sourceDefinition": "d1", "targetDefinition": "d2",
+              "sourceExample": "e1", "targetExample": "e2",
+              "sourceLang": "jpn", "targetLang": "zho-CN", "readOnly": False})
+ov._submit()
+assert edits, "编辑浮层未发出 editRequested"
+assert edits[-1]["sourceLang"] == "jpn" and edits[-1]["targetLang"] == "zho-CN", edits[-1]
+assert edits[-1]["projectGuid"] == "PRJ-1", edits[-1]
+ov.close()
+term_parent.close()
+
 print("TERM_EDIT_TEST: PASS (offline only)")

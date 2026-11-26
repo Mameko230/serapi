@@ -3328,9 +3328,13 @@ class MainWindow(QMainWindow):
 
     def _edit_term(self, payload):
         caps = getattr(self, "_caps", {})
-        if caps and not caps.get("terms"):
-            self.log("当前编辑器不支持术语编辑（需要旧版编辑器）")
-            self.res_panel.set_status("当前编辑器不支持术语编辑（需要旧版编辑器）")
+        can_edit = caps.get("termEdit")
+        if can_edit is None:
+            can_edit = caps.get("terms")
+        if caps and not can_edit:
+            msg = "当前编辑器不支持术语编辑（需要旧版编辑器或新版文档项目）"
+            self.log(msg)
+            self.res_panel.set_status(msg)
             return
         """右键 TB 命中 → 编辑术语：先预填命中文本，再读回定义/示例。"""
         payload = dict(payload or {})
@@ -3343,9 +3347,23 @@ class MainWindow(QMainWindow):
         if not tb_guid or entry_id in (None, ""):
             self.log("术语条目缺少 TB/Entry 信息，无法编辑")
             return
+        detail = payload.get("detail") or {}
+        langs = detail.get("languages") or []
+        src_lang = next((str(l.get("code") or "") for l in langs
+                         if l.get("role") == "source"), "")
+        tgt_lang = next((str(l.get("code") or "") for l in langs
+                         if l.get("role") == "target"), "")
         overlay = self._ensure_term_overlay()
         overlay.open_edit(payload)
-        self._term_call("termEntryReq", {"tbGuid": tb_guid, "entryId": entry_id})
+        self._term_call("termEntryReq", {
+            "tbGuid": tb_guid,
+            "entryId": entry_id,
+            "projectGuid": str(payload.get("projectGuid") or ""),
+            "sourceLang": src_lang,
+            "targetLang": tgt_lang,
+            "sourceText": str(payload.get("s") or ""),
+            "targetText": str(payload.get("t") or ""),
+        })
 
     def _submit_term_edit(self, params):
         if self._term_overlay is None:
@@ -3954,6 +3972,8 @@ class MainWindow(QMainWindow):
                 bits.append("TM 命中")
             if feats.get("filter"):
                 bits.append("过滤")
+            if feats.get("termEdit"):
+                bits.append("TB 术语编辑")
             bits.append("当前段读写")
             text = "新版编辑器 · " + " + ".join(bits)
         elif missing:
@@ -3969,11 +3989,21 @@ class MainWindow(QMainWindow):
             self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
             self.conn_label.setStyleSheet("color: #d97706;")
             if feats.get("listRows") and feats.get("tmHits") and feats.get("filter"):
-                self.res_panel.set_hint(
-                    "新版编辑器：段列表/当前段读写/TM 命中/过滤可用；TB/术语仍在接入")
+                if feats.get("termEdit"):
+                    self.res_panel.set_hint(
+                        "新版编辑器：段列表/当前段读写/TM 命中/过滤/TB 术语编辑可用；"
+                        "术语添加仍在接入")
+                else:
+                    self.res_panel.set_hint(
+                        "新版编辑器：段列表/当前段读写/TM 命中/过滤可用；TB/术语仍在接入")
             elif feats.get("listRows") and feats.get("tmHits"):
-                self.res_panel.set_hint(
-                    "新版编辑器：段列表/当前段读写/TM 命中可用；TB/术语、过滤仍在接入")
+                if feats.get("termEdit"):
+                    self.res_panel.set_hint(
+                        "新版编辑器：段列表/当前段读写/TM 命中/TB 术语编辑可用；"
+                        "过滤、术语添加仍在接入")
+                else:
+                    self.res_panel.set_hint(
+                        "新版编辑器：段列表/当前段读写/TM 命中可用；TB/术语、过滤仍在接入")
             elif feats.get("listRows"):
                 self.res_panel.set_hint(
                     "新版编辑器：段列表/当前段读写可用；TM/TB、术语、过滤仍在接入")
