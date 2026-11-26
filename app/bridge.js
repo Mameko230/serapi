@@ -160,41 +160,34 @@
       return hasTarget ? 'edited' : 'untranslated';
     }
     /* ---- 新版翻译结果（TM/TB 命中）----
-       编辑器把当前行命中放在 React 状态 hits.rowHits = {rowId, entries} 里，
-       entries 的结构与命中卡片 props.hit 相同：type/matchRate/segments/meta/... */
+       命中走文档 API `/api/editor/projects/<prj>/docs/<doc>/rows/<rowId>/hits`
+       （与编辑器面板同源），entries 类型 transMemory / termBase。
+       不走面板 React 状态：引擎页停放时面板不会随程序切行刷新。 */
     function newHitsPanel() {
       return document.getElementById('translationResultsListInner')
         || document.querySelector('[data-testid="translationResultsContainer"]');
     }
-    function newHitsState() {
-      var panel = newHitsPanel();
-      if (!panel) return null;
-      var fk = Object.keys(panel).filter(function (k) {
-        return k.indexOf('__reactFiber$') === 0;
-      })[0];
-      var f = fk ? panel[fk] : null, d = 0;
-      while (f && d < 40) {
-        var h = f.memoizedState, hi = 0;
-        while (h && hi < 30) {
-          var ms = h.memoizedState;
-          if (ms && typeof ms === 'object' && ms.hits && typeof ms.hits === 'object'
-              && ms.hits.rowHits && typeof ms.hits.rowHits === 'object') {
-            return ms.hits;
-          }
-          h = h.next; hi++;
-        }
-        f = f.return; d++;
-      }
-      return null;
-    }
     function newSymbolsText(seg) {
+      // symbols 里的文本符号通常是逐字符 Unicode 码点（数字或数字串）。文本优先用
+      // segment.text；这里只在没有 text 时兜底解码，避免把码点当数字拼出来。
       var symbols = (seg && seg.segment && seg.segment.symbols) || [];
       var out = [];
       for (var i = 0; i < symbols.length; i++) {
         var s = symbols[i] || {};
-        out.push(String(s.value == null ? '' : s.value));
+        var v = s.value;
+        var n = null;
+        if (typeof v === 'number') n = v;
+        else if (typeof v === 'string' && /^\d+$/.test(v) && v.length <= 7) n = parseInt(v, 10);
+        if (n !== null && isFinite(n)) {
+          try { out.push(String.fromCodePoint(n)); continue; } catch (e) {}
+        }
+        out.push(String(v == null ? '' : v));
       }
       return out.join('');
+    }
+    function newSegText(seg) {
+      if (seg && typeof seg.text === 'string' && seg.text) return seg.text;
+      return newSymbolsText(seg);
     }
     function newSymbolsHaveTags(seg) {
       var symbols = (seg && seg.segment && seg.segment.symbols) || [];
@@ -205,28 +198,31 @@
       return false;
     }
     function newHitsForRow(rowNo) {
-      var state = newHitsState();
-      if (!state || !state.rowHits) return { err: '新版翻译结果面板未找到' };
       var row = newRowByIndex(parseInt(rowNo, 10));
       var wantId = row ? newRowIdOf(row) : null;
-      if (wantId !== null && String(state.rowHits.rowId) !== String(wantId)) {
-        return { err: '命中尚未切换到当前行（面板行 ' + state.rowHits.rowId + '）' };
-      }
-      if (state.isFetching || (state.status && state.status !== 'success')) {
-        return { err: '命中加载中（状态 ' + String(state.status || '') + '）' };
-      }
+      if (wantId === null) wantId = String(Math.max(0, parseInt(rowNo, 10) - 1));
+      var base = newDocApiBase();
+      if (!base) return { err: '新版文档 API 路径未找到' };
+      return { rowId: wantId, base: base };
+    }
+    function newDocApiBase() {
+      // /memoqweb/editor/projects/<prj>/docs/<doc> → /memoqweb/editor/api/editor/projects/...
+      var m = /^(\/memoqweb\/editor)(\/projects\/[^/]+\/docs\/[^/]+)/.exec(location.pathname);
+      return m ? (m[1] + '/api/editor' + m[2]) : null;
+    }
+    function newMapHitsEntries(entries) {
       var tm = [], tb = [];
-      var entries = state.rowHits.entries || [];
       for (var i = 0; i < entries.length; i++) {
         var h = entries[i] || {};
-        var srcSeg = (h.segments && h.segments.source) || {};
-        var tgtSeg = (h.segments && h.segments.target) || {};
-        var srcText = newSymbolsText(srcSeg);
-        var tgtText = newSymbolsText(tgtSeg);
-        var hasTags = newSymbolsHaveTags(srcSeg) || newSymbolsHaveTags(tgtSeg);
         var meta = h.meta || {};
         var res = h.documentName || meta.project || '';
-        if (String(h.type || '') === 'transMemory') {
+        var type = String(h.type || '');
+        if (type === 'transMemory') {
+          var srcSeg = (h.segments && h.segments.source) || {};
+          var tgtSeg = (h.segments && h.segments.target) || {};
+          var srcText = newSegText(srcSeg);
+          var tgtText = newSegText(tgtSeg);
+          var hasTags = newSymbolsHaveTags(srcSeg) || newSymbolsHaveTags(tgtSeg);
           tm.push({
             rate: Number(h.matchRate || 0), res: String(res || ''),
             user: String(h.creator || ''), time: String(h.created || '').slice(0, 16),
@@ -234,16 +230,61 @@
             // 新版命中目前按纯文本回放；tag 符号结构未完全确认，插入先禁用。
             readOnly: hasTags, tagDefs: [],
           });
-        } else {
-          tb.push({
-            s: srcText, t: tgtText, res: String(res || ''),
-            user: String(h.creator || ''), time: String(h.created || '').slice(0, 19),
-            entryId: String(h.id || ''), tbGuid: String(h.resourceId || ''),
-            readOnly: true,
-          });
+        } else if (type === 'termBase') {
+          // TB 条目：languages[lang].terms[{term}]，source 指明原文语言与词条序号。
+          var langs = h.languages || {};
+          var langKeys = Object.keys(langs);
+          var srcLang = (h.source && h.source.langCode) || langKeys[0] || '';
+          var tgtLang = h.targetLangCode || langKeys[1] || '';
+          var srcIdx = (h.source && typeof h.source.termIndex === 'number')
+            ? h.source.termIndex : 0;
+          var tbTerm = function (lang, idx) {
+            var bucket = langs[lang] || {};
+            var terms = bucket.terms || [];
+            var term = terms[idx] || terms[0] || null;
+            return term ? String(term.term || '') : '';
+          };
+          var sTerm = tbTerm(srcLang, srcIdx);
+          var tTerm = tbTerm(tgtLang, 0);
+          if (sTerm || tTerm) {
+            tb.push({
+              s: sTerm, t: tTerm, res: String(res || ''),
+              user: String(h.creator || ''), time: String(h.created || '').slice(0, 19),
+              // 新版条目详情/编辑接口未接入：不给 tbGuid/entryId，避免误触旧版 API。
+              entryId: '', tbGuid: '', readOnly: true,
+            });
+          }
         }
       }
       return { tm: tm, tb: tb, at: [] };
+    }
+    // 新版命中走文档 API（与面板同源）：不依赖面板是否可见/是否已刷新，
+    // 行 id 直接用 data-row-id（0 起），请求错行也不会污染。
+    function newFetchHitsApi(rowNo, onFail) {
+      var packed = newHitsForRow(rowNo);
+      if (packed.err) return onFail(packed.err);
+      var rowId = packed.rowId;
+      fetch(packed.base + '/rows/' + encodeURIComponent(rowId) + '/hits',
+            { credentials: 'same-origin' })
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (entries) {
+          if (!Array.isArray(entries)) throw new Error('命中返回不是数组');
+          var cur = newActiveView() || newAnyView();
+          var curId = cur ? cur.state.doc.attrs.rowId : null;
+          if (curId !== null && String(curId) !== String(rowId)) {
+            throw new Error('行已切走（当前 ' + curId + '）');
+          }
+          var mapped = newMapHitsEntries(entries);
+          window.__md._tm = { status: 'done', ok: true,
+                              tm: mapped.tm, tb: mapped.tb, at: mapped.at };
+          try {
+            __md.push('tm-hits', { row: rowNo, tm: mapped.tm, tb: mapped.tb, at: mapped.at });
+          } catch (e) {}
+        })
+        .catch(function (e) { onFail(String(e.message || e)); });
     }
     function newListRows() {
       try {
@@ -1937,10 +1978,7 @@
       window.__md._tm = { status: 'pending', t: Date.now() };
       try {
         if (detectEditor() === 'new') {
-          var packed = newHitsForRow(rowNo);
-          if (packed.err) return fail(packed.err);
-          window.__md._tm = { status: 'done', ok: true, tm: packed.tm, tb: packed.tb, at: packed.at };
-          try { __md.push('tm-hits', { row: rowNo, tm: packed.tm, tb: packed.tb, at: packed.at }); } catch (e) {}
+          newFetchHitsApi(rowNo, fail);
           return { ok: true };
         }
         if (detectEditor() !== 'old') return fail('tmHits 仅旧版支持');

@@ -1,5 +1,5 @@
-// 新版 TM/TB 命中契约：从 React hits 状态取当前行命中、行号校验、只读保护。
-// 全部合成 DOM/React fiber，不联网。
+// 新版命中契约：走文档 rows/<rowId>/hits API（与面板同源），不依赖面板可见/刷新。
+// 合成 DOM + fetch mock，不联网。
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -86,9 +86,15 @@ function load(setup) {
     addEventListener() {},
   };
   const pushes = [];
+  const fetches = [];
+  const state = {
+    entries: [],
+    failStatus: 0,
+    nonArray: false,
+  };
   const context = {
     console, URL, JSON, Date, Promise, Object, Array, String, Number, Boolean, Math,
-    parseInt, isFinite,
+    parseInt, isFinite, encodeURIComponent,
     setTimeout, setInterval: () => 0, clearInterval() {},
     Event: function (type, opts) { return { type, bubbles: !!(opts && opts.bubbles) }; },
     location: { pathname: '/memoqweb/editor/projects/p/docs/d',
@@ -101,11 +107,25 @@ function load(setup) {
     QWebChannel: function (_transport, callback) {
       callback({ objects: { mdBridge: { push(payload) { pushes.push(payload); } } } });
     },
-    fetch() { throw new Error('no fetch expected'); },
+    fetch(url, opts) {
+      fetches.push({ url, opts });
+      if (state.failStatus) {
+        return Promise.resolve({ ok: false, status: state.failStatus });
+      }
+      if (state.nonArray) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      }
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve(state.entries),
+      });
+    },
   };
-  setup(context, document);
+  setup(context, document, state);
   context.window = context;
   context.__pushes = pushes;
+  context.__fetches = fetches;
+  context.__state = state;
   vm.createContext(context);
   vm.runInContext(SRC, context, { filename: 'bridge.js' });
   return context;
@@ -123,105 +143,136 @@ const TM_ENTRY = {
 };
 
 const TB_ENTRY = {
-  type: 'termbase', matchRate: 0, creator: 'user-b',
+  type: 'termBase', creator: 'user-b',
   created: '2026-01-02T10:00:00Z', modifier: 'user-b', lastModified: '2026-01-02T10:00:00Z',
-  documentName: 'TB-A', meta: { project: 'PRJ', client: '', subject: '', domain: '' },
-  segments: {
-    source: { text: 'term', segment: { symbols: [{ type: 1, value: 'term' }] } },
-    target: { text: '术语', segment: { symbols: [{ type: 1, value: '术语' }] } },
+  source: { langCode: 'jpn', termIndex: 0 }, targetLangCode: 'zho-CN',
+  languages: {
+    jpn: { terms: [{ term: 'term', isForbidden: false }] },
+    'zho-CN': { terms: [{ term: '术语', isForbidden: false }] },
   },
+  fields: [],
   id: 'entry-1', resourceId: 'tb-guid-1', ranges: [{ start: 2, length: 4 }],
 };
 
 let ctx;
-let hitsState;
 ctx = load((c, document) => {
-  // 文档：一行
   const table = makeEl('div', {
     class: 'translation-rows', role: 'table',
-    'data-testid': 'translation-grid-rows', 'aria-rowcount': '1',
+    'data-testid': 'translation-grid-rows', 'aria-rowcount': '3',
   });
   const roleRow = makeEl('div', { role: 'row', 'aria-rowindex': '1' });
   const content = makeEl('div', { class: 'translation-row', 'data-row-id': '0' });
   roleRow.appendChild(content);
   table.appendChild(roleRow);
-  // 命中面板 + React 状态
   const panel = makeEl('div', { id: 'translationResultsListInner' });
-  hitsState = {
-    status: 'success', isFetching: false,
-    rowHits: { rowId: 0, entries: [TM_ENTRY, TB_ENTRY] },
-  };
-  panel['__reactFiber$t1'] = {
-    memoizedProps: {},
-    // 真实页面里这个 hook 值形如 { executeCommand, hits: { rowHits, status, isFetching } }
-    memoizedState: {
-      memoizedState: { executeCommand: null, hits: hitsState },
-      next: null,
-    },
-    return: null,
-  };
   document._byId.translationResultsListInner = panel;
   document._flat = [table, roleRow, content, panel];
 });
 
 const api = ctx.__md.api;
 const pushes = ctx.__pushes;
+const fetches = ctx.__fetches;
+const state = ctx.__state;
 const lastPush = () => JSON.parse(pushes[pushes.length - 1]);
+const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-// 1) 能力探测：新版 TM 命中可用，指纹包含 hitsPanel。
-const cap = api.capabilities();
-assert.strictEqual(cap.editor, 'new');
-assert.strictEqual(cap.features.tmHits, true);
-assert.strictEqual(cap.fingerprint.markers.hitsPanel, true);
+(async () => {
+  // 1) 能力探测：新版 TM 命中可用，指纹包含 hitsPanel。
+  const cap = api.capabilities();
+  assert.strictEqual(cap.editor, 'new');
+  assert.strictEqual(cap.features.tmHits, true);
+  assert.strictEqual(cap.fingerprint.markers.hitsPanel, true);
 
-// 2) 正常命中：TM 转成 rate/文案/作者，TB 转成术语对；TB 默认只读。
-pushes.length = 0;
-api.tmHitsReq(1);
-assert.strictEqual(pushes.length, 1);
-let pushed = lastPush();
-assert.strictEqual(pushed.type, 'tm-hits');
-assert.strictEqual(pushed.data.row, 1);
-assert.strictEqual(pushed.data.tm.length, 1);
-assert.strictEqual(pushed.data.tb.length, 1);
-assert.strictEqual(pushed.data.tm[0].rate, 101);
-assert.strictEqual(pushed.data.tm[0].res, 'RES-A');
-assert.strictEqual(pushed.data.tm[0].srcDisp, 'src-text');
-assert.strictEqual(pushed.data.tm[0].tgtDecorated, 'tgt-text');
-assert.strictEqual(pushed.data.tm[0].readOnly, false);
-assert.strictEqual(pushed.data.tb[0].s, 'term');
-assert.strictEqual(pushed.data.tb[0].t, '术语');
-assert.strictEqual(pushed.data.tb[0].readOnly, true);
-assert.strictEqual(pushed.data.tb[0].tbGuid, 'tb-guid-1');
-assert.strictEqual(ctx.__md._tm.status, 'done');
+  // 2) 正常命中：按行的 data-row-id 拼 API 路径，TM/TB 各自映射，TB 只读且不带旧版 id。
+  state.entries = [TM_ENTRY, TB_ENTRY];
+  pushes.length = 0;
+  fetches.length = 0;
+  api.tmHitsReq(1);
+  await tick();
+  assert.strictEqual(fetches.length, 1);
+  assert.ok(fetches[0].url.endsWith('/rows/0/hits'), fetches[0].url);
+  assert.strictEqual(pushes.length, 1);
+  let pushed = lastPush();
+  assert.strictEqual(pushed.type, 'tm-hits');
+  assert.strictEqual(pushed.data.row, 1);
+  assert.strictEqual(pushed.data.tm.length, 1);
+  assert.strictEqual(pushed.data.tb.length, 1);
+  assert.strictEqual(pushed.data.tm[0].rate, 101);
+  assert.strictEqual(pushed.data.tm[0].res, 'RES-A');
+  assert.strictEqual(pushed.data.tm[0].srcDisp, 'src-text');
+  assert.strictEqual(pushed.data.tm[0].tgtDecorated, 'tgt-text');
+  assert.strictEqual(pushed.data.tm[0].readOnly, false);
+  assert.strictEqual(pushed.data.tb[0].s, 'term');
+  assert.strictEqual(pushed.data.tb[0].t, '术语');
+  assert.strictEqual(pushed.data.tb[0].readOnly, true);
+  assert.strictEqual(pushed.data.tb[0].entryId, '');
+  assert.strictEqual(pushed.data.tb[0].tbGuid, '');
+  assert.strictEqual(ctx.__md._tm.status, 'done');
 
-// 3) 命中里出现 tag 符号（type != 1）：只读，避免把 tag 结构插坏。
-hitsState.rowHits.entries = [Object.assign({}, TM_ENTRY, {
-  segments: {
-    source: TM_ENTRY.segments.source,
-    target: { text: 'x', segment: { symbols: [{ type: 2, value: 'x' }] } },
-  },
-})];
-pushes.length = 0;
-api.tmHitsReq(1);
-pushed = lastPush();
-assert.strictEqual(pushed.type, 'tm-hits');
-assert.strictEqual(pushed.data.tm[0].readOnly, true);
+  // 2b) 没有 segment.text 时按 Unicode 码点解码 symbols，不能把码点拼成数字串。
+  state.entries = [Object.assign({}, TM_ENTRY, {
+    segments: {
+      source: { segment: { symbols: [{ type: 1, value: 12371 }, { type: 1, value: '12356' }] } },
+      target: { segment: { symbols: [{ type: 1, value: 20320 }] } },
+    },
+  })];
+  pushes.length = 0;
+  api.tmHitsReq(1);
+  await tick();
+  pushed = lastPush();
+  assert.strictEqual(pushed.type, 'tm-hits');
+  assert.strictEqual(pushed.data.tm[0].srcDisp, 'こい');
+  assert.strictEqual(pushed.data.tm[0].tgtDecorated, '你');
 
-// 4) 面板行号与请求行不一致：直接报错，绝不把上一行命中套到新行。
-hitsState.rowHits = { rowId: 7, entries: [TM_ENTRY] };
-pushes.length = 0;
-api.tmHitsReq(1);
-pushed = lastPush();
-assert.strictEqual(pushed.type, 'tm-err');
-assert.ok(String(pushed.data.err).indexOf('尚未切换') >= 0, pushed.data.err);
+  // 3) 命中里出现 tag 符号（type != 1）：只读，避免把 tag 结构插坏。
+  state.entries = [Object.assign({}, TM_ENTRY, {
+    segments: {
+      source: TM_ENTRY.segments.source,
+      target: { text: 'x', segment: { symbols: [{ type: 2, value: 'x' }] } },
+    },
+  })];
+  pushes.length = 0;
+  api.tmHitsReq(1);
+  await tick();
+  pushed = lastPush();
+  assert.strictEqual(pushed.type, 'tm-hits');
+  assert.strictEqual(pushed.data.tm[0].readOnly, true);
 
-// 5) 仍在加载：报错而不是推空列表（避免把“没命中”误报给用户）。
-hitsState.isFetching = true;
-hitsState.rowHits = { rowId: 0, entries: [TM_ENTRY] };
-pushes.length = 0;
-api.tmHitsReq(1);
-pushed = lastPush();
-assert.strictEqual(pushed.type, 'tm-err');
-assert.ok(String(pushed.data.err).indexOf('加载中') >= 0, pushed.data.err);
+  // 4) HTTP 失败：推 tm-err，不推空命中。
+  state.entries = [];
+  state.failStatus = 500;
+  pushes.length = 0;
+  api.tmHitsReq(1);
+  await tick();
+  pushed = lastPush();
+  assert.strictEqual(pushed.type, 'tm-err');
+  assert.ok(String(pushed.data.err).indexOf('HTTP 500') >= 0, pushed.data.err);
 
-console.log('NEW_EDITOR_HITS_TEST: PASS (offline only)');
+  // 5) 返回不是数组：同样报错，避免把坏数据当成“没有命中”。
+  state.failStatus = 0;
+  state.nonArray = true;
+  pushes.length = 0;
+  api.tmHitsReq(1);
+  await tick();
+  pushed = lastPush();
+  assert.strictEqual(pushed.type, 'tm-err');
+  assert.ok(String(pushed.data.err).indexOf('不是数组') >= 0, pushed.data.err);
+
+  // 6) 行未渲染时用 rowNo-1 兜底；空命中也要正常推送空列表。
+  state.nonArray = false;
+  state.entries = [];
+  pushes.length = 0;
+  fetches.length = 0;
+  api.tmHitsReq(2);
+  await tick();
+  assert.ok(fetches[0].url.endsWith('/rows/1/hits'), fetches[0].url);
+  pushed = lastPush();
+  assert.strictEqual(pushed.type, 'tm-hits');
+  assert.strictEqual(pushed.data.tm.length, 0);
+  assert.strictEqual(pushed.data.tb.length, 0);
+
+  console.log('NEW_EDITOR_HITS_TEST: PASS (offline only)');
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

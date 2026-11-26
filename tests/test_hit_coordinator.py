@@ -25,6 +25,8 @@ class FakePort:
         self.applied = []    # (row, tm, tb, at)
         self.timers = []     # callback
         self.cancels = 0
+        self.retries = []    # callback
+        self.polls = []      # callback
 
     def supports_tm_hits(self):
         return self.supported
@@ -58,6 +60,20 @@ class FakePort:
 
     def cancel_timeout(self):
         self.cancels += 1
+
+    def arm_retry(self, delay, callback):
+        self.retries.append(callback)
+
+    def poll_tm_hits(self, callback):
+        self.polls.append(callback)
+
+    def fire_retry(self):
+        callback = self.retries.pop(0)
+        callback()
+
+    def answer_poll(self, payload):
+        callback = self.polls.pop(0)
+        callback(payload)
 
 
 # 1) 能力不支持：只提示，不发请求，也不动上一行术语底色。
@@ -170,5 +186,44 @@ c.fetch(17)
 c.cancel()
 assert c.row is None and p.cancels == 1
 assert c.apply_pushed(17, TM, TB) is False
+
+# 13) 新版：首次返回 pending → Qt 侧轮询；面板刷新成功后落地，不依赖页面定时器。
+p = FakePort()
+c = HitCoordinator(p, poll_ms=1, max_polls=5)
+c.fetch(18)
+p.requests[0][1]({"ok": True, "pending": True})
+assert c.row == 18 and len(p.retries) == 1
+p.fire_retry()
+assert len(p.polls) == 1
+p.answer_poll(json.dumps({"status": "pending", "ok": None, "err": "命中尚未切换到当前行"}))
+assert c.row == 18 and c.last_err.startswith("命中尚未切换")
+p.fire_retry()
+p.answer_poll(json.dumps({"status": "done", "ok": True, "tm": TM, "tb": TB, "at": []}))
+assert p.applied == [(18, TM, TB, [])]
+assert c.row is None and p.cancels >= 1
+
+# 14) 轮询次数耗尽：用最后一次 pending 原因提示，而不是一直显示加载中。
+p = FakePort()
+c = HitCoordinator(p, poll_ms=1, max_polls=2)
+c.fetch(19)
+p.requests[0][1]({"ok": True, "pending": True})
+for _ in range(3):
+    if not p.retries:
+        break
+    p.fire_retry()
+    if p.polls:
+        p.answer_poll(json.dumps({"status": "pending", "ok": None, "err": "命中尚未切换"}))
+assert c.row is None
+assert "命中尚未切换" in p.statuses[-1], p.statuses
+
+# 15) pending 期间切行/取消：后续轮询回调不得落到新请求上。
+p = FakePort()
+c = HitCoordinator(p, poll_ms=1, max_polls=5)
+c.fetch(20)
+p.requests[0][1]({"ok": True, "pending": True})
+pending_fire = p.retries.pop(0)
+c.fetch(21)
+pending_fire()  # 旧请求的定时器迟到：直接返回，不发 poll
+assert p.polls == [] and c.row == 21
 
 print("HIT_COORDINATOR_TEST: PASS (offline only)")

@@ -18,13 +18,19 @@ class HitCoordinator:
     - ``request_tm_hits(row_no, callback)``
     - ``apply_hits(tm, tb, row_no, at)``
     - ``arm_timeout(delay_ms, callback)`` / ``cancel_timeout()``
+    - ``arm_retry(delay_ms, callback)`` / ``poll_tm_hits(callback)``
+      （新版命中面板异步刷新：首次返回 pending，由 Qt 侧定时轮询，不依赖页面定时器）
     """
 
-    def __init__(self, port, timeout_ms: int = 15000):
+    def __init__(self, port, timeout_ms: int = 15000,
+                 poll_ms: int = 300, max_polls: int = 40):
         self.port = port
         self.timeout_ms = int(timeout_ms)
+        self.poll_ms = int(poll_ms)
+        self.max_polls = int(max_polls)
         self.row = None
         self.gen = 0
+        self.last_err = ""
 
     # ---------------- 请求 ----------------
     def fetch(self, row_no: int):
@@ -43,6 +49,7 @@ class HitCoordinator:
         self.gen += 1
         req = self.gen
         self.row = int(row_no)
+        self.last_err = ""
         port.set_status(f"第 {row_no} 行：加载命中……")
         port.arm_timeout(self.timeout_ms, lambda: self._timeout(req))
 
@@ -51,18 +58,56 @@ class HitCoordinator:
             if req != self.gen:
                 return  # 已切到别的行或本次请求已取消：旧错误不得改状态
             res = parse_result(raw)
-            if not res.get("ok"):
+            if res.get("ok") is False:
                 self.cancel()
                 port.set_status(f"命中加载失败：{res.get('err', '未知错误')}")
+                return
+            if res.get("pending") or res.get("status") == "pending":
+                # 新版：命中面板还在刷新，交给 Qt 定时器轮询，避免页面定时器被节流/冻结
+                self._poll(req, 0)
 
         port.request_tm_hits(int(row_no), done)
+
+    def _poll(self, req: int, attempt: int):
+        if req != self.gen or self.row is None:
+            return
+        if attempt >= self.max_polls:
+            self.cancel()
+            reason = self.last_err or "等待 memoQ 命中响应超时"
+            self.port.set_status(f"命中加载失败：{reason}")
+            return
+
+        def done(raw):
+            if req != self.gen or self.row is None:
+                return
+            res = parse_result(raw)
+            if res.get("status") == "pending" or (res.get("ok") is None and not res.get("err")):
+                if res.get("err"):
+                    self.last_err = str(res.get("err"))
+                self._poll(req, attempt + 1)
+                return
+            if res.get("ok"):
+                row = self.row
+                self.cancel()
+                self.port.apply_hits(res.get("tm") or [], res.get("tb") or [],
+                                     row, res.get("at") or [])
+                return
+            self.cancel()
+            self.port.set_status(
+                f"命中加载失败：{res.get('err') or self.last_err or '未知错误'}")
+
+        def fire():
+            if req != self.gen or self.row is None:
+                return
+            self.port.poll_tm_hits(done)
+
+        self.port.arm_retry(self.poll_ms, fire)
 
     def cancel(self):
         """取消在途请求（切行、命中已到、出错、超时）。"""
         self.gen += 1
         self.row = None
         self.port.cancel_timeout()
-
     def _timeout(self, req: int):
         if req != self.gen or self.row is None:
             return

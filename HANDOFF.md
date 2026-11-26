@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 23/23 约 28s；full 40/40 约 67s。
+   - 最近结果：fast 23/23 约 28s；full 40/40 约 68s。
 
 ### 重构第一步
 
@@ -107,10 +107,12 @@
   - `activateRow`：已渲染的行直接聚焦译文编辑器；未渲染的行先按 `scrollHeight/总行数` 估算滚动，再挂起，由 Qt 侧轮询 `readSegment()` 时重试聚焦（**不要用 setInterval**：隐藏页会节流）。
   - `readSegment`：新版返回 `rowNo`（aria-rowindex）、`rowId` 与同行 `srcTokens`；`writeSegment` 行为不变。
   - `expandRows`：新版“加载更多”滚动虚拟列表，步长略小于一屏，让相邻窗口重叠、缓存不断档。
-  - **TM 命中**：从命中面板的 React hook 状态 `hits.rowHits` 读取当前行条目（`status==='success'`、非 `isFetching` 才接受），校验 `rowHits.rowId` 与请求行一致后才推送 `tm-hits`；`transMemory` 转 TM，其余类型转 TB；`capabilities.tmHits` 与指纹 `hitsPanel` 同步。
-  - 真机验证：术语文档 5 行、长文档 2150 行；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`，原文/译文 tokens 齐全；新版 TM 命中 5 条（101%/65%…）可按行推送，请求错行时明确报“命中尚未切换到当前行”。
-- **只读保护**：新版命中目前按纯文本回放；命中含 tag 符号或 TB 条目时 payload 带 `readOnly: true`，`_res_insert` 直接拒绝插入并提示“插入功能待接入”，不允许丢 tag 静默插入。
-- **已知限制**：长文档虚拟网格只渲染当前窗口，段列表缓存可能非连续（跳行后出现行号跳跃）；TB 术语（“条目”面板 / `rows/<n>/hits` API）与术语高亮、过滤、原生确认仍未接入。
+  - **TM/TB 命中（文档 API）**：`GET .../rows/<rowId>/hits`（rowId 取行元素 `data-row-id`，0 起；行未渲染时用 rowNo-1 兜底）。返回 entries 同时含 `transMemory` 与 `termBase`：TM 映射 rate/res/src/tgt；TB 从 `languages[source.langCode].terms[source.termIndex]` 与 `languages[targetLangCode].terms[0]` 取术语对。**不要读面板 React 状态**：引擎页停放时面板不会随程序切行刷新。
+  - 文本符号是逐字符 Unicode 码点（数字/数字串）：优先用 `segment.text`，没有时按码点解码，不能直接拼数字串。
+  - `HitCoordinator` 增加了 Qt 侧轮询兜底（首次 pending 时用 QTimer 轮询 `tmHitsPoll`，不依赖页面定时器；页面隐藏时 setTimeout 会被冻结/节流）。
+  - 真机验证：术语文档 5 行、长文档 2150 行；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，第 3 行 5 条 TM（101/65%…）；Serapi 右栏能看到真实日文/中文术语文案。
+- **只读保护**：新版 TM 命中按纯文本回放（含 tag 符号时 payload 带 `readOnly: true`）；TB 条目一律 `readOnly: true` 且不填 tbGuid/entryId（条目详情/编辑接口未接入，避免误触旧版 API）。`_res_insert` 遇到 readOnly 会拒绝并提示“插入功能待接入”。
+- **已知限制**：长文档虚拟网格只渲染当前窗口，段列表缓存可能非连续（跳行后出现行号跳跃）；TM 命中暂不能插入；TB 命中若条目没有目标语言译文只显示源术语；TB 条目详情/术语编辑、过滤、原生确认仍未接入。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。
 
 ## 关键红线

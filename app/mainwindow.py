@@ -2787,6 +2787,13 @@ class MainWindow(QMainWindow):
     def apply_hits(self, tm, tb, row_no, at=None):
         self._apply_hits(tm, tb, row_no, at)
 
+    def arm_retry(self, delay, callback):
+        """命中面板异步刷新的轮询间隔由 Qt 定时器驱动（页面定时器在隐藏页会被冻结）。"""
+        QTimer.singleShot(int(delay), callback)
+
+    def poll_tm_hits(self, callback):
+        self.call_js("__md.api.tmHitsPoll()", callback)
+
     def arm_timeout(self, delay, callback):
         self._res_timer.stop()
         self._res_timeout_cb = callback
