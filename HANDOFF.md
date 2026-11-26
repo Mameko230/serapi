@@ -86,11 +86,30 @@
 - `_term_req`、`_concordance_gen` 属性已删除，改为 `self._term` 与 `self._concordance`；换文档时 `reset()` 让旧浮层响应失效。
 - 新增 `tests/test_overlay_coordinator.py`：纯 Python 假 port，锁定请求编号、过期丢弃、错误/成功分支、编辑后清详情缓存与刷新命中。
 
+### 新版编辑器接入（进行中）
+
+- **关键发现**：新版（React + MUI + ProseMirror）页面在 QWebEngineView 被 `hide()` 后，虚拟化网格与 ProseMirror 视图不会初始化：`readSegment` 返回空、段列表为 0。旧版 Angular 页面不受影响。
+- **停放方案**：新版编辑器“隐藏”引擎时不真的 hide，而是保持浮层 `visible`、禁用交互并移出窗口可视区（`_should_park_engine` / `_park_engine_overlay`）。实测页面 `visibilityState=visible`，网格与编辑器正常渲染，`readSegment/writeSegment` 可用；窗口 resize 时保持停放位置。
+- **新版页面结构**（选择器集中到 `PAGE.new`）：
+  - 行：`div[role="row"][data-testid="translationRow"]`，`aria-rowindex` = 界面行号（1 起）；`aria-rowcount` = 总行数；内容区 `translation-row[data-row-id]`（行 id 0 起）。
+  - 段编辑器：`div.ProseMirror[contenteditable][data-segment-type=source|target]`，外层 `id` 形如 `editbox-<rowId>-<side>`；视图对象在 React fiber 里，`newFindView` 可按 DOM 反查。
+  - 右侧面板：翻译结果命中卡片 `data-testid="translationResultsHitRow-*"`；条目/焦点行/注释/QA/语词检索为侧栏 tab。
+  - 工具栏按钮用 `aria-label` 定位：确认句段、拒绝句段、锁定/解锁句段、过滤器、查找术语、查找和替换。
+- **只读 API（页面同源 fetch）**：
+  - `GET .../<doc>/rows/meta`：文档计数/进度（不是行列表）。
+  - `GET .../<doc>/rows/<n>/hits`：该行 TB 条目命中（languages / ranges / fields）。
+  - `POST .../<doc>/rows`：body `{rowIds, scope}`，配合 SignalR hub 推送行数据。
+  - `PUT .../<doc>/rows/<id>`：保存行；`rows/confirm` 等走编辑器命令（hub command）。
+  - `POST .../<doc>/filter`：原生过滤；`data/concordance/search`、`data/terms/*` 为术语/语词检索命令。
+- **已验证（只读）**：停放后能力探测 `proseMirror/reactFiber/active` 指纹齐全、`readSegment` 可读当前段，可信点击某行译文编辑器会切换活动行（`focus()` 亦可）。
+- 下一步：新版分支实现 `listRows`（DOM 行缓存 + aria-rowcount）、`activateRow`（滚动 + 聚焦 + 等待渲染）、`readSegment` 补 `rowNo/srcTokens`；再做 TM/TB 命中、段信息、术语、过滤、确认（写操作先征得用户同意）。
+
 ## 关键红线
 
 - **防抖动**：`_cur_row` 是权威行；`_activating_row` 期间忽略 `row-changed`；`SegmentSync.invalidate()` / `_read_gen` 丢弃过期快照；程序化 `selectRow` 不得反向触发激活。
 - **保存状态**只在 `SaveCoordinator` 里（`busy` / `seq+active_id` / `pending_row` / `conflict_snapshot`）；**段列表状态**只在 `SegmentSync` 里（`busy` / `seq` / `total_rows` / `auto_loading`）；**命中请求状态**只在 `HitCoordinator` 里（`row` / `gen`）；**详情请求状态**只在 `DetailCoordinator` 里（段信息 `gen` / TB 详情 `seq+pending`）。`MainWindow` 只实现端口，不要在端口里另做时机判断。
 - **页面操作**只走 `EditorBackend`（`backend_for(self)`）：新增/修改 `__md.api` 表达式只改 `app/editor_backend.py`，不要在 `mainwindow.py` 里散 `call_js`（`--selftest`/探针/往返诊断除外）。
+- **新版引擎页必须保持渲染**：新版 React 页面被 `hide()` 后会停止渲染网格/编辑器视图；隐藏引擎必须走“停放”（保持 visible、禁用交互、移出窗口可视区），不要改回直接 hide。
 - **浮层请求编号**只在 `RequestSequence` 里（术语 `self._term`、语词检索 `self._concordance`）；结果分发只走 `TermOverlayCoordinator.handle()` 与对应 coordinator。
 - 切行/保存/确认/过滤/草稿冲突属于红线；改动后跑 `--full`。
 - 写回前必须核对行号与远端快照；宁可拒绝，不允许静默写错。
@@ -107,6 +126,17 @@ python tests/run_all.py --only test_seg_nav.py --only test_filter.js
 ```
 
 全部离线；不要为了测试连接真实 memoQ 服务器。
+
+真实页面只读探测（仅维护者授权的文档；不写回/不确认/不改术语）：
+
+```powershell
+$env:MEMODESK_UA = "<Chrome UA>"          # 让服务器下发新版编辑器
+$env:QTWEBENGINE_REMOTE_DEBUGGING = "9223" # CDP 调试端口
+$env:MEMODESK_PROBE_HOLD = "1"             # 探针跑完后保留窗口
+python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
+```
+
+探针脚本与 CDP 调试脚本只放本地（根目录 `/probe*.js` 已 ignore；其他临时脚本放 `%TEMP%`），不入库。
 
 ## 当前功能/边界
 

@@ -2034,6 +2034,8 @@ class MainWindow(QMainWindow):
         self.main_split.setCollapsible(2, False)
         self.main_split.setSizes([400, 680, 340])
         self._engine_visible = True
+        self._engine_parked = False
+        self._editor_kind = None   # 'old' / 'new'：由 bridge 推送的编辑器身份决定
         QTimer.singleShot(0, lambda: self._apply_engine_visibility(True))
         # 首次使用（无配置文件）时自动弹出「账号」浮层，让用户填写服务器地址。
         if appconfig.first_run() and not selftest and not rt_url:
@@ -2237,6 +2239,8 @@ class MainWindow(QMainWindow):
             self._theme_panel.keep_inside()
         if getattr(self, "_engine_overlay", None) is not None:
             self._engine_overlay.resize(self.size())
+            if getattr(self, "_engine_parked", False):
+                self._engine_overlay.move(-self.width() - 120, -self.height() - 120)
 
     def closeEvent(self, event):
         """退出时同步落盘当前脏行，不能依赖尚未触发的 400ms 防抖定时器。"""
@@ -2439,6 +2443,24 @@ class MainWindow(QMainWindow):
             self.refresh_seg_list(background=True)
 
     # ---------------- 引擎显隐 ----------------
+    def _should_park_engine(self) -> bool:
+        """新版编辑器在“隐藏”页面里会停止渲染虚拟化网格与编辑器视图。
+
+        此时不能真的 hide 引擎页，否则 readSegment/listRows 全部为空：
+        保留页面可见、但把浮层移到窗口可视区之外（Qt 仍向页面报告 visible）。
+        """
+        return (getattr(self, "_editor_kind", None) == "new"
+                or getattr(self, "_cap_editor", None) == "new")
+
+    def _park_engine_overlay(self, overlay):
+        overlay.resize(self.size())
+        overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        overlay.setEnabled(False)  # 不可见时也不能抢焦点/键盘
+        overlay.move(-self.width() - 120, -self.height() - 120)
+        overlay.setVisible(True)
+        overlay.lower()
+        self._engine_parked = True
+
     def _apply_engine_visibility(self, visible: bool):
         """只切换引擎浮层，不修改主分栏尺寸；后台标签页和登录态继续保留。"""
         was_visible = bool(getattr(self, "_engine_visible", False))
@@ -2446,11 +2468,23 @@ class MainWindow(QMainWindow):
         overlay = getattr(self, "_engine_overlay", None)
         if overlay is None:
             return
-        overlay.resize(self.size())
-        overlay.setVisible(self._engine_visible)
         if self._engine_visible:
+            self._engine_parked = False
+            overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+            overlay.setEnabled(True)
+            overlay.move(0, 0)
+            overlay.resize(self.size())
+            overlay.setVisible(True)
             overlay.raise_()
-        elif was_visible and getattr(self, "_pending_update", None):
+        elif getattr(self, "_should_park_engine", lambda: False)():
+            self._park_engine_overlay(overlay)
+            # 页面保留渲染，但焦点必须回到工作区，避免键盘落进看不见的引擎页。
+            self.editor.setFocus()
+        else:
+            self._engine_parked = False
+            overlay.setVisible(False)
+        if (not self._engine_visible and was_visible
+                and getattr(self, "_pending_update", None)):
             # 登录/选文档结束后再提示新版本，避免在引擎浮层上叠一层
             QTimer.singleShot(1200, self._prompt_pending_if_ready)
 
@@ -3685,6 +3719,10 @@ class MainWindow(QMainWindow):
             self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
             self.conn_label.setStyleSheet("color: #d97706;")
             self.res_panel.set_status("新版编辑器：仅支持当前段读写；段列表/TM/TB/术语/过滤暂不可用")
+            if not getattr(self, "_engine_visible", True) and not getattr(
+                    self, "_engine_parked", False):
+                # 能力探测晚于自动隐藏：补一次“停放”，保证页面继续渲染
+                self._apply_engine_visibility(False)
         elif self._cap_editor == "old":
             self.conn_label.setText("已连接 · 旧版编辑器")
             self.conn_label.setStyleSheet("color: #059669;")
@@ -3702,6 +3740,7 @@ class MainWindow(QMainWindow):
         url = str(data.get("url") or "")
         # 编辑器页追踪：谁推送了编辑器事件，JS 调用就发给谁（不依赖 URL 猜测）
         if data.get("editor") in ("old", "new"):
+            self._editor_kind = data.get("editor")
             if (msg.get("type") == "bridge-ready" and url
                     and (url != self._editor_url or page_id != self._editor_pid)):
                 # 同页换文档、整页重载或新编辑器实例都使旧异步回调失效。
@@ -4649,6 +4688,15 @@ class MainWindow(QMainWindow):
             from PyQt6.QtWidgets import QApplication
             QApplication.instance().quit()
 
+        def finish_probe():
+            """探针收尾：默认退出；MEMODESK_PROBE_HOLD=1 时保留窗口供 CDP 继续调试。"""
+            import os as _os
+            if _os.environ.get("MEMODESK_PROBE_HOLD"):
+                print("PROBE: HOLD —— 窗口保留，调试完成后手动关闭", flush=True)
+                return
+            from PyQt6.QtWidgets import QApplication
+            QApplication.instance().quit()
+
         def poll():
             self._rt_tries += 1
             if self._rt_tries > 1200:  # 约 20 分钟（含手动登录时间）
@@ -4695,8 +4743,7 @@ class MainWindow(QMainWindow):
             probe_tries[0] += 1
             if probe_tries[0] > 20:
                 print("PROBE: FAIL editor instance never appeared", flush=True)
-                from PyQt6.QtWidgets import QApplication
-                QApplication.instance().quit()
+                finish_probe()
                 return
 
             def check(r):
@@ -4717,8 +4764,7 @@ class MainWindow(QMainWindow):
                 src = pathlib.Path(self._probe_js).read_text(encoding="utf-8")
             except Exception as e:
                 print(f"PROBE: ERR reading file: {e}", flush=True)
-                from PyQt6.QtWidgets import QApplication
-                QApplication.instance().quit()
+                finish_probe()
                 return
             # 两步走：先执行并把结果挂到 window.__pr，再单独读回（规避单表达式返回 None 的问题）
             # 注意：探针文件本身是 (function(){...})() 表达式，必须 return 出来，否则外层拿到 undefined
@@ -4734,16 +4780,14 @@ class MainWindow(QMainWindow):
             pr_async_tries[0] += 1
             if pr_async_tries[0] > 180:
                 print("PROBE: async:\n(超时：探针 162 秒内未写出 __prAsync)", flush=True)
-                from PyQt6.QtWidgets import QApplication
-                QApplication.instance().quit()
+                finish_probe()
                 return
             self.call_js("window.__prAsync===undefined ? '' : String(window.__prAsync).slice(0,9000)", _pr_async_done)
 
         def _pr_async_done(r3):
             if r3:
                 print(f"PROBE: async:\n{str(r3)[:8000]}", flush=True)
-                from PyQt6.QtWidgets import QApplication
-                QApplication.instance().quit()
+                finish_probe()
             else:
                 QTimer.singleShot(900, _poll_pr_async)
 
