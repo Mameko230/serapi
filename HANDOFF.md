@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 21/21 约 26s；full 38/38 约 53–67s。
+   - 最近结果：fast 22/22 约 28s；full 39/39 约 71s。
 
 ### 重构第一步
 
@@ -102,7 +102,14 @@
   - `PUT .../<doc>/rows/<id>`：保存行；`rows/confirm` 等走编辑器命令（hub command）。
   - `POST .../<doc>/filter`：原生过滤；`data/concordance/search`、`data/terms/*` 为术语/语词检索命令。
 - **已验证（只读）**：停放后能力探测 `proseMirror/reactFiber/active` 指纹齐全、`readSegment` 可读当前段，可信点击某行译文编辑器会切换活动行（`focus()` 亦可）。
-- 下一步：新版分支实现 `listRows`（DOM 行缓存 + aria-rowcount）、`activateRow`（滚动 + 聚焦 + 等待渲染）、`readSegment` 补 `rowNo/srcTokens`；再做 TM/TB 命中、段信息、术语、过滤、确认（写操作先征得用户同意）。
+- **已接上的新版能力**：
+  - `listRows`：DOM 行缓存（`.translation-row` + `aria-rowindex`/`data-row-id`/`aria-rowcount`），返回行号、行 id、原文/译文摘要、状态徽标（TR/R1/R2/匹配率）；累计缓存，按行号排序。
+  - `activateRow`：已渲染的行直接聚焦译文编辑器；未渲染的行先按 `scrollHeight/总行数` 估算滚动，再挂起，由 Qt 侧轮询 `readSegment()` 时重试聚焦（**不要用 setInterval**：隐藏页会节流）。
+  - `readSegment`：新版返回 `rowNo`（aria-rowindex）、`rowId` 与同行 `srcTokens`；`writeSegment` 行为不变。
+  - `expandRows`：新版“加载更多”滚动虚拟列表，步长略小于一屏，让相邻窗口重叠、缓存不断档。
+  - 真机验证：术语文档 5 行、长文档 2150 行；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`，原文/译文 tokens 齐全。
+- **已知限制**：长文档虚拟网格只渲染当前窗口，段列表缓存可能非连续（跳行后出现行号跳跃）；下一步优先找行数据 API / SignalR 行推送，按范围补全缓存。
+- **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。
 
 ## 关键红线
 
@@ -148,11 +155,12 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 
 ## 下一步（按顺序）
 
-1. 新版编辑器按 `EditorBackend` 接入：先补齐能力探测里缺的页面操作，再逐个把置灰功能接上；缺的能力继续明确降级，不静默写错。
-2. 新版编辑器完整支持（行列表、TM/TB、术语、过滤等）。
-3. 可选的继续收口：语词检索浮层的分发仍在 `MainWindow`（只有请求编号进了 `RequestSequence`），需要时再抽；`--selftest`/探针诊断里的 `call_js` 表达式也不再收敛。
+1. 新版 TM/TB 命中与段信息：优先读右侧“翻译结果”/“焦点行”面板（或同源 API），再接术语与过滤；写操作（确认/保存/改术语）动手前先征得用户同意。
+2. 长文档行缓存补全：找行数据 API / SignalR 行推送，避免虚拟窗口造成的行号跳跃。
+3. 新版原生确认（确认句段按钮 / 命令通道）；验收时务必用授权的两个文档且先只读。
+4. 可选的继续收口：语词检索浮层的分发仍在 `MainWindow`（只有请求编号进了 `RequestSequence`），需要时再抽；`--selftest`/探针诊断里的 `call_js` 表达式也不再收敛。
 
-不要等 `mainwindow.py` 全部拆完才做新版：六个状态边界 + `EditorBackend` 已经就位，可以直接开始接新版。
+不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。
 
 ## 本地目录/工作区
 

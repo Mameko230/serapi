@@ -34,7 +34,7 @@ from .version import APP_VERSION
 from qfluentwidgets import (
     setTheme, Theme, setThemeColor, PrimaryPushButton,
     PillPushButton, LineEdit as FLineEdit, CheckBox as FCheckBox,
-    ComboBox as FComboBox, FluentIcon,
+    ComboBox as FComboBox, FluentIcon, TransparentToolButton,
 )
 
 # 社区版组件即可实现一致的胶囊按钮；主操作仍由 PrimaryPushButton 强调。
@@ -1834,10 +1834,11 @@ class MainWindow(QMainWindow):
         tb_lay.addWidget(self.ed_label)
         tb_lay.addWidget(self.row_edit)
         tb_lay.addWidget(self.btn_seginfo)
-        self.btn_filter = PushButton("")
+        # 图标型动作按钮：TransparentToolButton 自带 16px 图标与 hover/checked 背景。
+        # 不要用空文本 PillPushButton + 固定宽度，否则漏斗图标会被裁成一条。
+        self.btn_filter = TransparentToolButton(FluentIcon.FILTER)
         self.btn_filter.setCheckable(True)
-        self.btn_filter.setIcon(FluentIcon.FILTER)
-        self.btn_filter.setFixedWidth(38)
+        self.btn_filter.setFixedSize(32, 32)
         self.btn_filter.setToolTip("过滤（按原文/译文包含内容过滤整份文件）")
         self.btn_filter.setAccessibleName("过滤")
         self.btn_filter.toggled.connect(self._toggle_filter_bar)
@@ -3705,7 +3706,8 @@ class MainWindow(QMainWindow):
             if not ok:
                 btn.setToolTip(reasons.get(key) or "当前编辑器不支持此功能")
         if self._cap_editor == "new":
-            text = "新版编辑器 · 仅当前段读写"
+            text = ("新版编辑器 · 段列表 + 当前段读写" if feats.get("listRows")
+                    else "新版编辑器 · 仅当前段读写")
         elif missing:
             text = "页面结构变化：" + ", ".join(missing[:3]) + "（请适配）"
         elif any(not v for k, v in feats.items()
@@ -3718,7 +3720,12 @@ class MainWindow(QMainWindow):
         if self._cap_editor == "new":
             self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
             self.conn_label.setStyleSheet("color: #d97706;")
-            self.res_panel.set_status("新版编辑器：仅支持当前段读写；段列表/TM/TB/术语/过滤暂不可用")
+            if feats.get("listRows"):
+                self.res_panel.set_status(
+                    "新版编辑器：段列表/当前段读写可用；TM/TB、术语、过滤仍在接入")
+            else:
+                self.res_panel.set_status(
+                    "新版编辑器：仅支持当前段读写；段列表/TM/TB/术语/过滤暂不可用")
             if not getattr(self, "_engine_visible", True) and not getattr(
                     self, "_engine_parked", False):
                 # 能力探测晚于自动隐藏：补一次“停放”，保证页面继续渲染
@@ -3886,6 +3893,10 @@ class MainWindow(QMainWindow):
         self._on_seg_scroll(self.seg_table.verticalScrollBar().value())
 
     def request_expand_grid(self, callback):
+        """让 memoQ 网格滚到下一批行：旧版扩展缓存，新版滚动虚拟列表。"""
+        if getattr(self, "_cap_editor", None) == "new":
+            self.call_js("JSON.stringify(__md.api.expandRows())", callback)
+            return
         """让 memoQ 网格容器滚到底，触发行缓存扩容。"""
         expr = ("(function(){var el=document.querySelector('[ng-controller=gridCtrl]');"
                 "if(!el) return false;"

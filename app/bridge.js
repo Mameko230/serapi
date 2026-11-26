@@ -46,8 +46,14 @@
         checkout: 'btnFormCheckout',
       },
       new: {
-        version: 1,
+        version: 2,
         proseMirror: 'div.ProseMirror',
+        rowsTable: '[data-testid="translation-grid-rows"]',
+        row: '.translation-row',
+        rowRole: '[role="row"]',
+        segment: '[data-segment-type]',
+        targetSegment: '[data-segment-type="target"]',
+        sourceSegment: '[data-segment-type="source"]',
         bodyAll: 'body *',
       },
     };
@@ -76,6 +82,151 @@
       var p = page();
       return (p && p.proseMirror) ? document.querySelectorAll(p.proseMirror) : [];
     }
+
+    /* ---- 新版（React/MUI）虚拟网格：行与单元格结构 ----
+       行容器 = .translation-row，外层 [role=row] 带 aria-rowindex（1 起），
+       aria-rowcount 是文档总行数；译文/原文编辑器在 [data-segment-type] 里。 */
+    function newRowsTable() {
+      var p = page();
+      return (p && p.rowsTable) ? document.querySelector(p.rowsTable) : null;
+    }
+    function newRowElements() {
+      var p = page();
+      if (!p || !p.row) return [];
+      return document.querySelectorAll(p.row);
+    }
+    function newRowRoleOf(row) {
+      try { return row.closest((page() && page().rowRole) || '[role="row"]'); }
+      catch (e) { return null; }
+    }
+    function newRowIndexOf(row) {
+      var rr = newRowRoleOf(row);
+      var raw = rr && rr.getAttribute('aria-rowindex');
+      var n = parseInt(raw, 10);
+      return n > 0 ? n : null;
+    }
+    function newRowIdOf(row) {
+      var raw = row && row.getAttribute('data-row-id');
+      return (raw === null || raw === undefined || raw === '') ? null : raw;
+    }
+    function newRowByIndex(rowNo) {
+      var rows = newRowElements();
+      for (var i = 0; i < rows.length; i++) {
+        if (newRowIndexOf(rows[i]) === rowNo) return rows[i];
+      }
+      return null;
+    }
+    function newRowTotal() {
+      var table = newRowsTable();
+      var raw = table && table.getAttribute('aria-rowcount');
+      var n = parseInt(raw, 10);
+      return n > 0 ? n : null;
+    }
+    function newSegmentEl(row, side) {
+      if (!row) return null;
+      var p = page();
+      var sel = (p && side === 'target' && p.targetSegment)
+        || (p && side === 'source' && p.sourceSegment)
+        || '[data-segment-type="' + side + '"]';
+      return row.querySelector(sel);
+    }
+    function newCleanText(value) {
+      return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, 60);
+    }
+    function newSegmentText(seg) {
+      if (!seg) return '';
+      var pm = seg.querySelector('div.ProseMirror') || seg;
+      return newCleanText(pm.textContent);
+    }
+    function newRowBadges(row) {
+      // 只收集状态徽标与匹配率（短文本），绝不读取原文/译文。
+      var scope = newRowRoleOf(row) || row;
+      var badge = null, rate = null;
+      var els = scope.querySelectorAll('*');
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].children.length) continue;
+        var t = String(els[i].textContent || '').trim();
+        if (!t || t.length > 4) continue;
+        if (!badge && /^(TR|R1|R2)$/.test(t)) badge = t;
+        else if (rate === null && /^\d{1,3}%$/.test(t)) rate = parseInt(t, 10);
+      }
+      return { badge: badge, rate: rate };
+    }
+    function newRowStatus(row, hasTarget) {
+      var badge = newRowBadges(row).badge;
+      if (badge === 'TR') return 'confirmed';
+      if (badge === 'R1') return 'reviewer1';
+      if (badge === 'R2') return 'reviewer2';
+      return hasTarget ? 'edited' : 'untranslated';
+    }
+    function newListRows() {
+      try {
+        var rows = newRowElements();
+        var table = newRowsTable();
+        if (!rows.length && !table) return { ok: false, err: '新版段列表尚未渲染' };
+        var docKey = location.pathname;
+        var cache = window.__md._rowsCache;
+        if (!cache || cache.doc !== docKey) {
+          cache = window.__md._rowsCache = { doc: docKey, rows: {} };
+        }
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          var rowNo = newRowIndexOf(row);
+          if (!rowNo) continue;
+          var target = newSegmentText(newSegmentEl(row, 'target'));
+          var badges = newRowBadges(row);
+          cache.rows[rowNo] = {
+            rowNo: rowNo,
+            rowId: newRowIdOf(row),
+            src: newSegmentText(newSegmentEl(row, 'source')),
+            tgt: target,
+            locked: false,
+            maxLen: 0,
+            status: newRowStatus(row, !!target),
+            tmRate: badges.rate,
+          };
+        }
+        var list = [];
+        for (var k in cache.rows) {
+          if (Object.prototype.hasOwnProperty.call(cache.rows, k)) list.push(cache.rows[k]);
+        }
+        list.sort(function (a, b) { return a.rowNo - b.rowNo; });
+        return { ok: true, rows: list, total: newRowTotal(), cached: list.length,
+                 source: 'new-grid' };
+      } catch (e) {
+        return { ok: false, err: 'new listRows ERR ' + e.message };
+      }
+    }
+    function newFocusRow(row, rowNo) {
+      var seg = newSegmentEl(row, 'target');
+      var pm = seg && seg.querySelector('div.ProseMirror');
+      if (!pm) return { ok: false, err: '第 ' + rowNo + ' 行译文编辑器未就绪' };
+      try { pm.focus(); } catch (e) {}
+      window.__md._pendingRow = null;
+      return { ok: true, rowNo: rowNo };
+    }
+    function newScrollTowardRow(rowNo) {
+      var table = newRowsTable();
+      var total = newRowTotal();
+      if (!table || !total) return false;
+      var rowH = table.scrollHeight / total;
+      if (!isFinite(rowH) || rowH <= 0) rowH = 57;
+      var top = Math.round((rowNo - 1) * rowH - table.clientHeight / 2 + rowH);
+      try { table.scrollTop = Math.max(0, top); } catch (e) { return false; }
+      try { table.dispatchEvent(new Event('scroll', { bubbles: false })); } catch (e) {}
+      return true;
+    }
+    // 虚拟列表滚动后行是异步渲染的；隐藏页面里 setInterval 会被浏览器节流，
+    // 所以不做定时器等待，改由 Qt 侧轮询 readSegment() 时反复尝试聚焦。
+    function newTryFocusPending() {
+      var want = window.__md._pendingRow;
+      if (!want) return false;
+      var row = newRowByIndex(want);
+      if (!row) return false;
+      var res = newFocusRow(row, want);
+      return !!(res && res.ok);
+    }
+
     function pageEditorRows() {
       var p = page();
       if (!p) return [];
@@ -139,6 +290,7 @@
         } else if (kind === 'new') {
           f.rowChanged = true;
           f.docStats = true;
+          f.listRows = !!newRowsTable();
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -147,7 +299,11 @@
       } catch (e) {
         reasons.error = String(e.message || e);
       }
-      if (!f.listRows) reasons.listRows = '需要旧版编辑器（段列表）';
+      if (!f.listRows) {
+        reasons.listRows = (kind === 'new')
+          ? '新版编辑器：段列表尚未渲染（等待文档网格）'
+          : '需要旧版编辑器（段列表）';
+      }
       if (!f.tmHits) reasons.tmHits = '需要旧版编辑器（TM/TB 命中）';
       if (!f.segmentInfo) reasons.segmentInfo = '需要旧版编辑器（段信息）';
       if (!f.terms) reasons.terms = '需要旧版编辑器与已加载术语库';
@@ -195,7 +351,11 @@
           }
           markers.active = false;
           try { markers.active = !!newActiveView(); } catch (e) {}
+          markers.rowsTable = !!newRowsTable();
+          markers.rowCount = newRowElements().length;
+          markers.rowTotal = newRowTotal() || 0;
           if (!markers.proseMirror) missing.push('proseMirror');
+          if (!markers.rowsTable) missing.push('rowsTable');
         }
       } catch (e) {
         missing.push('fingerprint-error');
@@ -265,7 +425,7 @@
       }
       return pm ? newFindView(pm) : null;
     }
-    function newReadSegment(view) {
+    function newSegmentTokens(view) {
       var doc = view.state.doc;
       var tokens = [];
       doc.forEach(function (node) {
@@ -282,7 +442,31 @@
           });
         }
       });
-      return { rowId: doc.attrs.rowId, locked: !!doc.attrs.locked, tokens: tokens };
+      return tokens;
+    }
+    function newViewRow(view) {
+      var dom = view && view.dom;
+      if (!dom || !dom.closest) return null;
+      try { return dom.closest('.translation-row'); } catch (e) { return null; }
+    }
+    function newReadSegment(view) {
+      var doc = view.state.doc;
+      var row = newViewRow(view);
+      var rowId = row ? newRowIdOf(row) : null;
+      var res = {
+        rowId: (rowId !== null && rowId !== undefined) ? rowId : doc.attrs.rowId,
+        rowNo: row ? newRowIndexOf(row) : null,
+        locked: !!doc.attrs.locked,
+        tokens: newSegmentTokens(view),
+      };
+      // 同行原文 tokens（桌面端左原文栏对照用）
+      try {
+        var srcSeg = newSegmentEl(row, 'source');
+        var srcPm = srcSeg && srcSeg.querySelector('div.ProseMirror');
+        var srcView = srcPm ? newFindView(srcPm) : null;
+        if (srcView) res.srcTokens = newSegmentTokens(srcView);
+      } catch (e) {}
+      return res;
     }
     function newWriteSegment(view, tokens) {
       var schema = view.state.schema;
@@ -504,6 +688,7 @@
     // 枚举全部缓存段行（gridContentManager 数据源：行号=id+1，带原文/译文编辑器字符串/锁定/字数上限）
     window.__md.api.listRows = function () {
       var kind = detectEditor();
+      if (kind === 'new') return newListRows();
       if (kind !== 'old') return { ok: false, err: 'listRows 仅旧版支持' };
       try {
         var ctrl = oldGridCtrl();
@@ -723,6 +908,21 @@
       }
       return false;
     }
+    // 新版虚拟网格“加载更多”：滚动容器若干屏，触发下一批行渲染。
+    // 步长略小于一屏，让前后两次窗口有重叠，累计的缓存行不会断档。
+    window.__md.api.expandRows = function () {
+      if (detectEditor() !== 'new') return false;
+      var table = newRowsTable();
+      if (!table) return false;
+      var before = table.scrollTop;
+      var total = newRowTotal() || 1;
+      var rowH = Math.max(20, Math.round(table.scrollHeight / total));
+      var step = Math.max(60, table.clientHeight - rowH);
+      var maxTop = Math.max(0, table.scrollHeight - table.clientHeight);
+      try { table.scrollTop = Math.min(maxTop, before + step); } catch (e) { return false; }
+      try { table.dispatchEvent(new Event('scroll', { bubbles: false })); } catch (e) {}
+      return table.scrollTop !== before;
+    };
 
     /* ---- 程序化行激活：gridCtrl.moveToRow（正式接口，替代不可靠的合成点击） ----
        行模型注意：getAllCachedRows 返回 Bridge.NET List（toArray 转数组）；
@@ -763,6 +963,21 @@
     window.__md.api.activateRow = function (rowNo) {
       try {
         var kind = detectEditor();
+        if (kind === 'new') {
+          var want = parseInt(rowNo, 10);
+          if (!want) return { ok: false, err: '行号无效' };
+          var newRow = newRowByIndex(want);
+          if (!newRow) {
+            // 虚拟网格只渲染当前窗口：先滚到行附近，渲染出来后再聚焦（Qt 侧会轮询读取）
+            newScrollTowardRow(want);
+            newRow = newRowByIndex(want);
+            if (!newRow) {
+              window.__md._pendingRow = want;
+              return { ok: true, pending: true, rowNo: want };
+            }
+          }
+          return newFocusRow(newRow, want);
+        }
         if (kind !== 'old') return { ok: false, err: 'activateRow 仅旧版支持' };
         var ctrl = oldGridCtrl();
         if (!ctrl) return { ok: false, err: 'gridCtrl 未找到' };
@@ -932,6 +1147,8 @@
       var kind = detectEditor();
       try {
         if (kind === 'new') {
+          // 切行时可能存在“滚动后行还没渲染”的挂起目标：每次读取前再尝试聚焦一次
+          newTryFocusPending();
           var view = (rowId !== undefined && rowId !== null && newFindViewByRow(rowId))
             || newActiveView() || newAnyView();
           if (!view) return { ok: false, err: '新版编辑器 view 未找到（先点进一个段）' };

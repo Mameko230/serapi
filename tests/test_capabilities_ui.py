@@ -53,6 +53,29 @@ assert not h.cap_label.isHidden()
 assert "新版编辑器" in h.conn_label.text()
 assert "仅支持当前段读写" in h.res_panel.status
 
+# 新版行列表可用时：提示语升级，但 TM/TB/术语/过滤仍明确标注未接入。
+new_rows = dict(new, features=dict(new["features"], listRows=True))
+h._apply_capabilities(json.dumps(new_rows))
+assert "段列表" in h.cap_label.text()
+assert "段列表/当前段读写可用" in h.res_panel.status
+
+
+class ExpandHost:
+    def __init__(self, editor):
+        self._cap_editor = editor
+        self.calls = []
+
+    def call_js(self, expr, callback=None):
+        self.calls.append(expr)
+
+
+expand_new = ExpandHost("new")
+MainWindow.request_expand_grid(expand_new, None)
+assert "__md.api.expandRows" in expand_new.calls[-1]
+expand_old = ExpandHost("old")
+MainWindow.request_expand_grid(expand_old, None)
+assert "gridCtrl" in expand_old.calls[-1], expand_old.calls[-1]
+
 old = {
     "ok": True, "editor": "old",
     "features": {"listRows": True, "tmHits": True, "segmentInfo": True,
