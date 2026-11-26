@@ -288,6 +288,37 @@ jh._app_cfg["jump_mode"] = "follow"
 jh._apply_confirm_jump(20, "doc")            # 跟随 memoQ
 assert jh.jumps == [11, 10], jh.jumps
 
+# 8c) 新版确认/拒绝 HTTP 结果：按行号刷新，confirm + follow 回退到下一行，reject 不跳。
+ah = Dummy()
+ah._app_cfg = {"jump_mode": "follow"}
+ah._editor_url = "doc"
+ah._has_loaded_segment = True
+ah._cur_row = 10
+ah._total_rows = 100
+ah.jumps = []
+ah.logs = []
+ah.statuses = []
+ah._jump_to_row = lambda n: ah.jumps.append(int(n))
+ah.log = lambda text: ah.logs.append(str(text))
+ah.res_panel = types.SimpleNamespace(set_status=lambda s: ah.statuses.append(str(s)))
+ah._segments = types.SimpleNamespace(invalidate=lambda: None)
+ah._schedule_seg_refresh = lambda delay, background=True: None
+ah._refresh_row_cache = lambda row: None
+ah._apply_confirm_jump = types.MethodType(MainWindow._apply_confirm_jump, ah)
+ah._on_row_action = types.MethodType(MainWindow._on_row_action, ah)
+ah._on_row_action({"ok": True, "action": "confirm", "rowNo": 10,
+                   "status": "reviewer1Confirmed"})
+assert any("已确认第 10 行" in line for line in ah.logs), ah.logs
+assert ah.jumps == [11], ah.jumps
+ah._on_row_action({"ok": True, "action": "reject", "rowNo": 10,
+                   "status": "rejected"})
+assert any("已拒绝第 10 行" in line for line in ah.logs), ah.logs
+assert ah.jumps == [11], ah.jumps
+ah._on_row_action({"ok": False, "action": "confirm", "rowNo": 10,
+                   "err": "HTTP 400"})
+assert any("确认失败：HTTP 400" in line for line in ah.logs), ah.logs
+assert any("确认失败" in line for line in ah.statuses), ah.statuses
+
 # 9) 语词检索入口常驻，真实结果含原文/译文/来源，关键词高亮且 tag 不裸露。
 panel._last_clean = MainWindow._clean_editor_str
 seen_queries = []
@@ -611,5 +642,52 @@ assert fbtn.checked is False
 fbtn.enabled = False
 fh._toggle_filter_shortcut()
 assert any("不支持原生过滤" in line for line in fh.logs), fh.logs
+
+# 18) 原生字数进度：documentStats 回包写到 doc_stats，失败回退“—”。
+import json
+sh2 = Dummy()
+sh2.doc_stats = QLabel("—/—")
+sh2._stats_seq = 0
+sh2._editor_url = "doc"
+sh2.logs = []
+sh2.log = lambda text: sh2.logs.append(str(text))
+sh2.calls = []
+sh2.call_js = lambda expr, cb=None: sh2.calls.append((expr, cb))
+sh2.refresh_doc_stats = types.MethodType(MainWindow.refresh_doc_stats, sh2)
+sh2.refresh_doc_stats()
+assert sh2.calls and "documentStats" in sh2.calls[-1][0], sh2.calls
+sh2.calls[-1][1](json.dumps({"ok": True, "mode": "words", "text": "8/61 (13%)"}))
+assert sh2.doc_stats.text() == "8/61 (13%)"
+assert "全文件统计" in sh2.doc_stats.toolTip()
+sh2.refresh_doc_stats()
+sh2.calls[-1][1](json.dumps({"ok": False}))
+assert sh2.doc_stats.text() == "—"
+
+# 19) Ctrl+Shift+S：原文 token 复制到译文并标脏；没有原文时只提示。
+from app.qtedit import MqEditor as _MqEditor
+ch = Dummy()
+ch.editor = _MqEditor()
+ch.editor.load_tokens([{"t": "text", "v": "旧译文"}])
+ch._last_tokens = ch.editor.to_tokens()
+ch._last_src_tokens = [{"t": "text", "v": "复制原文"}]
+ch._has_loaded_segment = True
+ch._activating_row = None
+ch._loading_editor = False
+ch._tb_hits = []
+ch._edit_rev = 0
+ch._save_coordinator = lambda: types.SimpleNamespace(busy=False)
+ch.logs = []
+ch.log = lambda text: ch.logs.append(str(text))
+ch._on_editor_contents_changed = lambda: ch.logs.append("dirty")
+ch._update_term_count_warning = lambda: None
+ch.copy_source_to_target = types.MethodType(MainWindow.copy_source_to_target, ch)
+ch.copy_source_to_target()
+assert ch.editor.toPlainText() == "复制原文", ch.editor.toPlainText()
+assert ch.editor.document().isModified()
+assert any("已把原文复制到译文" in line for line in ch.logs), ch.logs
+ch._last_src_tokens = []
+ch.logs.clear()
+ch.copy_source_to_target()
+assert any("没有可复制的原文" in line for line in ch.logs), ch.logs
 
 print("UI_REGRESSIONS_TEST: PASS")

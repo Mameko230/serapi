@@ -88,6 +88,15 @@ assert "过滤" in h.cap_label.text()
 assert "过滤可用" in h.res_panel.status
 assert "仍在接入" in h.res_panel.status
 
+# 所有新版能力就绪：隐藏冗长的能力清单，连接状态显示“编辑器就绪”。
+ready_feats = dict(new["features"])
+ready_feats.update({"listRows": True, "tmHits": True, "segmentInfo": True,
+                    "filter": True, "termEdit": True, "termQuickAdd": True,
+                    "confirm": True, "reject": True})
+h._apply_capabilities(json.dumps(dict(new, features=ready_feats)))
+assert h.cap_label.text() == "" and h.cap_label.isHidden()
+assert "编辑器就绪" in h.conn_label.text()
+
 # 命中已加载时，能力探测重复回调不得清空命中文案（P0：切行后命中消失）。
 h.res_panel.hits = [{"kind": "tm"}]
 status_before = h.res_panel.status

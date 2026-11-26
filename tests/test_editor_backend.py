@@ -43,10 +43,10 @@ assert json.loads(json.loads(expr[len(prefix):-3])) == tokens
 assert h.last[1] is callback
 b.activate_row(12, callback)
 assert h.last == ("JSON.stringify(__md.api.activateRow(12))", callback)
-b.confirm_segment(callback)
-assert h.last == ("JSON.stringify(__md.api.confirmSegment())", callback)
-b.reject_segment(callback)
-assert h.last == ("JSON.stringify(__md.api.rejectSegment())", callback)
+b.confirm_segment(12, callback)
+assert h.last == ("JSON.stringify(__md.api.confirmSegment(12))", callback)
+b.reject_segment(12, callback)
+assert h.last == ("JSON.stringify(__md.api.rejectSegment(12))", callback)
 b.refresh_row_cache(9)
 assert h.last == ("JSON.stringify(__md.api.refreshRowCacheByRow(9))", None)
 b.jump_rows(120)
@@ -88,8 +88,8 @@ first = backend_for(h)
 assert isinstance(first, JsBridgeBackend) and first is backend_for(h)
 replaced = []
 h.call_js = lambda expr, cb=None: replaced.append(expr)  # 测试 Host 运行时替换
-first.confirm_segment(None)
-assert replaced and "confirmSegment" in replaced[-1]
+first.confirm_segment(7, None)
+assert replaced and "confirmSegment(7)" in replaced[-1]
 
 # 5) SimpleNamespace 形式的测试 Host 也能惰性挂载（mainwindow 端口方法常用）。
 ns = types.SimpleNamespace(calls=[])

@@ -349,4 +349,105 @@ assert "termQuickAddReq" in expr, expr
 assert "TB-2" in expr and "jpn" in expr and "zho-CN" in expr and "PRJ-1" in expr, expr
 assert "源词" in expr and "译词" in expr, expr
 
+# 12) Ctrl+Q 主窗口流程：选区校验、请求参数、选库浮窗、成功/失败分发。
+qw = types.SimpleNamespace()
+qw._caps = {"termQuickAdd": True}
+qw._has_loaded_segment = True
+qw.logs = []
+qw.log = qw.logs.append
+qw.statuses = []
+qw.res_panel = types.SimpleNamespace(set_status=lambda s: qw.statuses.append(s))
+qw.src_view = types.SimpleNamespace(
+    selected_tokens=lambda: [{"t": "text", "v": "源词"}])
+qw.editor = types.SimpleNamespace(
+    selected_tokens=lambda: [{"t": "text", "v": "译词"}])
+qw._app_cfg = {"quick_term_tb": "remembered-guid",
+               "quick_term_tb_name": "记住的库",
+               "jump_mode": "follow", "engine_auto_close": True}
+qw.calls = []
+qw.call_js = lambda expr, cb=None: qw.calls.append(expr)
+qw._term = TermOverlayCoordinator(qw)
+qw.term_overlay = lambda: None
+qw._quick_ctx = None
+qw._quick_picker = None
+qw._quick_remember_after = False
+qw._term_selection_text = MainWindow._term_selection_text  # 静态方法直接挂到测试 Host
+qw._fetch_res = lambda row: None
+qw.size = lambda: None
+qw.quick_add_term = types.MethodType(MainWindow.quick_add_term, qw)
+qw._handle_quick_term = types.MethodType(MainWindow._handle_quick_term, qw)
+qw.quick_add_term()
+assert qw._quick_ctx["source"] == "源词" and qw._quick_ctx["target"] == "译词"
+assert "termQuickAddReq" in qw.calls[-1], qw.calls[-1]
+assert "remembered-guid" in qw.calls[-1], qw.calls[-1]
+assert "源词" in qw.calls[-1] and "译词" in qw.calls[-1], qw.calls[-1]
+req = qw._quick_ctx["req"]
+# 缺少选区：只提示，不发请求。
+qw.src_view.selected_tokens = lambda: []
+before = len(qw.calls)
+qw.quick_add_term()
+assert len(qw.calls) == before
+assert any("请分别在原文、译文" in line for line in qw.logs), qw.logs
+# 选库事件：弹浮窗并带入 items/选中项。
+pick = types.SimpleNamespace(opens=[])
+pick.open = lambda items, source, target, selected="", stale=False: pick.opens.append(
+    {"items": items, "source": source, "target": target,
+     "selected": selected, "stale": stale})
+pick.resize = lambda *a, **k: None
+pick.hide = lambda: None
+qw._quick_picker = pick
+qw._ensure_quick_picker = lambda: pick
+qw._quick_ctx = {"req": req, "source": "源词", "target": "译词"}
+qw._handle_quick_term("term-pick-tb", {
+    "req": req, "items": [{"guid": "g1", "name": "库1"}],
+    "source": "源词", "target": "译词", "selected": "g1", "stale": False,
+})
+assert pick.opens and pick.opens[-1]["selected"] == "g1", pick.opens
+# 成功事件：隐藏浮窗、记录日志并清空上下文。
+qw._quick_ctx = {"req": req, "source": "源词", "target": "译词"}
+qw._quick_remember_after = False
+qw._handle_quick_term("term-quick-result", {
+    "req": req, "ok": True, "tbGuid": "g1", "tbName": "库1",
+    "source": "源词", "target": "译词",
+})
+assert qw._quick_ctx is None
+assert any("已快速添加术语" in line for line in qw.logs), qw.logs
+# 勾选记住后成功：把术语库写进配置。
+from app import appconfig
+_orig_save = appconfig.save
+appconfig.save = lambda cfg: None
+try:
+    qw._quick_ctx = {"req": req, "source": "源词", "target": "译词"}
+    qw._quick_remember_after = True
+    qw._handle_quick_term("term-quick-result", {
+        "req": req, "ok": True, "tbGuid": "g2", "tbName": "库2",
+        "source": "源词", "target": "译词",
+    })
+    assert qw._app_cfg["quick_term_tb"] == "g2"
+    assert qw._app_cfg["quick_term_tb_name"] == "库2"
+finally:
+    appconfig.save = _orig_save
+# 失败事件：记录日志并清空上下文。
+qw._quick_ctx = {"req": req, "source": "源词", "target": "译词"}
+qw._handle_quick_term("term-quick-err", {"req": req, "err": "模拟写入失败"})
+assert qw._quick_ctx is None
+assert any("模拟写入失败" in line for line in qw.logs), qw.logs
+
+# 13) 设置面板清除快捷术语记忆：清配置、刷新面板、恢复每次询问。
+qw._app_cfg["quick_term_tb"] = "g2"
+qw._app_cfg["quick_term_tb_name"] = "库2"
+panel_stub = types.SimpleNamespace(opens=[])
+panel_stub.open = lambda mode, auto_close, name: panel_stub.opens.append(
+    (mode, auto_close, name))
+qw._settings_panel = panel_stub
+qw._clear_quick_term_memory = types.MethodType(MainWindow._clear_quick_term_memory, qw)
+appconfig.save = lambda cfg: None
+try:
+    qw._clear_quick_term_memory()
+finally:
+    appconfig.save = _orig_save
+assert qw._app_cfg["quick_term_tb"] == "" and qw._app_cfg["quick_term_tb_name"] == ""
+assert panel_stub.opens and panel_stub.opens[-1][2] == "", panel_stub.opens
+assert any("已清除快捷添加术语" in line for line in qw.logs), qw.logs
+
 print("TERM_EDIT_TEST: PASS (offline only)")

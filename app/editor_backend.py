@@ -61,11 +61,11 @@ class JsBridgeBackend:
     def activate_row(self, row_no, callback):
         self._call(f"JSON.stringify(__md.api.activateRow({int(row_no)}))", callback)
 
-    def confirm_segment(self, callback):
-        self._call("JSON.stringify(__md.api.confirmSegment())", callback)
+    def confirm_segment(self, row_no, callback):
+        self._call(f"JSON.stringify(__md.api.confirmSegment({int(row_no)}))", callback)
 
-    def reject_segment(self, callback):
-        self._call("JSON.stringify(__md.api.rejectSegment())", callback)
+    def reject_segment(self, row_no, callback):
+        self._call(f"JSON.stringify(__md.api.rejectSegment({int(row_no)}))", callback)
 
     def jump_rows(self, row_no, callback=None):
         expr = f"JSON.stringify(__md.api.jumpToRow({int(row_no)}))"

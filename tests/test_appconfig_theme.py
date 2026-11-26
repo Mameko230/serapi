@@ -281,7 +281,7 @@ sp.hide()
 assert sp.isHidden()
 
 # 8b) Ctrl+Q 术语库选择浮窗：记住勾选随 picked 信号发出。
-from app.overlays import TermBasePickerOverlay
+from app.overlays import TermBasePickerOverlay, ShortcutsOverlay
 parent2 = QWidget()
 picker = TermBasePickerOverlay(parent2)
 parent2.resize(1200, 800)
@@ -302,6 +302,17 @@ picker.open([{"guid": "g1", "name": "主术语库"}], "甲", "A", stale=True)
 assert "不可用" in picker.status.text()
 picker.hide()
 parent2.close()
+
+# 8c) 主面板快捷键浮窗：包含新增快捷键，可打开/关闭。
+shortcuts = ShortcutsOverlay(host)
+shortcuts.open()
+assert shortcuts.isVisible()
+keys = [row[0].text() for row in shortcuts.rows]
+assert any("Ctrl+Q" in key for key in keys), keys
+assert any("Ctrl+Shift+S" in key for key in keys), keys
+assert any("Ctrl+Shift+F" in key for key in keys), keys
+shortcuts.hide()
+assert shortcuts.isHidden()
 
 print("APPCONFIG_THEME_TEST: PASS")
 if os.path.exists(appconfig._PATH):

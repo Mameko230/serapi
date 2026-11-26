@@ -187,7 +187,7 @@ async function waitPush(type, count = 1) {
   pushed.length = 0;
   api.termQuickAddReq(7, { source: '甲', target: 'A' });
   const noLang = (await waitPush('term-quick-err')).data;
-  assert.ok(/没有可用的术语库|目标语言/.test(noLang.err), noLang);
+  assert.ok(/未能识别文档语言|没有可用的术语库/.test(noLang.err), noLang);
 
   // 7) 能力位：新版支持快捷添加。
   const caps = api.capabilities();

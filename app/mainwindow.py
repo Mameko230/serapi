@@ -25,7 +25,7 @@ from .save_coordinator import SaveCoordinator, SaveSnapshot
 from .segment_sync import SegmentSync
 from . import appconfig, tooltips
 from .overlays import (AccountOverlay, ThemePanel, UpdateOverlay, SettingsPanel,
-                       TermBasePickerOverlay)
+                       TermBasePickerOverlay, ShortcutsOverlay)
 from .updater import (
     ReleaseChecker, decide, reason_text, safe_release_url, should_auto_check, today_str,
 )
@@ -1786,6 +1786,8 @@ class MainWindow(QMainWindow):
         sc_goto.activated.connect(self.jump_to_row)
         sc_save = QShortcut(QKeySequence("Ctrl+S"), self)
         sc_save.activated.connect(self.save_segment)
+        sc_copy_src = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
+        sc_copy_src.activated.connect(self.copy_source_to_target)
         # 过滤栏没有按钮快捷键时只能点漏斗；给一个键盘入口，也方便真机/无障碍使用。
         sc_filter = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
         sc_filter.activated.connect(self._toggle_filter_shortcut)
@@ -1820,11 +1822,12 @@ class MainWindow(QMainWindow):
         self._logo = logo
         self._ver = ver
         primary.addWidget(logo); primary.addWidget(ver)
-        primary.addStretch(1)
         self.doc_stats = QLabel("—/—")
-        self.doc_stats.setStyleSheet(f"color:{pal['meta']}; background:transparent; border:none; font-weight:600;")
+        self.doc_stats.setStyleSheet(
+            f"color:{pal['meta']}; background:transparent; border:none; font-weight:600;")
         self.doc_stats.setToolTip("当前已完成字数 / 文件总字数（括号内为完成比例）")
         primary.addWidget(self.doc_stats)
+        primary.addStretch(1)
         self.conn_label = QLabel("未连接 memoQ")
         self.conn_label.setStyleSheet(f"color: {pal['faint']}; background: transparent; border: none;")
         self.cap_label = QLabel("")
@@ -1852,6 +1855,11 @@ class MainWindow(QMainWindow):
         self.btn_settings.setCheckable(True)
         self.btn_settings.toggled.connect(self._apply_settings_visibility)
         primary.addWidget(self.btn_settings)
+        self.btn_shortcuts = PushButton("快捷键")
+        self.btn_shortcuts.setToolTip("查看当前版本所有快捷键（再次点击关闭）")
+        self.btn_shortcuts.setCheckable(True)
+        self.btn_shortcuts.toggled.connect(self._apply_shortcuts_visibility)
+        primary.addWidget(self.btn_shortcuts)
         self.btn_tagrules = PushButton("Tag 规则")
         self.btn_tagrules.setToolTip("换行符 / 标色 / 加粗等 tag 格式定义（主窗口内切换，不开新窗口）")
         self.btn_tagrules.setCheckable(True)
@@ -2221,6 +2229,7 @@ class MainWindow(QMainWindow):
         self._account_overlay = None
         self._theme_panel = None
         self._settings_panel = None
+        self._shortcuts_panel = None
         self._update_checker = None
         self._update_overlay = None
         self._update_busy = False
@@ -2382,6 +2391,8 @@ class MainWindow(QMainWindow):
             self._theme_panel.keep_inside()
         if getattr(self, "_settings_panel", None) is not None:
             self._settings_panel.keep_inside()
+        if getattr(self, "_shortcuts_panel", None) is not None:
+            self._shortcuts_panel.keep_inside()
         if getattr(self, "_quick_picker", None) is not None:
             self._quick_picker.resize(self.size())
         if getattr(self, "_engine_overlay", None) is not None:
@@ -3297,6 +3308,38 @@ class MainWindow(QMainWindow):
                 msg += "（覆盖选中内容）"
             self.log(msg)
 
+    # ---------------- Ctrl+Shift+S：把原文内容复制到译文（memoQ 原生行为） ----------------
+    def copy_source_to_target(self):
+        if not self._has_loaded_segment or self._activating_row is not None:
+            self.log("当前段尚未稳定读取，暂不能复制原文到译文")
+            return
+        if self._save_coordinator().busy:
+            self.log("保存中，暂不能复制原文到译文")
+            return
+        source_tokens = list(getattr(self, "_last_src_tokens", None) or [])
+        if not source_tokens:
+            self.log("当前段没有可复制的原文内容")
+            return
+        self._loading_editor = True
+        try:
+            self.editor.load_tokens(source_tokens)
+        finally:
+            self._loading_editor = False
+        new_tokens = self.editor.to_tokens()
+        if new_tokens == list(self._last_tokens or []):
+            self.log("译文已与原文一致，无需复制")
+            return
+        self.editor.document().setModified(True)
+        self.editor.moveCursor(self.editor.textCursor().MoveOperation.End)
+        self._on_editor_contents_changed()   # 记编辑代际、启动草稿与高亮节流
+        try:
+            self.editor.set_term_highlights([
+                h.get("t") or h.get("TargetDisplayText") for h in self._tb_hits])
+        except Exception:
+            pass
+        self._update_term_count_warning()
+        self.log("已把原文复制到译文（未保存；Ctrl+S 写回）")
+
     # ---------------- Ctrl+E 添加术语 ----------------
     @staticmethod
     def _term_selection_text(tokens):
@@ -3816,7 +3859,7 @@ class MainWindow(QMainWindow):
         if not self.isActiveWindow():
             return False
         for name in ("_account_overlay", "_theme_panel", "_settings_panel",
-                     "_term_overlay", "_cc_overlay",
+                     "_shortcuts_panel", "_term_overlay", "_cc_overlay",
                      "_conflict_overlay", "_update_overlay", "_engine_overlay"):
             widget = getattr(self, name, None)
             if widget is not None and widget.isVisible():
@@ -3976,6 +4019,30 @@ class MainWindow(QMainWindow):
         elif getattr(self, "_settings_panel", None) is not None:
             self._settings_panel.hide()
 
+    # ---------------- 快捷键列表浮窗 ----------------
+    def _apply_shortcuts_visibility(self, visible):
+        if visible:
+            self._show_shortcuts_panel()
+        elif getattr(self, "_shortcuts_panel", None) is not None:
+            self._shortcuts_panel.hide()
+
+    def _show_shortcuts_panel(self):
+        if getattr(self, "_shortcuts_panel", None) is None:
+            self._shortcuts_panel = ShortcutsOverlay(self)
+            self._shortcuts_panel.closed.connect(lambda: self._set_shortcuts_visible(False))
+        self._shortcuts_panel.open()
+
+    def _set_shortcuts_visible(self, visible):
+        btn = getattr(self, "btn_shortcuts", None)
+        if btn is not None:
+            btn.blockSignals(True)
+            btn.setChecked(bool(visible))
+            btn.blockSignals(False)
+        if visible:
+            self._show_shortcuts_panel()
+        elif getattr(self, "_shortcuts_panel", None) is not None:
+            self._shortcuts_panel.hide()
+
     def _set_jump_mode(self, mode):
         if mode not in ("follow", "next", "previous", "stay"):
             return
@@ -4119,17 +4186,24 @@ class MainWindow(QMainWindow):
             if not ok:
                 btn.setToolTip(reasons.get(key) or "当前编辑器不支持此功能")
         if self._cap_editor == "new":
-            bits = []
-            if feats.get("listRows"):
-                bits.append("段列表")
-            if feats.get("tmHits"):
-                bits.append("TM 命中")
-            if feats.get("filter"):
-                bits.append("过滤")
-            if feats.get("termEdit"):
-                bits.append("TB 术语编辑")
-            bits.append("当前段读写")
-            text = "新版编辑器 · " + " + ".join(bits)
+            # 能力齐全时不再显示“段列表 + TM 命中 + …”清单（太臃肿），
+            # 只有缺功能/结构变化时才用 cap_label 提示。
+            required = ("listRows", "tmHits", "segmentInfo", "filter", "termEdit",
+                        "termQuickAdd", "confirm", "reject", "readSegment", "writeSegment")
+            if all(feats.get(k) for k in required):
+                text = ""
+            else:
+                bits = []
+                if feats.get("listRows"):
+                    bits.append("段列表")
+                if feats.get("tmHits"):
+                    bits.append("TM 命中")
+                if feats.get("filter"):
+                    bits.append("过滤")
+                if feats.get("termEdit"):
+                    bits.append("TB 术语编辑")
+                bits.append("当前段读写")
+                text = "新版编辑器 · " + " + ".join(bits)
         elif missing:
             text = "页面结构变化：" + ", ".join(missing[:3]) + "（请适配）"
         elif any(not v for k, v in feats.items()
@@ -4140,6 +4214,13 @@ class MainWindow(QMainWindow):
         self.cap_label.setText(text)
         self.cap_label.setVisible(bool(text))
         if self._cap_editor == "new":
+            all_ready = all(feats.get(k) for k in (
+                "listRows", "tmHits", "segmentInfo", "filter", "termEdit",
+                "termQuickAdd", "confirm", "reject", "readSegment", "writeSegment"))
+            if all_ready:
+                self.conn_label.setText("已连接 · 编辑器就绪")
+                self.conn_label.setStyleSheet("color: #059669;")
+                return
             self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
             self.conn_label.setStyleSheet("color: #d97706;")
             if feats.get("listRows") and feats.get("tmHits") and feats.get("filter"):
@@ -4205,6 +4286,11 @@ class MainWindow(QMainWindow):
                     QTimer.singleShot(1200, probe)
                     QTimer.singleShot(5000, probe)
                     QTimer.singleShot(15000, probe)
+                stats_fn = getattr(self, "refresh_doc_stats", None)
+                if callable(stats_fn):
+                    # 页面状态栏渲染晚于 bridge-ready：首次取不到时多试几次。
+                    for delay in (1800, 5000, 12000, 20000):
+                        QTimer.singleShot(delay, stats_fn)
                 self._schedule_seg_refresh(1500, background=False)  # 首次完整读取并更新统计
         elif msg.get("type") == "bridge-ready" and page_id == self._editor_pid:
             # 原编辑器页导航走了（新页面会重新上报身份）
@@ -4228,6 +4314,9 @@ class MainWindow(QMainWindow):
                 self.read_segment(auto=True)
         if msg.get("type") == "term-detail":
             self._on_term_detail(data)
+            return
+        if msg.get("type") == "row-action-result":
+            self._on_row_action(data)
             return
         if msg.get("type") in ("term-pick-tb", "term-quick-result", "term-quick-err"):
             self._handle_quick_term(msg.get("type"), data)
@@ -4961,6 +5050,8 @@ class MainWindow(QMainWindow):
                 if getattr(self, "_cap_editor", None) == "new":
                     # 行缓存是 API 快照：确认会改状态，稍后刷新该行，避免段列表回跳。
                     QTimer.singleShot(700, lambda: self._refresh_row_cache(row_no))
+                    QTimer.singleShot(1800, lambda: self._refresh_row_cache(row_no))
+                    QTimer.singleShot(3500, lambda: self._refresh_row_cache(row_no))
                 # 自定义跳转模式覆盖：等原生跳行动作稳定后再校正到用户选择的位置。
                 jump_fn = getattr(self, "_apply_confirm_jump", None)
                 if callable(jump_fn):
@@ -4969,13 +5060,16 @@ class MainWindow(QMainWindow):
                 # 450ms 后直接读当前活动行；若推送已先读取，read_gen 会阻止重复读取。
                 read_gen = self._read_gen
                 QTimer.singleShot(450, lambda: self._read_confirmed_next(read_gen, doc_url))
+                stats_fn = getattr(self, "refresh_doc_stats", None)
+                if callable(stats_fn):
+                    QTimer.singleShot(900, stats_fn)
             else:
                 self._confirm_busy = False
                 self.log(f"确认未生效: {res.get('err')}（可在 memoQ 页手动 Ctrl+Enter）")
             # 等 memoQ 同步回包后刷新段列表/状态（防抖）
             self._schedule_seg_refresh(1200)
         QTimer.singleShot(3500, release_if_stuck)
-        backend_for(self).confirm_segment(done)
+        backend_for(self).confirm_segment(row_no, done)
 
     def _refresh_row_cache(self, row_no: int):
         """确认/拒绝后刷新该行 API 缓存；失败不影响主流程。"""
@@ -4984,10 +5078,39 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    def _apply_confirm_jump(self, row_no, doc_url):
-        """按设置校正确认后的目标行；默认 follow 时交给 memoQ 原生跳转。"""
+    def _on_row_action(self, data):
+        """新版确认/拒绝 HTTP 结果：按行号落状态、刷缓存，并处理确认后跳转。"""
+        data = data or {}
+        action = str(data.get("action") or "")
+        label = "确认" if action == "confirm" else "拒绝"
+        if not data.get("ok"):
+            self.log(f"{label}失败：{data.get('err') or '未知错误'}")
+            self.res_panel.set_status(f"{label}失败：{data.get('err') or '未知错误'}")
+            return
+        try:
+            row_no = int(data.get("rowNo") or self._cur_row)
+        except (TypeError, ValueError):
+            return
+        status = str(data.get("status") or "")
+        self._segments.invalidate()
+        self._schedule_seg_refresh(0, background=True)
+        self._refresh_row_cache(row_no)
+        stats_fn = getattr(self, "refresh_doc_stats", None)
+        if callable(stats_fn):
+            QTimer.singleShot(700, stats_fn)
+        if action == "confirm":
+            self.log(f"memoQ 已确认第 {row_no} 行" + (f"（{status}）" if status else ""))
+            # HTTP 确认不会触发 memoQ 自己的跳行；follow 模式下按“下一行”补跳，
+            # 自定义模式照旧由 _apply_confirm_jump 校正。
+            self._apply_confirm_jump(row_no, self._editor_url, fallback_next=True)
+        else:
+            self.log(f"memoQ 已拒绝第 {row_no} 行（状态 {status or 'rejected'}）")
+            self.res_panel.set_status(f"第 {row_no} 行已拒绝")
+
+    def _apply_confirm_jump(self, row_no, doc_url, fallback_next=False):
+        """按设置校正确认后的目标行；自定义模式覆盖，follow 可回退到下一行。"""
         mode = str(self._app_cfg.get("jump_mode") or "follow")
-        if mode == "follow" or doc_url != self._editor_url:
+        if doc_url != self._editor_url:
             return
         try:
             row_no = int(row_no)
@@ -4995,7 +5118,11 @@ class MainWindow(QMainWindow):
             return
         if not getattr(self, "_has_loaded_segment", False):
             return
-        if mode == "stay":
+        if mode == "follow":
+            if not fallback_next:
+                return
+            target = row_no + 1
+        elif mode == "stay":
             target = row_no
         elif mode == "previous":
             target = max(1, row_no - 1)
@@ -5072,12 +5199,17 @@ class MainWindow(QMainWindow):
                 self.log("已发送 memoQ 原生拒绝，等待状态回执")
                 if getattr(self, "_cap_editor", None) == "new":
                     QTimer.singleShot(700, lambda: self._refresh_row_cache(row_no))
+                    QTimer.singleShot(1800, lambda: self._refresh_row_cache(row_no))
+                    QTimer.singleShot(3500, lambda: self._refresh_row_cache(row_no))
                 self._schedule_seg_refresh(1200)
+                stats_fn = getattr(self, "refresh_doc_stats", None)
+                if callable(stats_fn):
+                    QTimer.singleShot(900, stats_fn)
             else:
                 self._confirm_busy = False
                 self.log(f"拒绝未生效: {res.get('err')}（可在 memoQ 页手动 Shift+Enter）")
         QTimer.singleShot(3500, release_if_stuck)
-        backend_for(self).reject_segment(done)
+        backend_for(self).reject_segment(row_no, done)
 
     # ---------------- 保存协调器端口（状态机在 save_coordinator.py） ----------------
     # 这里只提供“取值 / 落草稿 / 调桥接 / 更新界面”，不做任何保存时机的判断。
@@ -5142,6 +5274,9 @@ class MainWindow(QMainWindow):
                 self._persist_current_draft()
                 self.ed_label.setText(f"第 {row_no} 行 · 已保存前序版本，新编辑未保存")
         self._schedule_seg_refresh(500)
+        stats_fn = getattr(self, "refresh_doc_stats", None)
+        if callable(stats_fn):
+            QTimer.singleShot(800, stats_fn)
 
     def open_conflict(self, snapshot: SaveSnapshot, remote_tokens, reason: str):
         """冲突浮层：本地版本留在编辑器，memoQ 版本只读对比。"""

@@ -1128,8 +1128,6 @@
       var doc = view.state.doc;
       var row = newViewRow(view);
       var rowId = row ? newRowIdOf(row) : null;
-      // 确认/拒绝快捷键要发给当前活动编辑器：记住最近一次真正读过/聚焦的 PM。
-      try { window.__md._lastView = view; window.__md._lastPm = view.dom; } catch (e) {}
       var res = {
         rowId: (rowId !== null && rowId !== undefined) ? rowId : doc.attrs.rowId,
         rowNo: row ? newRowIndexOf(row) : null,
@@ -1145,36 +1143,6 @@
       } catch (e) {}
       return res;
     }
-    function newDispatchEditorShortcut(key, ctrl, shift) {
-      // 新版编辑器的确认/拒绝/跳行都由 memoQ 原生快捷键处理：
-      // 合成 Ctrl+Enter / Shift+Enter 即可复用用户的“确认后跳转”原生设置。
-      var el = null;
-      try {
-        var last = window.__md._lastPm;
-        if (last && last.isConnected) el = last;
-      } catch (e) {}
-      if (!el) {
-        try {
-          var active = document.activeElement;
-          if (active && active.closest && active.closest('div.ProseMirror')) el = active;
-        } catch (e) {}
-      }
-      if (!el) {
-        try { el = document.querySelector('div.ProseMirror'); } catch (e) {}
-      }
-      if (!el) return null;
-      var init = {
-        key: key, code: key === 'Enter' ? 'Enter' : key, keyCode: 13, which: 13,
-        ctrlKey: !!ctrl, shiftKey: !!shift, altKey: false,
-        bubbles: true, cancelable: true, composed: true,
-      };
-      var types = ['keydown', 'keypress', 'keyup'];
-      for (var i = 0; i < types.length; i++) {
-        try { el.dispatchEvent(new KeyboardEvent(types[i], init)); } catch (e) {}
-      }
-      return el;
-    }
-
     function newWriteSegment(view, tokens) {
       var schema = view.state.schema;
       // 克隆段内已有换行 tag 的 attrs 作为 Enter 的格式（与原文一致）
@@ -1879,19 +1847,45 @@
     // 原生确认：向 memoQ 隐藏输入框派发 Ctrl+Enter（与原生快捷键同路径）。
     // 走原生确认 = 状态流转、服务器同步、重复句段传播全是 memoQ 自己的逻辑。
     // 注意：确认后 memoQ 会把活动行跳到下一个未确认段（原生行为）。
-    window.__md.api.confirmSegment = function () {
+    // 新版确认/拒绝走 HTTP 行接口（行号显式指定），不再依赖 memoQ 内部“活动行”：
+    // 真机发现合成快捷键会作用在 memoQ 当前活动行上，切行后可能拒绝错行。
+    function newRowAction(rowNo, action) {
+      var base = newDocApiBase();
+      if (!base) return { ok: false, err: '新版文档 API 未就绪' };
+      var target = parseInt(rowNo, 10);
+      if (!isFinite(target) || target < 1) return { ok: false, err: '行号无效' };
+      var rowId = newRowIdFor(target);
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      fetch(base + '/rows/' + rowId + '/' + action, {
+        method: 'POST', credentials: 'same-origin', headers: headers,
+        body: JSON.stringify({ AutoOptions: {} }),
+      }).then(function (r) {
+        return r.json().then(function (body) { return { status: r.status, body: body }; })
+          .catch(function () { return { status: r.status, body: null }; });
+      }).then(function (res) {
+        if (res.status !== 200) {
+          var b = res.body || {};
+          throw new Error(b.detail || b.title || b.ErrorMessage || ('HTTP ' + res.status));
+        }
+        var row = (res.body && (res.body.row || res.body)) || {};
+        var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
+        try { newRefreshRowCache(rowId); } catch (e) {}
+        __md.push('row-action-result', {
+          ok: true, action: action, rowNo: target, rowId: rowId, status: status,
+        });
+      }).catch(function (e) {
+        __md.push('row-action-result', {
+          ok: false, action: action, rowNo: target, rowId: rowId,
+          err: String(e.message || e).slice(0, 200),
+        });
+      });
+      return { ok: true, pending: true, rowNo: target, rowId: rowId };
+    }
+
+    window.__md.api.confirmSegment = function (rowNo) {
       var kind = detectEditor();
-      if (kind === 'new') {
-        // 用原生 Ctrl+Enter：memoQ 自己负责确认、状态更新和“确认后跳转”设置。
-        var view = null;
-        try { view = newActiveView() || newAnyView() || window.__md._lastView; } catch (e) {}
-        var rowId = null;
-        try { rowId = view && view.state.doc.attrs.rowId; } catch (e) {}
-        if (view) { try { view.focus(); } catch (e) {} }
-        var target = newDispatchEditorShortcut('Enter', true, false);
-        if (!target) return { ok: false, err: '新版编辑器焦点未找到' };
-        return { ok: true, rowId: rowId, via: 'shortcut' };
-      }
+      if (kind === 'new') return newRowAction(rowNo, 'confirm');
       if (kind !== 'old') return { ok: false, err: 'confirmSegment 仅旧版支持' };
       try {
         var inp = pageConfirmInput();
@@ -1909,19 +1903,9 @@
       } catch (e) { return { ok: false, err: 'confirmSegment ERR ' + e.message }; }
     };
 
-    window.__md.api.rejectSegment = function () {
+    window.__md.api.rejectSegment = function (rowNo) {
       var kind = detectEditor();
-      if (kind === 'new') {
-        // 原生 Shift+Enter：memoQ 语义的“拒绝句段”，状态变 rejected。
-        var view = null;
-        try { view = newActiveView() || newAnyView() || window.__md._lastView; } catch (e) {}
-        var rowId = null;
-        try { rowId = view && view.state.doc.attrs.rowId; } catch (e) {}
-        if (view) { try { view.focus(); } catch (e) {} }
-        var target = newDispatchEditorShortcut('Enter', false, true);
-        if (!target) return { ok: false, err: '新版编辑器焦点未找到' };
-        return { ok: true, rowId: rowId, via: 'shortcut' };
-      }
+      if (kind === 'new') return newRowAction(rowNo, 'reject');
       if (kind !== 'old') return { ok: false, err: 'rejectSegment 仅旧版支持' };
       try {
         var inp = pageConfirmInput();
@@ -2756,6 +2740,11 @@
           tgtLang = String(params.targetLang || docLangs.tgt || '');
         }
         if (!prj) throw new Error('项目 GUID 未找到');
+        if (kind === 'new' && (!srcLang || !tgtLang)) {
+          return termFail(
+            'term-quick-err', req,
+            '未能识别文档语言：请先切换到有术语命中的段，再使用 Ctrl+Q');
+        }
         var wanted = String(params.tbGuid || '').trim();
         termTbList(prj, tgtLang).then(function (items) {
           if (!items.length) throw new Error('当前项目没有可用的术语库');

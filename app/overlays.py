@@ -1152,6 +1152,126 @@ class TermBasePickerOverlay(QWidget):
         self.closed.emit()
 
 
+class ShortcutsOverlay(QWidget):
+    """主面板「快捷键」浮窗：集中展示当前版本所有可用快捷键。"""
+    closed = pyqtSignal()
+
+    ENTRIES = [
+        ("Ctrl+S", "保存当前段并写回 memoQ"),
+        ("Ctrl+Enter", "确认当前段（按设置跳转）"),
+        ("Shift+Enter", "拒绝当前段（保存后状态变已拒绝）"),
+        ("Ctrl+Shift+S", "把原文内容复制到译文（不自动保存）"),
+        ("Ctrl+E", "打开添加术语浮层"),
+        ("Ctrl+Q", "快速添加术语（单库直加 / 多库选择）"),
+        ("Ctrl+Shift+F", "展开 / 收起过滤栏"),
+        ("Ctrl+G", "输入行号跳转"),
+        ("Ctrl+K", "聚焦语词检索"),
+        ("Ctrl+1 … Ctrl+9", "插入列表中第 N 条 TM/TB 命中"),
+        ("Enter", "编辑区换行（插入换行 tag）"),
+        ("Esc", "关闭快捷键 / 设置 / 引擎浮层"),
+    ]
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setObjectName("shortcutsPanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setMinimumWidth(420)
+        self.setStyleSheet(
+            "QWidget#shortcutsPanel { background: rgba(250,252,255,246);"
+            " border: 1px solid rgba(255,255,255,255); border-radius: 16px; }")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._drag_offset = None
+        self._placed = False
+        self.rows = []
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 14, 20, 16)
+        lay.setSpacing(9)
+        head = QHBoxLayout()
+        title = QLabel("快捷键")
+        title.setStyleSheet("font-size:16px; font-weight:600; color:#1e293b; background:transparent;")
+        hint = QLabel("当前版本所有快捷键")
+        hint.setStyleSheet("color:#94a3b8; font-size:11px; background:transparent;")
+        close = PushButton("关闭")
+        close.clicked.connect(self.hide)
+        head.addWidget(title)
+        head.addWidget(hint)
+        head.addStretch(1)
+        head.addWidget(close)
+        lay.addLayout(head)
+        for keys, desc in self.ENTRIES:
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            key_label = QLabel(keys)
+            key_label.setMinimumWidth(110)
+            key_label.setStyleSheet(
+                "color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe;"
+                " border-radius:6px; padding:2px 8px; font-size:12px;")
+            desc_label = QLabel(desc)
+            desc_label.setWordWrap(True)
+            desc_label.setStyleSheet("color:#334155; font-size:12px; background:transparent;")
+            row.addWidget(key_label, 0)
+            row.addWidget(desc_label, 1)
+            lay.addLayout(row)
+            self.rows.append((key_label, desc_label))
+        lay.addStretch(1)
+        self.adjustSize()
+        self.hide()
+
+    def open(self):
+        self.adjustSize()
+        par = self.parentWidget()
+        if par is not None and not self._placed:
+            self.move(max(12, par.width() - self.width() - 24), 108)
+            self._placed = True
+        self.keep_inside()
+        self.show()
+        self.raise_()
+        self.setFocus()
+
+    def keep_inside(self):
+        par = self.parentWidget()
+        if par is None:
+            return
+        x = max(0, min(self.x(), max(0, par.width() - self.width())))
+        y = max(0, min(self.y(), max(0, par.height() - self.height())))
+        if (x, y) != (self.x(), self.y()):
+            self.move(x, y)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = e.position().toPoint()
+            self.setFocus()
+            e.accept()
+            return
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._drag_offset is not None and (e.buttons() & Qt.MouseButton.LeftButton):
+            par = self.parentWidget()
+            if par is not None:
+                pt = par.mapFromGlobal(e.globalPosition().toPoint())
+                x = max(0, min(pt.x() - self._drag_offset.x(), max(0, par.width() - self.width())))
+                y = max(0, min(pt.y() - self._drag_offset.y(), max(0, par.height() - self.height())))
+                self.move(x, y)
+            e.accept()
+            return
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._drag_offset = None
+        super().mouseReleaseEvent(e)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.closed.emit()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.hide()
+            return
+        super().keyPressEvent(event)
+
+
 class ThemePanel(QWidget):
     """悬浮「主题」面板：小型可拖动卡片，不遮挡编辑器，Esc/关闭按钮可退出。"""
     outerChanged = pyqtSignal(str)

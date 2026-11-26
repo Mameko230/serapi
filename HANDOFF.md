@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 30/30 约 39s；full 48/48 约 83s（`tests/test_release_ready.py` 自动进入全量）。
+   - 最近结果：fast 30/30 约 40s；full 48/48 约 82s（`tests/test_release_ready.py` 自动进入全量）。
 
 ### 重构第一步
 
@@ -111,7 +111,7 @@
   - **TM 插入（tag 感知，已按用户确认语义）**：TM 命中带 `srcTokens/tgtTokens` 与 `strictTags/tagPlanOk/readOnly`。插入时命中 tag 按名字映射到当前原文 tag（复用原文 PM attrs 重建），**顺序按 TM**；TM 有 tag 而原文没有 → 对应 tag 略过、只插文本（不再整条阻止）；全部能配上时 `strictTags=true`（若仍发生丢弃则整体拒绝，防 bug 静默丢 tag），配不齐时 `strictTags=false` 允许略过。写回成功后 bridge 自动 `POST /rows` 刷新该行缓存并推 `rows-updated`，避免段列表显示保存前旧译文。
   - 文本符号是逐字符 Unicode 码点（数字/数字串）：优先用 `segment.text`，没有时按码点解码，不能直接拼数字串。
   - `HitCoordinator` 增加了 Qt 侧轮询兜底（首次 pending 时用 QTimer 轮询 `tmHitsPoll`，不依赖页面定时器；页面隐藏时 setTimeout 会被冻结/节流）。
-  - **确认/拒绝（原生快捷键）**：新版 Ctrl+Enter 确认、Shift+Enter 拒绝都通过合成 `KeyboardEvent` 派发给 ProseMirror（`newDispatchEditorShortcut`），由 memoQ 自己处理确认/拒绝、状态更新和“确认后跳转”原生设置；Qt 侧仍是先保存编辑再派发，成功后 700ms 刷新行缓存、450ms 兜底读取活动行。旧版继续对隐藏输入框派发 Ctrl/Shift+Enter。
+  - **确认/拒绝（HTTP 行接口）**：新版 Ctrl+Enter / Shift+Enter 走 `POST /rows/<rowId>/(confirm|reject)`，body `{AutoOptions:{}}`（缺 AutoOptions 会 400）；rowId 由 Serapi 当前行号显式指定，**不再合成原生快捷键**——真机发现合成 Ctrl/Shift+Enter 会作用在 memoQ 内部“活动行”上，切换行后可能拒绝错行。成功响应含 `row.meta.status`，Qt 立即刷新行缓存/段列表并写日志；旧版继续用隐藏输入框派发。确认后跳转：自定义模式同前；follow 模式因 HTTP 不触发 memoQ 原生跳行，回退为“下一行”。
   - **新版行状态映射**：`row.meta.status` 是 camelCase 枚举（notStarted/edited/trConfirmed/manuallyConfirmed/reviewer1Confirmed/reviewer2Confirmed/rejected/assembled/preTranslated*/machineTranslated 等），按正则映射到段模型状态（reviewer1/reviewer2/rejected/confirmed/edited/untranslated）。
   - **行号列状态过滤**：点击行号表头弹出状态菜单（未编辑/已编辑/含审校/已拒绝/已锁定，多选），只过滤段表显示，不改 rowNo/激活逻辑；选择持久化到 `ui.json(statusFilter)`，表头显示“行号 · 筛”。`SegmentSync.cached_rows()` 用完整缓存数，过滤不会误导自动扩容。
   - **行号列宽度**：表头 col0 改 `Interactive`，不再 `ResizeToContents`；按行号位数只增不减地给最小宽度，用户拖动后完全尊重用户宽度并保存 `ui.json(segCol0Width)`，编辑/状态变化不再抖回。
@@ -120,13 +120,17 @@
   - **Ctrl+Q 快速添加术语（新旧版）**：bridge `termQuickAddReq` 复用旧 QTermService 链路 `ListServerProjectTBs → GetEmptyMetaList → AddNewEntry`；单术语库直接加入，多术语库 push `term-pick-tb` 弹选择浮窗，可勾选“记住选中的术语库”；记忆存 `appconfig.quick_term_tb/_name`，设置面板提供“恢复每次询问（清除记住的术语库）”。新版项目 GUID 从 URL 取，语言层优先用 TB 命中缓存/页面全局状态，找不到时按模板第一层原文、第二层译文兜底；只读库拒绝写入；`termQuickAdd` 能力位独立。
   - **TB 术语编辑（新版）**：复用旧 `QTermService/GetEntryForTerm → UpdateEntry`；新版没有 `WebTrans.Core`，projectGuid 从 URL `/projects/<guid>/docs/...` 取，语言层优先用 TB 命中 `detail.languages` 的 role/code，其次按命中术语文本反查，最后两语言层兜底 source/target。只改每条语言的第一条主术语 + 语言层 Definition + 术语层 Example，其余字段全量原样回传；`entry.ReadOnlyTb` 时只读展示、绝不发 UpdateEntry。能力位 `termEdit` 与“添加术语”（terms）分离，新版只开编辑。
   - **长文档跳行（小缓存窗）**：`jumpToRow(rowNo)` 直接 `POST /rows` 拉目标附近约 100 行（`rowNo-33` 起、不足时贴尾）替换 API 缓存窗，push `jump-ready`；MainWindow 收到后刷新段列表并延迟激活目标行。段列表显示原始行号（允许缺口），滚到底继续按 `st.next` 向下扩批；过滤状态下暂不支持跳行，回退普通激活。旧版跳行逻辑不变。
-  - **主面板设置入口**：`SettingsPanel`（悬浮卡片）先放“确认后跳转”：follow（默认，跟随 memoQ 原生设置，含 settingsBased）/ next / previous / stay；保存到 `appconfig.jump_mode`。follow 完全交给原生 Ctrl+Enter；其它模式在确认后 900ms 校正目标行（新编辑器走 `jumpToRow` 小缓存窗）。后续设置项直接往这个面板加。
+  - **主面板设置入口**：`SettingsPanel`（悬浮卡片）先放“确认后跳转”：follow（默认，跟随 memoQ 原生设置）/ next / previous / stay；保存到 `appconfig.jump_mode`。新版确认走 HTTP，follow 回退为下一行，自定义模式由 Serapi 走 `jumpToRow` 小缓存窗校正；旧版仍由原生 Ctrl+Enter 跳转。后续设置项直接往这个面板加。
+  - **原生字数进度**：`doc_stats` 移到版本号旁；bridge-ready 后按 1800/5000/12000/20000ms 重试 `documentStats`（页面状态栏渲染晚于桥接就绪），写回/确认/拒绝后也会刷新；新版从页脚状态栏文本提取 `done/total (percent%)`。
+  - **Ctrl+Shift+S 原文复制到译文**：把当前 `_last_src_tokens` 载入目标编辑器并标脏（不自动保存，Ctrl+S 写回），重新套术语高亮；新旧版通用。
+  - **快捷键列表入口**：主面板“快捷键”按钮 → `ShortcutsOverlay` 浮窗集中列出当前所有快捷键（Ctrl+S/Ctrl+Enter/Shift+Enter/Ctrl+Shift+S/Ctrl+Q/Ctrl+Shift+F 等），Esc/关闭。
+  - **能力清单隐藏**：新版所有能力位就绪时不再显示“新版编辑器 · 段列表 + …”清单（太臃肿），连接状态显示“已连接 · 编辑器就绪”（绿色）；缺功能/结构变化才显示提示。
   - **过滤（原生 filter API，只读视图）**：`POST /api/editor/.../filter`，body `{filterSet:{content:{source:{text,isCaseSensitive:false,matchType:'any',shouldMatchExactWordOrder:false}, target:{...}, shouldIncludeSegments:true}}, sorting:'none'}` → `{rangesByRowIds:[{key: rowId, value:[ranges]}]}`；`key` 就是命中的 0 基 rowId。过滤后 `listRows` 只按命中 rowId 取行（`total`=命中数，行号保留原始 rowId+1，与旧版一致）；清除过滤用空 `filterSet:{}`。失败会 push `filter-error`，Qt 恢复过滤 UI 状态。
   - **POST 必须带认证头**：`X-CSRF-TOKEN`（cookie）+ `X-Requested-With: XMLHttpRequest`（有 Bearer 时再加 `Authorization`），否则行数据/注释接口一律 400。GET 不需要。
   - **行数据 API（已用于段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,isLocked,...},source:{symbols},target:{symbols}}]`。每批 100 行；`id` 即 0 基 rowId。
-  - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，TB 详情显示条目 2487（只读）、原文「強化」/译文「強化哦」、定义/示例/字段（Subject: SNACK、Note: 111），底部“术语数量提醒”正常；第 3 行 5 条 TM（101/65%…）；第 4 行 TM 101% 命中带 3 个 tag（`strictTags=true/readOnly=false`，src/tgt tokens 各 4）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行；P0 修复后切到第 5 行等 7 秒，TM/TB 命中列表 6 行仍在、详情同屏。
+  - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 条目，TB 详情显示只读条目、术语对、定义/示例/字段，底部“术语数量提醒”正常；第 3 行多条 TM；第 4 行 TM 命中带 3 个 tag（`strictTags=true/readOnly=false`，src/tgt tokens 各 4）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行；P0 修复后切到第 5 行等 7 秒，TM/TB 命中列表 6 行仍在、详情同屏。
 - **只读保护**：新版 TB 条目一律 `readOnly: true`（详情只读、不带旧版编辑接口）；TM 命中不再因 tag 问题整条只读：正常插入并可略过原文没有的 tag；`_res_insert` 仍拒绝 `readOnly` 命中。TM 插入离线契约已覆盖，真机插入冒烟可由用户双击验证。
-- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；行状态过滤只作用于已加载的缓存窗；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；确认/拒绝通过合成原生快捷键实现，真机尚未冒烟；自定义跳转模式（next/previous/stay）是对原生跳转的事后校正，可能看到一次多余跳转；TB 术语编辑已接（只改主术语/定义/示例，只读库拒绝写入），术语“添加”仍只支持旧版；Ctrl+Q 已接但新增术语会写真实术语库，真机冒烟前不要对正式库试；新版语言层找不到时按模板顺序兜底，顺序异常需冒烟确认；段信息只有注释，没有上下文/原始 ID（新版不提供）。
+- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；行状态过滤只作用于已加载的缓存窗；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；新版确认/拒绝已改 HTTP 行接口并真机冒烟（确认/拒绝按行号生效）；follow 跳转因 HTTP 不触发原生跳行而近似为“下一行”，settingsBased 过滤暂不复制；字数统计靠就绪重试 + 写操作后刷新，不是每字实时；TB 术语编辑同值写回已冒烟、未修改正式术语内容；术语“添加”浮层（Ctrl+E）仍只支持旧版；Ctrl+Q 已在双术语库项目真机验证（选择/记住/清除记忆）；段信息只有注释，没有上下文/原始 ID（新版不提供）。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。过滤栏固定 34px 单行高、控件高 28px、去掉“原文/译文”标签改用占位符，并把多余垂直空间交给段列表（`addWidget(..., 0/1)`），不再展开成一大片空白。
 
 ## 关键红线
@@ -181,16 +185,22 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 - 行号列状态过滤：菜单带各项计数；应用“未编辑”得到 0 行、清除后恢复 5 行；表头显示“行号 · 筛”。
 - 引擎浮层：右上角 × 可关；设置里关“自动关闭”后，引擎页选中行只跳行不收起浮层；恢复开关后，引擎页选行约 0.5s 自动收起并跳行。
 - 设置面板：跳转单选、引擎开关、Ctrl+Q 记忆区显示正常。
-- Ctrl+Q：本项目单术语库 SNACK，原文/译文选中后直接 AddNewEntry 成功（日志 `已快速添加术语…（SNACK）`，TB 列表立即出现新条目）。按用户授权，本次写入了 1 条测试术语（原文/译文取自第 2 行整段，留在术语库，未删除）。
+- Ctrl+Q：单术语库项目按 Ctrl+Q 直接 AddNewEntry 成功（日志显示“已快速添加术语”和库名，TB 列表立即出现新条目）。按用户授权，本次写入了测试术语（留在术语库，未删除）。
 - 控制台过滤栏：聚焦窗口后 `Ctrl+Shift+F`（新增快捷键）可展开/收起；真机确认是紧凑单行（原文包含/译文包含/过滤/清除，固定 34px），此前两次“点不开”是鼠标自动化未真正激活窗口/焦点，不是布局问题。展开/收起会写状态提示。
 - 长文档跳行（2150 行授权文档，只读）：输入 1200 回车后缓存窗直接换成目标附近、列表显示 1179–1201 原始行号并选中/读取第 1200 行；再跳 2100 同样成功（窗口贴尾），无写操作。
-- 未冒烟：Ctrl+Enter/Shift+Enter 真实写状态、TB 术语编辑写回（避免改正式术语，需用户另行授权）；多术语库选择浮窗真机未覆盖（当前项目只有单库，离线测试覆盖）。
-- 冒烟中发现并修复：① 启动时 `_fit_row_number_width` 早于 `_segments` 创建导致 AttributeError；② 新版文档语言识别没识别 `_termLangs` 的 `{src,tgt}` 短键，导致 ListServerProjectTBs 缺 targetLanguage 返回空、Ctrl+Q 误报“没有可用的术语库”。
+- 未冒烟：无（本轮已补确认/拒绝写状态、TB 术语编辑写路径、双术语库 Ctrl+Q；TM 插入仍待人工双击验证）。
+- 写操作冒烟（2026-11-26 第二轮，用户授权）：
+  - 双术语库 Ctrl+Q：选择测试术语库 B + 勾选“记住” → AddNewEntry 成功；设置面板显示“已记住”；点“恢复每次询问”后再次 Ctrl+Q 重新弹选择浮窗。
+  - 新版确认/拒绝：确认某行后状态变 `reviewer1Confirmed`、列表显示 R1；拒绝另一行后状态变 `rejected`、行号列红色且状态栏“已拒绝”，两行互不影响。**真机发现合成 Ctrl/Shift+Enter 会作用在 memoQ 内部活动行上（拒绝目标是 A 行、实际拒绝到 B 行）**，已改为 HTTP 行接口并按行号重测通过。
+  - TB 术语编辑写回：用生产 bridge `termEditReq` 对测试术语库 A 的测试条目做同值 UpdateEntry，返回 `term-edit-result ok=true`，前后内容一致（未修改正式术语内容）。
+  - 四项新功能真机确认：能力全部就绪时清单隐藏（只留“已连接 · 编辑器就绪”）、字数进度正常显示、Ctrl+Shift+S 原文复制到译文（未保存标记）、快捷键浮窗打开正常。
+  - 遗留测试数据：测试术语库 A 有第一条冒烟写入的测试术语；测试术语库 B 有本轮 Ctrl+Q 写入的测试术语（用户已授权，未删除）。
+- 冒烟中发现并修复：① 启动时 `_fit_row_number_width` 早于 `_segments` 创建导致 AttributeError；② 新版文档语言识别没识别 `_termLangs` 的 `{src,tgt}` 短键，导致 ListServerProjectTBs 缺 targetLanguage 返回空、Ctrl+Q 误报“没有可用的术语库”；③ 合成确认/拒绝快捷键会落到 memoQ 内部活动行（错行），改走 HTTP 行接口。
 
 ## 下一步（按顺序）
 
-1. 全量测试后真机冒烟（tag/术语编辑/Ctrl+Q 加术语/确认/拒绝/跳行/过滤/设置/编辑/引擎开关），写操作只在授权文档和授权术语库，先确认用户方便的时间。
-2. 发版（v1.0.0 tag/GitHub Release）等用户明确指示。
+1. 发版 v1.0.0：全量测试 + `tests/test_release_ready.py` 通过 → 提交 → 打 `v1.0.0` tag 推送 → CI 构建 zip/Setup 并挂 GitHub Release。用户已明确“做完这些准备发版吧。1.0.0！”。
+2. 发版后观察 CI/Release 附件；如有失败按日志修复后重跑（tag 需删掉重打或修复后新 tag 由用户确认）。
 
 不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。
 
