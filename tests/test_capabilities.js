@@ -60,6 +60,19 @@ for (const key of ['listRows', 'tmHits', 'segmentInfo', 'terms', 'filter',
   assert.strictEqual(oc.features[key], true, key);
 }
 assert.strictEqual(Object.keys(oc.reasons).length, 0);
+assert.strictEqual(oc.fingerprint.ok, true);
+assert.strictEqual(oc.fingerprint.markers.grid, true);
+assert.ok(oc.fingerprint.signature);
+
+const broken = load('/memoqweb/webpm/webtrans/Translation.aspx', (c) => {
+  const gridEl = {};
+  c.angular = { element: () => ({ scope: () => ({ ctrl: {} }) }) };
+  c.document.querySelector = (sel) => sel.indexOf('gridCtrl') >= 0 ? gridEl : null;
+});
+const bc = broken.__md.api.capabilities();
+assert.strictEqual(bc.features.listRows, false);
+assert.strictEqual(bc.fingerprint.ok, false);
+assert.ok(bc.fingerprint.missing.indexOf('gridContentManager') >= 0);
 
 const neu = load('/memoqweb/editor/projects/p/docs/d', () => {});
 const nc = neu.__md.api.capabilities();
@@ -72,5 +85,7 @@ assert.strictEqual(nc.features.terms, false);
 assert.strictEqual(nc.features.confirm, false);
 assert.ok(nc.reasons.listRows);
 assert.ok(nc.reasons.filter);
+assert.strictEqual(nc.fingerprint.ok, false);
+assert.ok(nc.fingerprint.missing.indexOf('proseMirror') >= 0);
 
 console.log('CAPABILITIES_TEST: PASS');

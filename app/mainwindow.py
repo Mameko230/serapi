@@ -2025,6 +2025,7 @@ class MainWindow(QMainWindow):
         self._pending_update = None
         self._caps = {}
         self._cap_editor = None
+        self._missing_selectors = []
         self._draft_timer = QTimer(self)
         self._draft_timer.setSingleShot(True)
         self._draft_timer.timeout.connect(self._persist_current_draft)
@@ -2209,6 +2210,7 @@ class MainWindow(QMainWindow):
         self._activating_row = None
         self._caps = {}
         self._cap_editor = None
+        self._missing_selectors = []
         if hasattr(self, "cap_label"):
             self.cap_label.setVisible(False)
             self.cap_label.setText("")
@@ -3590,8 +3592,16 @@ class MainWindow(QMainWindow):
             res = {}
         feats = res.get("features") or {}
         reasons = res.get("reasons") or {}
+        fp = res.get("fingerprint") or {}
+        missing = [str(x) for x in (fp.get("missing") or [])]
+        changed = missing != getattr(self, "_missing_selectors", [])
+        self._missing_selectors = missing
         self._caps = feats
         self._cap_editor = res.get("editor")
+        if changed and missing:
+            logger = getattr(self, "log", None)
+            if logger:
+                logger("页面结构指纹变化，缺少选择器：" + ", ".join(missing[:6]))
         for attr, key in (("btn_filter", "filter"), ("btn_seginfo", "segmentInfo"),
                           ("btn_cc", "concordance")):
             btn = getattr(self, attr, None)
@@ -3603,6 +3613,8 @@ class MainWindow(QMainWindow):
                 btn.setToolTip(reasons.get(key) or "当前编辑器不支持此功能")
         if self._cap_editor == "new":
             text = "新版编辑器 · 仅当前段读写"
+        elif missing:
+            text = "页面结构变化：" + ", ".join(missing[:3]) + "（请适配）"
         elif any(not v for k, v in feats.items()
                  if k in ("listRows", "tmHits", "filter", "terms")):
             text = "旧版编辑器 · 部分功能不可用"

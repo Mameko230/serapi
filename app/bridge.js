@@ -24,6 +24,77 @@
       (window.__md._cbs[type] || []).forEach(function (cb) { try { cb(data); } catch (e) {} });
     };
 
+    /* ================= 页面结构适配层 =================
+       所有页面级选择器集中在这里；memoQ 改版时只需要改这一张表。
+       注意：这里只描述结构，不读取/缓存任何原文、译文或项目数据。 */
+    var PAGE = {
+      old: {
+        version: 1,
+        grid: '[ng-controller="gridCtrl"]',
+        rows: 'tr',
+        editorCell: '.editor-cell',
+        orderCell: 'td.order',
+        statusCell: 'td.status-cell',
+        lockIcon: '[data-iconkey="lock"]',
+        originalCell: 'td.original-segment-grid',
+        translatedCell: 'td.translated-segment-grid',
+        contentRoot: '.content-container',
+        statusBar: '.status-bar-container',
+        confirm: ['editorHiddenInput', 'input[type="text"][id*="Hidden"]', '[id*="editorHidden"]'],
+        filterSource: 'txtSourceFilter',
+        filterTarget: 'txtTargetFilter',
+        checkout: 'btnFormCheckout',
+      },
+      new: {
+        version: 1,
+        proseMirror: 'div.ProseMirror',
+        bodyAll: 'body *',
+      },
+    };
+
+    function page() { return PAGE[detectEditor()] || null; }
+    function pageGridEl() {
+      var p = page();
+      return (p && p.grid) ? document.querySelector(p.grid) : null;
+    }
+    function pageConfirmInput() {
+      var p = page();
+      if (!p || !p.confirm) return null;
+      var ids = Array.isArray(p.confirm) ? p.confirm : [p.confirm];
+      for (var i = 0; i < ids.length; i++) {
+        var el = document.getElementById(ids[i]);
+        if (el) return el;
+      }
+      return null;
+    }
+    function pageFilterInput(direction) {
+      var p = page();
+      if (!p) return null;
+      return document.getElementById(direction === 'target' ? p.filterTarget : p.filterSource);
+    }
+    function pagePmList() {
+      var p = page();
+      return (p && p.proseMirror) ? document.querySelectorAll(p.proseMirror) : [];
+    }
+    function pageEditorRows() {
+      var p = page();
+      if (!p) return [];
+      var out = [];
+      var trs = document.querySelectorAll(p.rows);
+      for (var i = 0; i < trs.length; i++) {
+        if (trs[i].querySelector && trs[i].querySelector(p.editorCell)) out.push(trs[i]);
+      }
+      return out;
+    }
+    function fingerprintHash(value) {
+      var h = 2166136261;
+      for (var i = 0; i < value.length; i++) {
+        h ^= value.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0).toString(16);
+    }
+
     /* ================= 编辑器类型识别 ================= */
     function detectEditor() {
       var p = location.pathname || '';
@@ -43,6 +114,7 @@
       var reasons = {};
       try {
         if (kind === 'old') {
+          var p = page();
           var ctrl = oldGridCtrl();
           var gcm = ctrl && ctrl.gridContentManager;
           f.listRows = !!gcm;
@@ -51,15 +123,15 @@
           f.readSegment = true;
           f.writeSegment = true;
           f.rowChanged = true;
-          f.docStats = !!document.querySelector('.status-bar-container');
-          f.confirm = !!document.getElementById('editorHiddenInput');
+          f.docStats = !!(p && p.statusBar && document.querySelector(p.statusBar));
+          f.confirm = !!pageConfirmInput();
           f.concordance = !!(window.WebTrans && WebTrans.Core);
           try {
             var core = termCore();
             f.terms = !!(core && core.lastUsedTBGuid);
           } catch (e) {}
           try {
-            var fe = document.getElementById('txtSourceFilter');
+            var fe = pageFilterInput('source');
             var fs = (fe && window.angular) ? angular.element(fe).scope() : null;
             f.filter = !!(fs && fs.ctrl
               && typeof fs.ctrl.filterForSourceOrTarget === 'function');
@@ -83,8 +155,62 @@
       if (!f.concordance) reasons.concordance = '需要旧版编辑器（语词检索）';
       if (!f.confirm) reasons.confirm = '需要旧版编辑器（原生确认）';
       if (!f.readSegment) reasons.readSegment = '当前段编辑器尚未就绪';
-      return { ok: !!kind, editor: kind, features: f, reasons: reasons };
+      return { ok: !!kind, editor: kind, features: f, reasons: reasons,
+               fingerprint: pageFingerprint() };
     };
+
+    /* 结构指纹：只返回选择器命中/数量，不读取任何页面文本。 */
+    function pageFingerprint() {
+      var kind = detectEditor();
+      var p = page();
+      if (!p) {
+        return { ok: false, editor: null, version: 0, signature: '',
+                 markers: {}, missing: ['editor'] };
+      }
+      var markers = { version: p.version };
+      var missing = [];
+      try {
+        if (kind === 'old') {
+          var grid = pageGridEl();
+          var ctrl = oldGridCtrl();
+          var gcm = ctrl && ctrl.gridContentManager;
+          markers.grid = !!grid;
+          markers.gridContentManager = !!gcm;
+          markers.editorRows = pageEditorRows().length;
+          markers.statusBar = !!document.querySelector(p.statusBar);
+          markers.filterPane = !!pageFilterInput('source');
+          markers.confirm = !!pageConfirmInput();
+          markers.cachedRows = gcm ? oldCachedRows(ctrl).length : 0;
+          if (!markers.grid) missing.push('grid');
+          if (!markers.gridContentManager) missing.push('gridContentManager');
+        } else if (kind === 'new') {
+          var pms = pagePmList();
+          markers.proseMirror = pms.length;
+          markers.reactFiber = 0;
+          for (var i = 0; i < pms.length; i++) {
+            var host = pms[i].parentElement;
+            if (host && Object.keys(host).some(function (k) {
+              return k.indexOf('__reactFiber$') === 0;
+            })) markers.reactFiber++;
+          }
+          markers.active = false;
+          try { markers.active = !!newActiveView(); } catch (e) {}
+          if (!markers.proseMirror) missing.push('proseMirror');
+        }
+      } catch (e) {
+        missing.push('fingerprint-error');
+        markers.error = String(e.message || e).slice(0, 120);
+      }
+      return {
+        ok: missing.length === 0,
+        editor: kind,
+        version: p.version,
+        signature: fingerprintHash(JSON.stringify(markers)),
+        markers: markers,
+        missing: missing,
+      };
+    }
+    window.__md.api.fingerprint = pageFingerprint;
 
     /* ================= 新版编辑器（React + ProseMirror） ================= */
     function newFindView(pmEl) {
@@ -115,7 +241,7 @@
     }
     // 无焦点兜底：按 DOM 扫描所有段，优先取未锁定的译文段（自动化测试用）
     function newAnyView() {
-      var pms = document.querySelectorAll('div.ProseMirror');
+      var pms = pagePmList();
       var fallback = null;
       for (var i = 0; i < pms.length; i++) {
         var v = newFindView(pms[i]);
@@ -128,12 +254,14 @@
     }
     function newActiveView() {
       var sel = window.getSelection();
+      var p = page();
+      var pmSel = (p && p.proseMirror) || 'div.ProseMirror';
       var pm = null;
       if (sel && sel.anchorNode && sel.anchorNode.parentElement) {
-        pm = sel.anchorNode.parentElement.closest ? sel.anchorNode.parentElement.closest('div.ProseMirror') : null;
+        pm = sel.anchorNode.parentElement.closest ? sel.anchorNode.parentElement.closest(pmSel) : null;
       }
       if (!pm && document.activeElement && document.activeElement.closest) {
-        pm = document.activeElement.closest('div.ProseMirror');
+        pm = document.activeElement.closest(pmSel);
       }
       return pm ? newFindView(pm) : null;
     }
@@ -207,7 +335,8 @@
       if (strict && td) return td.contains(root) ? ed : null;
       // strict 但无预设目标格（moveToRow 路径）：反推所属译文格，由 Qt 侧核对行号
       if (td && td.contains(root)) return ed;
-      var tds = document.querySelectorAll('td.translated-segment-grid');
+      var p = page();
+      var tds = document.querySelectorAll((p && p.translatedCell) || 'td.translated-segment-grid');
       for (var i = 0; i < tds.length; i++) {
         if (tds[i].contains(root)) { window.__md._targetTd = tds[i]; return ed; }
       }
@@ -343,7 +472,8 @@
       var kind = detectEditor();
       try {
         if (kind === 'old') {
-          var bar = document.querySelector('.status-bar-container');
+          var p = page();
+          var bar = p && p.statusBar ? document.querySelector(p.statusBar) : null;
           var oldText = String(bar && bar.textContent || '').replace(/\s+/g, ' ').trim();
           var pm = /(?:Doc|文档)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*%/i.exec(oldText);
           if (!pm) return { ok: false, err: '未找到 memoQ Doc 进度' };
@@ -351,7 +481,8 @@
         }
         if (kind === 'new') {
           var best = null;
-          var els = document.querySelectorAll('body *');
+          var np = page();
+          var els = document.querySelectorAll((np && np.bodyAll) || 'body *');
           for (var i = 0; i < els.length; i++) {
             var tag = String(els[i].tagName || '').toLowerCase();
             if (tag === 'script' || tag === 'style') continue;
@@ -403,19 +534,20 @@
         var lmap = {};
         var clsSample = [];
         try {
-          var trs = document.querySelectorAll('tr');
+          var p = page();
+          var trs = document.querySelectorAll((p && p.rows) || 'tr');
           for (var ti = 0; ti < trs.length; ti++) {
             var tr = trs[ti];
-            if (!tr.querySelector || !tr.querySelector('.editor-cell')) continue;
-            var od = tr.querySelector('td.order');
+            if (!tr.querySelector || !tr.querySelector((p && p.editorCell) || '.editor-cell')) continue;
+            var od = tr.querySelector((p && p.orderCell) || 'td.order');
             var no2 = od ? parseInt(od.textContent, 10) : NaN;
             if (!no2) continue;
-            var stCell = tr.querySelector('td.status-cell');
+            var stCell = tr.querySelector((p && p.statusCell) || 'td.status-cell');
             var cls = String(stCell ? stCell.className : tr.className || '');
             if (clsSample.length < 3) clsSample.push(cls.slice(0, 60));
             var st2 = statusFromText(cls);
             if (st2) dmap[no2] = st2;
-            var lockEl = tr.querySelector('[data-iconkey="lock"]');
+            var lockEl = tr.querySelector((p && p.lockIcon) || '[data-iconkey="lock"]');
             if (lockEl) lmap[no2] = /(^|\s)locked(\s|$)/.test(String(lockEl.className));
           }
         } catch (e) {}
@@ -495,7 +627,8 @@
       try {
         if (detectEditor() !== 'old') return { ok: false, err: '过滤器仅旧版支持' };
         var target = direction === 'target';
-        var el = document.getElementById(target ? 'txtTargetFilter' : 'txtSourceFilter');
+        var el = pageFilterInput(target ? 'target' : 'source');
+
         var sc = (el && window.angular) ? angular.element(el).scope() : null;
         var fctrl = sc && sc.ctrl;
         if (!fctrl || typeof fctrl.filterForSourceOrTarget !== 'function') {
@@ -515,7 +648,8 @@
     window.__md.api.clearFilterReq = function () {
       try {
         if (detectEditor() !== 'old') return { ok: false, err: '过滤器仅旧版支持' };
-        var el = document.getElementById('txtSourceFilter');
+        var el = pageFilterInput('source');
+
         var sc = (el && window.angular) ? angular.element(el).scope() : null;
         var fctrl = sc && sc.ctrl;
         if (!fctrl || typeof fctrl.clearFilters !== 'function') {
@@ -532,14 +666,11 @@
       var kind = detectEditor();
       try {
         if (kind === 'old') {
-          var trs = document.querySelectorAll('tr');
-          var rowEls = [];
-          for (var ti = 0; ti < trs.length; ti++) {
-            if (trs[ti].querySelector && trs[ti].querySelector('.editor-cell')) rowEls.push(trs[ti]);
-          }
+          var p = page();
+          var rowEls = pageEditorRows();
           var tr = rowEls[Math.max(1, rowIdx || 1) - 1];
-          var td = tr && tr.querySelector('td.original-segment-grid');
-          var root = td && td.querySelector('.content-container');
+          var td = tr && tr.querySelector((p && p.originalCell) || 'td.original-segment-grid');
+          var root = td && td.querySelector((p && p.contentRoot) || '.content-container');
           if (!root) return { ok: false, err: '原文格未找到（行未渲染？）' };
           return { ok: true, tokens: oldExtractTokens(root, null) };
         }
@@ -573,7 +704,7 @@
 
     // 按 rowId 找译文段视图（自动化指定行用，不依赖焦点）
     function newFindViewByRow(rowId) {
-      var pms = document.querySelectorAll('div.ProseMirror');
+      var pms = pagePmList();
       for (var i = 0; i < pms.length; i++) {
         var v = newFindView(pms[i]);
         if (v && v.state.doc.attrs.segmentType === 'target'
@@ -598,7 +729,7 @@
        行号可能藏在 r.row.rowNumber（数字）或需从 String(r.rowNumber) 提取，兜底用 id+1。 */
     function oldGridCtrl() {
       try {
-        var el = document.querySelector('[ng-controller="gridCtrl"]');
+        var el = pageGridEl();
         if (!el || !window.angular) return null;
         var sc = window.angular.element(el).scope();
         return (sc && sc.ctrl) || null;
@@ -714,7 +845,7 @@
       var kind = detectEditor();
       if (kind === 'new') {
         window.__md._targetTd = null;
-        var pms = document.querySelectorAll('div.ProseMirror');
+        var pms = pagePmList();
         var fallback = null, idx = rowIdx, found = null;
         for (var i = 0; i < pms.length; i++) {
           var v = newFindView(pms[i]);
@@ -748,14 +879,12 @@
         } catch (e) {}
         // 兜底：行不在缓存（虚拟滚动未加载）时滚一屏后由原合成点击路径处理
         // 真实行 = TR（含 .editor-cell），译文格 = td.translated-segment-grid
-        var trs = document.querySelectorAll('tr');
-        var rowEls = [];
-        for (var ti = 0; ti < trs.length; ti++) {
-          if (trs[ti].querySelector && trs[ti].querySelector('.editor-cell')) rowEls.push(trs[ti]);
-        }
+        var p = page();
+        var trs = document.querySelectorAll((p && p.rows) || 'tr');
+        var rowEls = pageEditorRows();
         var picked = rowEls[rowIdx];
         if (!picked) { scrollGridDown(trs[0]); return false; }
-        var tgtTd = picked.querySelector('td.translated-segment-grid');
+        var tgtTd = picked.querySelector((p && p.translatedCell) || 'td.translated-segment-grid');
         if (!tgtTd) {
           var tds2 = picked.querySelectorAll('td');
           tgtTd = tds2[Math.min(2, tds2.length - 1)];
@@ -768,7 +897,7 @@
           var actRoot = oldEditorRoot(actEd);
           if (actRoot && tgtTd.contains(actRoot)) return true;
         }
-        var el = (tgtTd.querySelector && tgtTd.querySelector('.content-container')) || tgtTd.querySelector('.editor-cell') || tgtTd;
+        var el = (tgtTd.querySelector && tgtTd.querySelector((p && p.contentRoot) || '.content-container')) || tgtTd.querySelector('.editor-cell') || tgtTd;
         ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(function (t) {
           try { el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
         });
@@ -784,9 +913,7 @@
       var kind = detectEditor();
       if (kind !== 'old') return { ok: false, err: 'confirmSegment 仅旧版支持' };
       try {
-        var inp = document.getElementById('editorHiddenInput')
-               || document.querySelector('input[type="text"][id*="Hidden"]')
-               || document.querySelector('[id*="editorHidden"]');
+        var inp = pageConfirmInput();
         if (!inp) return { ok: false, err: '隐藏输入框未找到' };
         inp.focus();
         ['keydown', 'keypress', 'keyup'].forEach(function (t) {
@@ -1605,13 +1732,14 @@
       // 也扫原文格，找 br tag 备用
       var srcRoot = null;
       try {
-        var cell = root.closest && (root.closest('.editor-cell') || root.closest('td'));
+        var p = page();
+        var cell = root.closest && (root.closest((p && p.editorCell) || '.editor-cell') || root.closest('td'));
         var row = cell && cell.parentElement;
         if (row) {
           for (var ci = 0; ci < row.children.length; ci++) {
             var other = row.children[ci].querySelector ? row.children[ci] : null;
             if (other && other !== cell && other.querySelector && !other.contains(root)) {
-              var cand = other.querySelector('.content-container') || other.querySelector('[class*="content"]');
+              var cand = other.querySelector((p && p.contentRoot) || '.content-container') || other.querySelector('[class*="content"]');
               if (cand && cand !== root) { srcRoot = cand; break; }
             }
           }
@@ -1740,7 +1868,8 @@
       // 签出对话框自动处理：上次会话未正常签入/文档被其他会话持有时，
       // memoQ 会弹「是，签出项目」挡住整个文档打开流程，不点 grid 永远不初始化
       try {
-        var cb = document.getElementById('btnFormCheckout');
+        var p0 = page();
+        var cb = p0 && p0.checkout ? document.getElementById(p0.checkout) : null;
         if (cb && !cb.__md_clicked) { cb.__md_clicked = 1; cb.click(); log('auto-clicked checkout dialog'); }
       } catch (e) {}
       var kind = detectEditor();
@@ -1751,7 +1880,8 @@
           if (v) key = 'new|' + v.state.doc.attrs.rowId;
         } else if (kind === 'old') {
           var ed = oldActiveEditor();
-          if (ed && document.activeElement && document.activeElement.id === 'editorHiddenInput') {
+          if (ed && document.activeElement && pageConfirmInput()
+              && document.activeElement === pageConfirmInput()) {
             // 只监听“活动行 id”，不要把光标位置/内容长度当行号。
             // 旧逻辑会让每次移动光标都触发整段重读，造成延迟、闪烁和未保存内容被覆盖的风险。
             var ctrlRow = oldGridCtrl();

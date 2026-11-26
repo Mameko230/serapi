@@ -31,6 +31,7 @@ $env:SERAPI_NODE = "C:\path\to\node.exe"
 
 | 改动区域 | 至少跑 |
 |---|---|
+| `app/bridge.js` 选择器/能力/指纹 | `test_capabilities.js`、`test_capabilities_ui.py` |
 | `app/bridge.js` 过滤 | `test_filter.js`、`test_filter_ui.py`、`test_term_edit.js` |
 | `app/bridge.js` 术语/详情 | `test_term_edit.js`、`test_term_edit.py`、`test_tb_metadata.js` |
 | 段表选择/上下键 | `test_seg_nav.py`、`test_save_flow.py`、`test_incremental_sync.py` |
