@@ -30,6 +30,8 @@ DEFAULTS = {
     "server_names": {},
     "outer_theme": "blue",
     "editor_theme": "light",
+    # 确认后的跳转逻辑：follow=跟随 memoQ 原生设置；next/previous/stay=Serapi 覆盖
+    "jump_mode": "follow",
     # 检测更新：上次检查日期（YYYY-MM-DD）与用户点过「稍后/打开发布页」的版本
     "update_last_checked": "",
     "update_skipped_version": "",
@@ -63,6 +65,8 @@ def load() -> dict:
         cfg["outer_theme"] = "blue"
     if cfg["editor_theme"] not in EDITOR_THEMES:
         cfg["editor_theme"] = "light"
+    if cfg.get("jump_mode") not in ("follow", "next", "previous", "stay"):
+        cfg["jump_mode"] = "follow"
     return cfg
 
 

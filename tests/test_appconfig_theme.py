@@ -28,22 +28,27 @@ assert cfg["outer_theme"] == "blue" and cfg["editor_theme"] == "light"
 assert cfg["memoq_url"] == appconfig.DEFAULT_URL
 assert cfg["server_history"] == []  # 不写死服务器，首次启动由用户填写
 assert cfg["server_names"] == {}    # 旧配置兼容：没有名称键时给空表
+assert cfg["jump_mode"] == "follow"  # 确认后跳转默认跟随 memoQ 原生设置
 cfg.update({"memoq_url": "https://x/memoqweb",
             "server_history": ["https://x/memoqweb", "https://y/memoqweb"],
             "server_names": {"https://y/memoqweb": "测试环境",
                              "https://x/memoqweb": "  ",
                              "": "空地址", "https://z/memoqweb": ""},
-            "outer_theme": "warm", "editor_theme": "dark"})
+            "outer_theme": "warm", "editor_theme": "dark",
+            "jump_mode": "next"})
 assert appconfig.save(cfg) is None
 loaded = appconfig.load()
 assert loaded["memoq_url"] == "https://x/memoqweb"
 assert loaded["server_history"][0] == "https://x/memoqweb"
 assert loaded["server_names"] == {"https://y/memoqweb": "测试环境"}  # 空名称 / 空地址被过滤
 assert loaded["outer_theme"] == "warm" and loaded["editor_theme"] == "dark"
+assert loaded["jump_mode"] == "next"
 # 非法键回退到默认
-assert appconfig.save(dict(loaded, outer_theme="nope", editor_theme="nope")) is None
+assert appconfig.save(dict(loaded, outer_theme="nope", editor_theme="nope",
+                           jump_mode="nope")) is None
 fixed = appconfig.load()
 assert fixed["outer_theme"] == "blue" and fixed["editor_theme"] == "light"
+assert fixed["jump_mode"] == "follow"
 
 # 1b) 旧 app.json（只有 memoq_url / server_history）完全兼容，不丢地址
 with open(appconfig._PATH, "w", encoding="utf-8") as f:
@@ -237,6 +242,20 @@ assert tp2.height() >= 150
 tp2.keep_inside()
 tp2.hide()
 assert tp2.isHidden()
+
+# 8) 设置面板：确认后跳转单选，默认跟随 memoQ；切换发信号并记忆选中项。
+from app.overlays import SettingsPanel
+sp = SettingsPanel(host)
+seen_modes = []
+sp.jumpModeChanged.connect(seen_modes.append)
+sp.open("next")
+assert sp._radios["next"].isChecked(), sp._radios
+assert 300 <= sp.width() < host.width()
+sp._radios["stay"].click()
+assert sp._radios["stay"].isChecked() and not sp._radios["next"].isChecked()
+assert seen_modes == ["stay"], seen_modes
+sp.hide()
+assert sp.isHidden()
 
 print("APPCONFIG_THEME_TEST: PASS")
 if os.path.exists(appconfig._PATH):

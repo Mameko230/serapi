@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from qfluentwidgets import (
     PrimaryPushButton, PushButton, ComboBox as FComboBox, LineEdit as FLineEdit,
+    RadioButton,
 )
 
 from .qtedit import MqEditor
@@ -880,6 +881,129 @@ class _ClickLabel(QLabel):
 
     def mousePressEvent(self, e):
         self.clicked.emit()
+
+
+class SettingsPanel(QWidget):
+    """悬浮「设置」面板：先放确认后跳转逻辑，后续继续扩充。"""
+    jumpModeChanged = pyqtSignal(str)
+    closed = pyqtSignal()
+
+    MODES = [
+        ("follow", "跟随 memoQ 原生设置（推荐）",
+         "完全使用 memoQ 自己的“确认后跳转”设置（含 settingsBased 过滤）。"),
+        ("next", "下一行", "确认后跳到下一行，忽略 memoQ 的跳转设置。"),
+        ("previous", "上一行", "确认后跳到上一行。"),
+        ("stay", "不跳转", "确认后停留在当前行。"),
+    ]
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setObjectName("settingsPanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setMinimumWidth(420)
+        self.setStyleSheet(
+            "QWidget#settingsPanel { background: rgba(250,252,255,246);"
+            " border: 1px solid rgba(255,255,255,255); border-radius: 16px; }")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._drag_offset = None
+        self._placed = False
+        self._radios = {}
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 14, 20, 16)
+        lay.setSpacing(10)
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        title = QLabel("设置")
+        title.setStyleSheet("font-size:16px; font-weight:600; color:#1e293b; background:transparent;")
+        title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        hint = QLabel("拖动标题移动")
+        hint.setStyleSheet("color:#94a3b8; font-size:11px; background:transparent;")
+        hint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        close = PushButton("关闭")
+        close.setToolTip("关闭设置面板（Esc）")
+        close.clicked.connect(self.hide)
+        head.addWidget(title)
+        head.addWidget(hint)
+        head.addStretch(1)
+        head.addWidget(close)
+        lay.addLayout(head)
+        section = QLabel("确认（Ctrl+Enter）后的跳转")
+        section.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
+        lay.addWidget(section)
+        for key, name, tip in self.MODES:
+            rb = RadioButton(name, self)
+            rb.setToolTip(tip)
+            rb.clicked.connect(lambda _checked=False, k=key: self._pick(k))
+            self._radios[key] = rb
+            lay.addWidget(rb)
+        lay.addStretch(1)
+        self.adjustSize()
+        self.hide()
+
+    def _pick(self, key):
+        for k, rb in self._radios.items():
+            rb.setChecked(k == key)
+        self.jumpModeChanged.emit(key)
+
+    def set_current(self, mode):
+        mode = mode if mode in self._radios else "follow"
+        for k, rb in self._radios.items():
+            rb.setChecked(k == mode)
+
+    def open(self, mode):
+        self.set_current(mode)
+        self.adjustSize()
+        par = self.parentWidget()
+        if par is not None and not self._placed:
+            self.move(max(12, par.width() - self.width() - 24), 108)
+            self._placed = True
+        self.keep_inside()
+        self.show()
+        self.raise_()
+        self.setFocus()
+
+    def keep_inside(self):
+        par = self.parentWidget()
+        if par is None:
+            return
+        x = max(0, min(self.x(), max(0, par.width() - self.width())))
+        y = max(0, min(self.y(), max(0, par.height() - self.height())))
+        if (x, y) != (self.x(), self.y()):
+            self.move(x, y)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = e.position().toPoint()
+            self.setFocus()
+            e.accept()
+            return
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._drag_offset is not None and (e.buttons() & Qt.MouseButton.LeftButton):
+            par = self.parentWidget()
+            if par is not None:
+                pt = par.mapFromGlobal(e.globalPosition().toPoint())
+                x = max(0, min(pt.x() - self._drag_offset.x(), max(0, par.width() - self.width())))
+                y = max(0, min(pt.y() - self._drag_offset.y(), max(0, par.height() - self.height())))
+                self.move(x, y)
+            e.accept()
+            return
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._drag_offset = None
+        super().mouseReleaseEvent(e)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.closed.emit()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.hide()
+            return
+        super().keyPressEvent(event)
 
 
 class ThemePanel(QWidget):

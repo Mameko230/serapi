@@ -260,6 +260,34 @@ assert not w_info.seg_info_frame.isHidden()
 info_text = w_info.seg_info.toPlainText()
 assert info_text.count("新版不提供") == 2, info_text
 
+# 8b) 确认后跳转：follow 交给 memoQ；next/previous/stay 覆盖目标；越界/文档变化不跳。
+jh = Dummy()
+jh._app_cfg = {"jump_mode": "next"}
+jh._editor_url = "doc"
+jh._has_loaded_segment = True
+jh._cur_row = 10
+jh._total_rows = 100
+jh.jumps = []
+jh.log = lambda _s: None
+jh._jump_to_row = lambda n: jh.jumps.append(int(n))
+jh._apply_confirm_jump = types.MethodType(MainWindow._apply_confirm_jump, jh)
+jh._apply_confirm_jump(10, "doc")            # next → 11
+assert jh.jumps == [11], jh.jumps
+jh._app_cfg["jump_mode"] = "previous"
+jh._cur_row = 11
+jh._apply_confirm_jump(11, "doc")            # previous → 10
+assert jh.jumps == [11, 10], jh.jumps
+jh._app_cfg["jump_mode"] = "stay"
+jh._cur_row = 10
+jh._apply_confirm_jump(10, "doc")            # stay → 已是 10，不重复跳
+assert jh.jumps == [11, 10], jh.jumps
+jh._app_cfg["jump_mode"] = "next"
+jh._apply_confirm_jump(100, "doc")           # 超过总行数
+jh._apply_confirm_jump(20, "other-doc")      # 文档已变
+jh._app_cfg["jump_mode"] = "follow"
+jh._apply_confirm_jump(20, "doc")            # 跟随 memoQ
+assert jh.jumps == [11, 10], jh.jumps
+
 # 9) 语词检索入口常驻，真实结果含原文/译文/来源，关键词高亮且 tag 不裸露。
 panel._last_clean = MainWindow._clean_editor_str
 seen_queries = []

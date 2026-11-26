@@ -24,7 +24,7 @@ from .overlay_coordinator import RequestSequence, TermOverlayCoordinator
 from .save_coordinator import SaveCoordinator, SaveSnapshot
 from .segment_sync import SegmentSync
 from . import appconfig, tooltips
-from .overlays import AccountOverlay, ThemePanel, UpdateOverlay
+from .overlays import AccountOverlay, ThemePanel, UpdateOverlay, SettingsPanel
 from .updater import (
     ReleaseChecker, decide, reason_text, safe_release_url, should_auto_check, today_str,
 )
@@ -1777,6 +1777,11 @@ class MainWindow(QMainWindow):
         self.btn_theme.setCheckable(True)
         self.btn_theme.toggled.connect(self._apply_theme_visibility)
         primary.addWidget(self.btn_theme)
+        self.btn_settings = PushButton("设置")
+        self.btn_settings.setToolTip("确认后跳转等偏好（再次点击关闭）")
+        self.btn_settings.setCheckable(True)
+        self.btn_settings.toggled.connect(self._apply_settings_visibility)
+        primary.addWidget(self.btn_settings)
         self.btn_tagrules = PushButton("Tag 规则")
         self.btn_tagrules.setToolTip("换行符 / 标色 / 加粗等 tag 格式定义（主窗口内切换，不开新窗口）")
         self.btn_tagrules.setCheckable(True)
@@ -2118,6 +2123,7 @@ class MainWindow(QMainWindow):
         self._tb_details = TbDetailCoordinator(self)  # TB 条目定义/示例请求身份
         self._account_overlay = None
         self._theme_panel = None
+        self._settings_panel = None
         self._update_checker = None
         self._update_overlay = None
         self._update_busy = False
@@ -2277,6 +2283,8 @@ class MainWindow(QMainWindow):
             self._update_overlay.resize(self.size())
         if getattr(self, "_theme_panel", None) is not None:
             self._theme_panel.keep_inside()
+        if getattr(self, "_settings_panel", None) is not None:
+            self._settings_panel.keep_inside()
         if getattr(self, "_engine_overlay", None) is not None:
             self._engine_overlay.resize(self.size())
             if getattr(self, "_engine_parked", False):
@@ -3572,7 +3580,8 @@ class MainWindow(QMainWindow):
         """自动检查的提示时机：窗口在前台、没有别的浮层、焦点不在输入框。"""
         if not self.isActiveWindow():
             return False
-        for name in ("_account_overlay", "_theme_panel", "_term_overlay", "_cc_overlay",
+        for name in ("_account_overlay", "_theme_panel", "_settings_panel",
+                     "_term_overlay", "_cc_overlay",
                      "_conflict_overlay", "_update_overlay", "_engine_overlay"):
             widget = getattr(self, name, None)
             if widget is not None and widget.isVisible():
@@ -3700,6 +3709,40 @@ class MainWindow(QMainWindow):
             self.log(f"编辑器配色已切换：{self._editor_theme['name']}")
         except Exception as e:
             self.log(f"编辑器配色切换失败：{e}")
+
+    # ---------------- 设置面板（确认后跳转等，后续继续扩充） ----------------
+    def _apply_settings_visibility(self, visible):
+        if visible:
+            self._show_settings_panel()
+        elif getattr(self, "_settings_panel", None) is not None:
+            self._settings_panel.hide()
+
+    def _show_settings_panel(self):
+        if getattr(self, "_settings_panel", None) is None:
+            self._settings_panel = SettingsPanel(self)
+            self._settings_panel.jumpModeChanged.connect(self._set_jump_mode)
+            self._settings_panel.closed.connect(lambda: self._set_settings_visible(False))
+        self._settings_panel.open(str(self._app_cfg.get("jump_mode") or "follow"))
+
+    def _set_settings_visible(self, visible):
+        btn = getattr(self, "btn_settings", None)
+        if btn is not None:
+            btn.blockSignals(True)
+            btn.setChecked(bool(visible))
+            btn.blockSignals(False)
+        if visible:
+            self._show_settings_panel()
+        elif getattr(self, "_settings_panel", None) is not None:
+            self._settings_panel.hide()
+
+    def _set_jump_mode(self, mode):
+        if mode not in ("follow", "next", "previous", "stay"):
+            return
+        self._app_cfg["jump_mode"] = mode
+        appconfig.save(self._app_cfg)
+        labels = {"follow": "跟随 memoQ 原生设置", "next": "下一行",
+                  "previous": "上一行", "stay": "不跳转"}
+        self.log(f"确认后跳转：{labels[mode]}")
 
     def switch_account(self):
         # 兼容旧入口：统一走「账号」浮层。
@@ -4533,6 +4576,10 @@ class MainWindow(QMainWindow):
                 if getattr(self, "_cap_editor", None) == "new":
                     # 行缓存是 API 快照：确认会改状态，稍后刷新该行，避免段列表回跳。
                     QTimer.singleShot(700, lambda: self._refresh_row_cache(row_no))
+                # 自定义跳转模式覆盖：等原生跳行动作稳定后再校正到用户选择的位置。
+                jump_fn = getattr(self, "_apply_confirm_jump", None)
+                if callable(jump_fn):
+                    QTimer.singleShot(900, lambda: jump_fn(row_no, doc_url))
                 # 某些旧版页面确认后焦点离开隐藏输入框，row-changed 轮询可能漏发。
                 # 450ms 后直接读当前活动行；若推送已先读取，read_gen 会阻止重复读取。
                 read_gen = self._read_gen
@@ -4551,6 +4598,35 @@ class MainWindow(QMainWindow):
             backend_for(self).refresh_row_cache(row_no)
         except Exception:
             pass
+
+    def _apply_confirm_jump(self, row_no, doc_url):
+        """按设置校正确认后的目标行；默认 follow 时交给 memoQ 原生跳转。"""
+        mode = str(self._app_cfg.get("jump_mode") or "follow")
+        if mode == "follow" or doc_url != self._editor_url:
+            return
+        try:
+            row_no = int(row_no)
+        except (TypeError, ValueError):
+            return
+        if not getattr(self, "_has_loaded_segment", False):
+            return
+        if mode == "stay":
+            target = row_no
+        elif mode == "previous":
+            target = max(1, row_no - 1)
+        else:
+            target = row_no + 1
+        total = int(self._total_rows or 0)
+        if total and target > total:
+            return
+        try:
+            current = int(self._cur_row)
+        except (TypeError, ValueError):
+            return
+        if target == current:
+            return
+        self.log(f"按设置跳到第 {target} 行")
+        self._jump_to_row(target)
 
     def reject_segment(self):
         """Shift+Enter：先写回当前编辑，再把行状态改为已拒绝（同 memoQ 原生语义）。"""
