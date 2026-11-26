@@ -508,11 +508,60 @@
           var sTerm = tbTerm(srcLang, srcIdx);
           var tTerm = tbTerm(tgtLang, 0);
           if (sTerm || tTerm) {
+            // 新版条目详情直接从命中数据里取（languages[].fields + terms[].fields），
+            // 只读；tbGuid/entryId 仅供缓存键，newTerm 标记阻止再走旧版术语详情接口。
+            var detailLangs = [];
+            for (var li = 0; li < langKeys.length; li++) {
+              var code = langKeys[li];
+              var bucket = langs[code] || {};
+              var terms = bucket.terms || [];
+              var role = (code === srcLang) ? 'source'
+                : ((code === tgtLang) ? 'target' : 'other');
+              var rawFields = (bucket.fields || []).slice();
+              if (terms[0] && terms[0].fields) rawFields = rawFields.concat(terms[0].fields);
+              var definition = '', examples = [], langFields = [];
+              for (var fi = 0; fi < rawFields.length; fi++) {
+                var f = rawFields[fi] || {};
+                var fname = String(f.name || '');
+                var fvalue = String(f.value == null ? '' : f.value);
+                if (!fvalue) continue;
+                if (/definition/i.test(fname) && !definition) definition = fvalue;
+                else if (/example/i.test(fname)) examples.push(fvalue);
+                else langFields.push({ name: fname, value: fvalue });
+              }
+              var termTexts = [];
+              for (var ti = 0; ti < terms.length; ti++) {
+                var tv = String((terms[ti] || {}).term || '');
+                if (tv) termTexts.push(tv);
+              }
+              detailLangs.push({ role: role, code: code, terms: termTexts,
+                                 definition: definition, examples: examples,
+                                 fields: langFields });
+            }
+            var entryFields = [];
+            var rawEntryFields = h.fields || [];
+            for (var ei = 0; ei < rawEntryFields.length; ei++) {
+              var ef = rawEntryFields[ei] || {};
+              var ev = String(ef.value == null ? '' : ef.value);
+              if (ev) entryFields.push({ name: String(ef.name || ''), value: ev });
+            }
+            if (entryFields.length) {
+              for (var di = 0; di < detailLangs.length; di++) {
+                if (detailLangs[di].role === 'source') {
+                  detailLangs[di].fields = detailLangs[di].fields.concat(entryFields);
+                  break;
+                }
+              }
+            }
             tb.push({
               s: sTerm, t: tTerm, res: String(res || ''),
               user: String(h.creator || ''), time: String(h.created || '').slice(0, 19),
-              // 新版条目详情/编辑接口未接入：不给 tbGuid/entryId，避免误触旧版 API。
-              entryId: '', tbGuid: '', readOnly: true,
+              modifiedBy: String(h.modifier || ''),
+              modifiedTime: String(h.lastModified || '').slice(0, 19),
+              entryId: String(h.entryId || h.id || ''),
+              tbGuid: String(h.resourceId || ''),
+              newTerm: true, readOnly: true,
+              detail: { readOnly: true, languages: detailLangs },
             });
           }
         }

@@ -109,6 +109,28 @@ assert w_hits._tm_rates == {}
 model.set_rows([{"rowNo": 1, "src": "a", "tgt": "b", "status": "confirmed", "tmRate": 101}], {1: 0})
 assert model.index(0, 3).data() == "0%"
 
+# 6b) 新版 TB 命中自带定义/示例：先塞详情缓存；newTerm 展示时不再请求旧版术语接口。
+tb_detail = {"readOnly": True, "languages": [
+    {"role": "source", "code": "jpn", "terms": ["term"],
+     "definition": "源语言定义", "examples": ["示例一"],
+     "fields": [{"name": "Note", "value": "条目备注"}]},
+    {"role": "target", "code": "zho-CN", "terms": ["术语"],
+     "definition": "译语言定义", "examples": [],
+     "fields": [{"name": "Subject", "value": "财务"}]},
+]}
+tb_hit = {"s": "term", "t": "术语", "res": "TB-A", "user": "u", "time": "t",
+          "tbGuid": "g-1", "entryId": "e-1", "newTerm": True,
+          "readOnly": True, "detail": tb_detail}
+MainWindow._apply_hits(w_hits, [], [tb_hit], 1)
+assert w_hits.res_panel.tb_detail(("g-1", "e-1")) == tb_detail
+requests = []
+w_hits.res_panel.tbDetailRequested.connect(lambda payload: requests.append(payload))
+w_hits.res_panel.show_detail(dict(tb_hit, kind="tb"))
+assert requests == [], requests   # newTerm：详情已自带，不能再走旧版接口
+html = w_hits.res_panel.cmp_box.toHtml()
+assert "源语言定义" in html and "译语言定义" in html, html
+assert "条目备注" in html and "财务" in html, html
+
 # 7) 行号列使用自绘 delegate，选中后仍由同一状态色绘制，不被 QSS 高亮替代。
 from app.mainwindow import SegStatusDelegate
 from PyQt6.QtWidgets import QTableView

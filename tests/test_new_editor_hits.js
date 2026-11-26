@@ -144,14 +144,23 @@ const TM_ENTRY = {
 
 const TB_ENTRY = {
   type: 'termBase', creator: 'user-b',
-  created: '2026-01-02T10:00:00Z', modifier: 'user-b', lastModified: '2026-01-02T10:00:00Z',
+  created: '2026-01-02T10:00:00Z', modifier: 'user-c', lastModified: '2026-01-03T10:00:00Z',
   source: { langCode: 'jpn', termIndex: 0 }, targetLangCode: 'zho-CN',
   languages: {
-    jpn: { terms: [{ term: 'term', isForbidden: false }] },
-    'zho-CN': { terms: [{ term: '术语', isForbidden: false }] },
+    jpn: {
+      terms: [{ term: 'term', isForbidden: false }],
+      fields: [{ name: 'Definition', value: '源语言定义' },
+               { name: 'Example', value: '示例一' }],
+    },
+    'zho-CN': {
+      terms: [{ term: '术语', isForbidden: false,
+                fields: [{ name: 'Definition', value: '译语言定义' }] }],
+      fields: [{ name: 'Subject', value: '财务' }],
+    },
   },
-  fields: [],
-  id: 'entry-1', resourceId: 'tb-guid-1', ranges: [{ start: 2, length: 4 }],
+  fields: [{ name: 'Note', value: '条目备注' }],
+  entryId: 'entry-1', id: 'id-1', resourceId: 'tb-guid-1',
+  ranges: [{ start: 2, length: 4 }],
 };
 
 let ctx;
@@ -205,8 +214,23 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   assert.strictEqual(pushed.data.tb[0].s, 'term');
   assert.strictEqual(pushed.data.tb[0].t, '术语');
   assert.strictEqual(pushed.data.tb[0].readOnly, true);
-  assert.strictEqual(pushed.data.tb[0].entryId, '');
-  assert.strictEqual(pushed.data.tb[0].tbGuid, '');
+  assert.strictEqual(pushed.data.tb[0].newTerm, true);
+  assert.strictEqual(pushed.data.tb[0].entryId, 'entry-1');
+  assert.strictEqual(pushed.data.tb[0].tbGuid, 'tb-guid-1');
+  assert.strictEqual(pushed.data.tb[0].modifiedBy, 'user-c');
+  assert.strictEqual(pushed.data.tb[0].modifiedTime, '2026-01-03T10:00:00');
+  const langs = pushed.data.tb[0].detail.languages;
+  assert.strictEqual(langs.length, 2);
+  assert.strictEqual(langs[0].role, 'source');
+  assert.strictEqual(langs[0].code, 'jpn');
+  assert.strictEqual(langs[0].definition, '源语言定义');
+  assert.strictEqual(JSON.stringify(langs[0].examples), JSON.stringify(['示例一']));
+  const srcFieldNames = langs[0].fields.map((f) => f.name);
+  assert.ok(srcFieldNames.indexOf('Note') >= 0, srcFieldNames);
+  assert.strictEqual(langs[1].role, 'target');
+  assert.strictEqual(langs[1].definition, '译语言定义');
+  assert.ok(langs[1].fields.some((f) => f.name === 'Subject' && f.value === '财务'),
+            langs[1].fields);
   assert.strictEqual(ctx.__md._tm.status, 'done');
 
   // 2b) 没有 segment.text 时按 Unicode 码点解码 symbols，不能把码点拼成数字串。

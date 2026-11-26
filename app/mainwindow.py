@@ -1171,7 +1171,8 @@ class ResPanel(QWidget):
         self._detail_payload = payload
         self._render_detail(payload)
         key = self._detail_key(payload)
-        if (payload.get("kind") or "") == "tb" and key[0] and key[1]:
+        if ((payload.get("kind") or "") == "tb" and key[0] and key[1]
+                and not payload.get("newTerm")):
             self.tbDetailRequested.emit(payload)
 
     @staticmethod
@@ -1320,6 +1321,17 @@ class ResPanel(QWidget):
             values = [str(x) for x in (lang.get("examples") or []) if str(x or "").strip()]
             return "<br>".join(esc(v) for v in values)
 
+        def fields_html(lang):
+            items = []
+            for item in (lang.get("fields") or []):
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                value = str(item.get("value") or "").strip()
+                if value:
+                    items.append((esc(name) + "：" if name else "") + esc(value))
+            return "<br>".join(items)
+
         def head_cell(lang):
             role = str(lang.get("role") or "other")
             code = esc(lang.get("code"))
@@ -1333,6 +1345,7 @@ class ResPanel(QWidget):
             ("术语", terms_html),
             ("定义", definition_html),
             ("示例", examples_html),
+            ("字段", fields_html),
         ]
         rows = []
         for label, render in fields:
@@ -1374,6 +1387,17 @@ class ResPanel(QWidget):
             if examples:
                 block += ('<div style="color:#475569;">示例：'
                           + "<br>".join(esc(v) for v in examples) + '</div>')
+            field_items = []
+            for item in (lang.get("fields") or []):
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                value = str(item.get("value") or "").strip()
+                if value:
+                    field_items.append((esc(name) + "：" if name else "") + esc(value))
+            if field_items:
+                block += ('<div style="color:#64748b;">字段：'
+                          + "<br>".join(field_items) + '</div>')
             block += '</div>'
             blocks.append(block)
         if not blocks:
@@ -2957,6 +2981,14 @@ class MainWindow(QMainWindow):
             print(f"TRACE load_hits tm={len(tm)} tb={len(tb)} at={len(at)}", flush=True)
         if hasattr(self, "src_view") and hasattr(self, "editor"):
             self._apply_tb_highlights(tb, row_no)
+        # 新版 TB 命中自带定义/示例：先塞进详情缓存，避免再走旧版术语详情接口。
+        for hit in tb:
+            detail = hit.get("detail") if isinstance(hit, dict) else None
+            if not isinstance(detail, dict):
+                continue
+            key = (str(hit.get("tbGuid") or ""), str(hit.get("entryId") or ""))
+            if key[0] and key[1]:
+                self.res_panel.set_tb_detail(key, detail)
         self.res_panel.load_hits(tm, tb, self._clean_editor_str, at)
         if _os.environ.get("MEMODESK_TRACE"):
             print("TRACE load_hits done", flush=True)
