@@ -2083,8 +2083,10 @@
         var val = obj[key];
         if (typeof val === 'string' && val.trim()) {
           var text = val.trim();
-          var isSource = /(source|src).*lang|lang.*(source|src)/.test(low);
-          var isTarget = /(target|tgt).*lang|lang.*(target|tgt)/.test(low);
+          var isSource = /(source|src).*lang|lang.*(source|src)/.test(low)
+            || low === 'src' || low === 'source';
+          var isTarget = /(target|tgt).*lang|lang.*(target|tgt)/.test(low)
+            || low === 'tgt' || low === 'target';
           if (isSource && !out.src) out.src = text;
           if (isTarget && !out.tgt) out.tgt = text;
         } else if (val && typeof val === 'object' && depth < 4) {

@@ -2636,7 +2636,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(1200, self._prompt_pending_if_ready)
 
     def _auto_close_engine_enabled(self) -> bool:
-        return bool(self._app_cfg.get("engine_auto_close", True))
+        return bool((getattr(self, "_app_cfg", None) or {}).get("engine_auto_close", True))
 
     def _set_engine_visible(self, visible: bool):
         self.btn_engine.blockSignals(True)
@@ -4379,7 +4379,8 @@ class MainWindow(QMainWindow):
         hh = self.seg_table.horizontalHeader()
         try:
             total = max(1, int(self._total_rows or 0))
-        except (TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError):
+            # 构造早期（段同步状态机还没建好）先给最小宽度，行数到位后会再校准。
             total = 1
         digits = max(3, len(str(total)))
         fm = self.seg_table.fontMetrics()

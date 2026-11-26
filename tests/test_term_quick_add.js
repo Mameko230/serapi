@@ -68,7 +68,10 @@ const context = {
     if (url.indexOf('TranslationService/ListServerProjectTBs') >= 0) {
       return Promise.resolve({
         status: 200,
-        json: () => Promise.resolve({ Success: true, Value: tbList }),
+        json: () => Promise.resolve({
+          Success: true,
+          Value: body && body.targetLanguage ? tbList : [],
+        }),
       });
     }
     if (url.indexOf('QTermService/GetEmptyMetaList') >= 0) {
@@ -167,15 +170,24 @@ async function waitPush(type, count = 1) {
   assert.ok(!calls.some((c) => c.url.indexOf('AddNewEntry') >= 0), '只读时不得写回');
   readOnlyTb = false;
 
-  // 6) 文档语言未知时：用模板语言层顺序兜底（第一层原文、第二层译文）。
+  // 6) 文档语言从 __md._termLangs（TB 命中缓存）识别；未知时给出明确错误。
+  context.__md._termLangs = { src: 'jpn', tgt: 'zho-CN' };
   pushed.length = 0;
   calls.length = 0;
   api.termQuickAddReq(6, { source: '无语言码原文', target: '无语言码译文' });
   await waitPush('term-quick-result');
   const add2 = calls.find((c) => c.url.indexOf('AddNewEntry') >= 0);
-  const layers2 = add2.body.EntryGui.languageLevelMetaInfos;
-  assert.strictEqual(layers2[0].termLevelMetaInfos[0].termText, '无语言码原文');
-  assert.strictEqual(layers2[1].termLevelMetaInfos[0].termText, '无语言码译文');
+  const layers3 = add2.body.EntryGui.languageLevelMetaInfos;
+  const jpn3 = layers3.find((l) => l.languageCode === 'jpn');
+  const zho3 = layers3.find((l) => l.languageCode === 'zho-CN');
+  assert.strictEqual(jpn3.termLevelMetaInfos[0].termText, '无语言码原文');
+  assert.strictEqual(zho3.termLevelMetaInfos[0].termText, '无语言码译文');
+  context.__md._termLangs = null;
+  context.__md._docLangs = null;
+  pushed.length = 0;
+  api.termQuickAddReq(7, { source: '甲', target: 'A' });
+  const noLang = (await waitPush('term-quick-err')).data;
+  assert.ok(/没有可用的术语库|目标语言/.test(noLang.err), noLang);
 
   // 7) 能力位：新版支持快捷添加。
   const caps = api.capabilities();
