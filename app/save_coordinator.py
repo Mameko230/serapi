@@ -18,9 +18,9 @@
 - 冲突浮层关闭前，``conflict_snapshot`` 与 ``conflict_after`` 决定用户选择后怎么做。
 """
 
-import json
-import re
 from dataclasses import dataclass
+
+from .jsresult import numeric_row, parse_result
 
 
 @dataclass(frozen=True)
@@ -31,20 +31,6 @@ class SaveSnapshot:
     tokens: list
     base: list
     rev: int
-
-
-def parse_result(raw) -> dict:
-    """桥接返回值既可能是 JSON 字符串，也可能已被调用方解析成对象。"""
-    try:
-        value = json.loads(raw) if isinstance(raw, str) else (raw or {})
-    except Exception:
-        return {"ok": False, "err": f"返回解析失败: {raw!r}"[:200]}
-    return value if isinstance(value, dict) else {"ok": False}
-
-
-def numeric_row(payload) -> str:
-    """memoQ 行号是数字串，去掉可能包裹的标记再比较。"""
-    return re.sub(r"\D", "", str((payload or {}).get("rowNo") or ""))
 
 
 class SaveCoordinator:

@@ -36,6 +36,7 @@ $env:SERAPI_NODE = "C:\path\to\node.exe"
 | `app/bridge.js` 术语/详情 | `test_term_edit.js`、`test_term_edit.py`、`test_tb_metadata.js` |
 | 段表选择/上下键 | `test_seg_nav.py`、`test_segment_sync.py`、`test_save_flow.py`、`test_incremental_sync.py` |
 | 保存/冲突/草稿 | `test_save_coordinator.py`、`test_save_flow.py`、`test_incremental_sync.py`（红线，改完跑全量） |
+| TM/TB 命中请求 | `test_hit_coordinator.py`、`test_ui_regressions.py`、`test_at_integration.py` |
 | 浮层/tag 提示 | `test_tooltips.py`、`test_ui_regressions.py` |
 | 更新检查 | `test_updater.py` |
 | 配置/服务器命名 | `test_appconfig_theme.py` |

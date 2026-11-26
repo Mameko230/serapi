@@ -17,6 +17,7 @@ from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEngineS
 from .bridge import install_bridge
 from .drafts import DraftStore
 from .editor_session import EditorSession
+from .hit_coordinator import HitCoordinator
 from .save_coordinator import SaveCoordinator, SaveSnapshot
 from .segment_sync import SegmentSync
 from . import appconfig, tooltips
@@ -1595,8 +1596,11 @@ class MainWindow(QMainWindow):
 
         self._pages = {}          # page_id -> QWebEnginePage（桥接页面注册表）
         self._pid_seq = 0
-        self._res_row = None
-        self._res_timer = None
+        self._hits = HitCoordinator(self)  # TM/TB 命中请求身份与超时
+        self._res_timer = QTimer(self)
+        self._res_timer.setSingleShot(True)
+        self._res_timer.timeout.connect(self._on_res_timeout)
+        self._res_timeout_cb = None
         self._editor_pid = None   # 编辑器页身份（由推送事件追踪）
         self._bridge_ready = False
         self._rt_row = rt_row
@@ -2707,58 +2711,63 @@ class MainWindow(QMainWindow):
         import re as _re
         return _re.sub(r"\s+", " ", _re.sub(r"\{\d+>|<\d+[}>]", "■", str(s or ""))).strip()
 
-    def _fetch_res(self, row_no: int):
+    # ---------------- 命中请求端口（状态机在 hit_coordinator.py） ----------------
+    # 这里只提供“读能力 / 发请求 / 渲染命中 / 开关超时”，不做请求身份判断。
+    def supports_tm_hits(self):
         caps = getattr(self, "_caps", {})
-        if caps and not caps.get("tmHits"):
-            self.res_panel.set_status("当前编辑器不支持 TM/TB 命中")
-            return
-        """选中段后拉取 TM/术语命中（异步；结果由页面 push 'tm-hits' 事件带回，
-        这里只负责发请求 + 一次性超时保险。不用轮询 runJavaScript——实测轮询会触发
-        Qt6Core fail-fast 崩溃（0xc0000409）。"""
-        self._clear_tb_highlights()  # 切行/新请求开始后，不保留上一行术语底色
-        import os as _os
-        if _os.environ.get("MEMODESK_NORES"):
-            return
-        if _os.environ.get("MEMODESK_FAKE_RES"):
-            self.call_js("window.__md_fakeRes=1")
-        if _os.environ.get("MEMODESK_TRACE"):
-            print(f"TRACE _fetch_res row={row_no}", flush=True)
-        self._res_row = row_no
-        self.res_panel.set_status(f"第 {row_no} 行：加载命中……")
-        try:
-            self._res_timer.stop()
-        except Exception:
-            pass
-        self._res_timer = QTimer(self)
-        self._res_timer.setSingleShot(True)
-        self._res_timer.timeout.connect(self._res_timeout)
-        self._res_timer.start(15000)
+        return not (caps and not caps.get("tmHits"))
 
-        def done(r):
-            import os as _os
-            if _os.environ.get("MEMODESK_TRACE"):
-                print(f"TRACE _fetch_res req -> {str(r)[:120]}", flush=True)
-            try:
-                res = json.loads(r) if isinstance(r, str) else r
-            except Exception:
-                res = {"ok": False}
-            if not res.get("ok"):
-                self._cancel_res_timer()
-                self.res_panel.set_status(f"命中加载失败：{res.get('err', '未知错误')}")
+    def hits_disabled(self):
+        import os
+        return bool(os.environ.get("MEMODESK_NORES"))
 
-        self.call_js(f"JSON.stringify(__md.api.tmHitsReq({row_no}))", done)
+    def fake_hits_enabled(self):
+        import os
+        return bool(os.environ.get("MEMODESK_FAKE_RES"))
 
-    def _cancel_res_timer(self):
-        try:
-            self._res_timer.stop()
-        except Exception:
-            pass
-        self._res_row = None
+    def prepare_fake_hits(self):
+        self.call_js("window.__md_fakeRes=1")
 
-    def _res_timeout(self):
-        if self._res_row is not None:
-            self.res_panel.set_status("等待 memoQ 响应超时（服务器慢？）")
-            self._res_row = None
+    def trace(self, message: str):
+        """MEMODESK_TRACE=1 时输出到 stdout；不进入状态栏与日志面板。"""
+        import os
+        if os.environ.get("MEMODESK_TRACE"):
+            print(message, flush=True)
+
+    def clear_tb_highlights(self):
+        self._clear_tb_highlights()
+
+    def set_status(self, text: str):
+        self.res_panel.set_status(text)
+
+    def request_tm_hits(self, row_no, callback):
+        """发一次命中请求；结果由页面 push 'tm-hits' 事件带回。
+
+        不用轮询 runJavaScript——实测轮询会触发 Qt6Core fail-fast 崩溃（0xc0000409）。
+        """
+        self.call_js(f"JSON.stringify(__md.api.tmHitsReq({int(row_no)}))", callback)
+
+    def apply_hits(self, tm, tb, row_no, at=None):
+        self._apply_hits(tm, tb, row_no, at)
+
+    def arm_timeout(self, delay, callback):
+        self._res_timer.stop()
+        self._res_timeout_cb = callback
+        self._res_timer.start(int(delay))
+
+    def cancel_timeout(self):
+        self._res_timer.stop()
+        self._res_timeout_cb = None
+
+    def _on_res_timeout(self):
+        callback = self._res_timeout_cb
+        self._res_timeout_cb = None
+        if callback is not None:
+            callback()
+
+    def _fetch_res(self, row_no: int):
+        """选中段后拉取 TM/术语命中（异步；结果由页面 push 回来）。"""
+        self._hits.fetch(row_no)
 
     def _on_seginfo_toggled(self, on: bool):
         """按钮状态只表达用户偏好；无段信息时保持偏好但收起内容区。"""
@@ -3785,16 +3794,14 @@ class MainWindow(QMainWindow):
             return
         if msg.get("type") == "tm-hits":
             # 页面 push 回来的 TM/TB 命中；只对应当前请求的行，过期丢弃
-            if self._res_row is not None and int(data.get("row") or -1) == int(self._res_row):
-                hit_row = self._res_row
-                self._cancel_res_timer()
-                self._apply_hits(data.get("tm") or [], data.get("tb") or [], hit_row,
-                                 data.get("at") or [])
+            self._hits.apply_pushed(data.get("row") or -1,
+                                    data.get("tm") or [], data.get("tb") or [],
+                                    data.get("at") or [])
             return
         if msg.get("type") == "tm-err":
-            if self._res_row is not None and int(data.get("row") or -1) == int(self._res_row):
-                self._cancel_res_timer()
-                self.res_panel.set_status(f"命中加载失败：{data.get('err', '未知错误')}")
+            self._hits.apply_error(
+                data.get("row") or -1,
+                f"命中加载失败：{data.get('err', '未知错误')}")
             return
         self.log(f"[bridge] {msg.get('type')}: {str(msg.get('data'))[:160]}")
 
