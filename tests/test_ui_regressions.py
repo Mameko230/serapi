@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from app.mainwindow import MainWindow, ResPanel, SegModel
+from app.overlay_coordinator import RequestSequence
 from app.qtedit import MqEditor
 
 app = QApplication([])
@@ -168,7 +169,7 @@ assert "DEMO" in cc_text and "貴様" in cc_text and "你" in cc_text
 assert "<1}" not in cc_text
 assert 'background-color:#fef08a' in panel.cmp_box.toHtml()  # Qt 会把 mark 规范化为 span
 w_cc = Dummy()
-w_cc._concordance_gen = 0
+w_cc._concordance = RequestSequence()
 w_cc._cur_row = 4
 w_cc.res_panel = panel
 w_cc.log = lambda _s: None
@@ -299,7 +300,7 @@ overlay._toggle_metadata(); app.processEvents()
 assert all(not widget.isVisible() for widget in overlay._meta_extra_widgets)
 # 必须通过 MainWindow 的真实解析入口：首条 index=0 不得被 or -1 吞掉。
 w_resolve = Dummy()
-w_resolve._concordance_gen = 1
+w_resolve._concordance = RequestSequence(1)
 w_resolve._cur_row = 4
 w_resolve._cc_overlay = overlay
 w_resolve._parse_editor_tokens = MainWindow._parse_editor_tokens

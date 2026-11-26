@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QApplication, QLabel
 from app.mainwindow import MainWindow
 from app.qtedit import MqEditor
 from app.detail_coordinator import SegmentInfoCoordinator, TbDetailCoordinator
+from app.overlay_coordinator import TermOverlayCoordinator
 from app.save_coordinator import SaveCoordinator
 from app.segment_sync import SegmentSync
 
@@ -100,7 +101,7 @@ class SaveHost:
         self._confirm_seq = 0
         self._conflict_overlay = None
         self._term_overlay = None
-        self._term_req = 0
+        self._term = TermOverlayCoordinator(self)
         self._cur_row = 1
         self._editor_url = "doc-A"
         self._read_gen = 0

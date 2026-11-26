@@ -11,6 +11,7 @@ from PyQt6.QtGui import QTextCursor
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from app.mainwindow import MainWindow
+from app.overlay_coordinator import TermOverlayCoordinator
 from app.qtedit import MqEditor
 
 app = QApplication([])
@@ -25,6 +26,11 @@ class Host(QWidget):
     _submit_term_edit = MainWindow._submit_term_edit
     _edit_term = MainWindow._edit_term
     on_bridge_event = MainWindow.on_bridge_event
+    # 术语浮层端口：请求编号与分发在 app/overlay_coordinator.py
+    term_overlay = MainWindow.term_overlay
+    forget_tb_detail = MainWindow.forget_tb_detail
+    fetch_res = MainWindow.fetch_res
+    current_row = MainWindow.current_row
 
     def __init__(self):
         super().__init__()
@@ -39,7 +45,7 @@ class Host(QWidget):
             cur.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
             editor.setTextCursor(cur)
         self._term_overlay = None
-        self._term_req = 0
+        self._term = TermOverlayCoordinator(self)
         self._cur_row = 4
         self.calls = []
         self.logs = []
@@ -65,7 +71,7 @@ assert h._term_overlay.target.text() == "译文术语"
 assert "termContextReq(1" in h.calls[-1]
 assert not h._term_overlay.submit.isEnabled()  # 尚未读到 TB 时不能提交
 
-req = h._term_req
+req = h._term.req
 h.on_bridge_event(1, json.dumps({"type": "term-context", "data": {
     "req": req, "selected": "tb-B",
     "items": [{"guid": "tb-A", "name": "备用库"}, {"guid": "tb-B", "name": "项目术语库"}]
@@ -100,19 +106,19 @@ assert any("已添加术语" in x for x in h.logs)
 
 h.open_term_editor()
 h.on_bridge_event(1, json.dumps({"type": "term-context", "data": {
-    "req": h._term_req, "items": [{"guid": "tb-A", "name": "备用库"}], "selected": "tb-A"
+    "req": h._term.req, "items": [{"guid": "tb-A", "name": "备用库"}], "selected": "tb-A"
 }}))
 h._term_overlay.submit.click()
 h.on_bridge_event(1, json.dumps({"type": "term-add-result", "data": {
-    "req": h._term_req, "err": "模拟失败"
+    "req": h._term.req, "err": "模拟失败"
 }}))
 assert h._term_overlay.isVisible()
 assert "模拟失败" in h._term_overlay.status.text()
 assert h._term_overlay.submit.isEnabled()
 
 # 过期响应不得影响新一次操作。
-old_req = h._term_req
-h._term_req += 1
+old_req = h._term.req
+h._term.next_request()
 h.on_bridge_event(1, json.dumps({"type": "term-add-result", "data": {"req": old_req, "ok": True}}))
 assert h._term_overlay.isVisible()
 

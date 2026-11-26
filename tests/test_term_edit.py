@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QWidget
 
 from app.mainwindow import MainWindow, ResRow
 from app.detail_coordinator import TbDetailCoordinator
+from app.overlay_coordinator import TermOverlayCoordinator
 
 app = QApplication([])
 
@@ -68,12 +69,15 @@ class Host(QWidget):
     _term_selection_text = staticmethod(MainWindow._term_selection_text)
     on_bridge_event = MainWindow.on_bridge_event
     forget_tb_detail = MainWindow.forget_tb_detail
+    term_overlay = MainWindow.term_overlay
+    fetch_res = MainWindow.fetch_res
+    current_row = MainWindow.current_row
 
     def __init__(self):
         super().__init__()
         self.resize(1000, 720)
         self._term_overlay = None
-        self._term_req = 0
+        self._term = TermOverlayCoordinator(self)
         self._tb_details = TbDetailCoordinator(self)
         self._cur_row = 4
         self.calls = []
@@ -101,7 +105,7 @@ assert ov.source.text() == "旧原文" and ov.target.text() == "旧译文"
 assert not ov.submit.isEnabled(), "条目未读回前不能保存"
 assert "termEntryReq(1" in h.calls[-1] and "TB-1" in h.calls[-1] and "1234" in h.calls[-1]
 
-req = h._term_req
+req = h._term.req
 h.on_bridge_event(1, json.dumps({"type": "term-entry", "data": {
     "req": req, "tbGuid": "TB-1", "entryId": 1234, "projectGuid": "PRJ",
     "readOnly": False, "source": "旧原文", "target": "旧译文",
@@ -137,7 +141,7 @@ assert any("已更新术语" in line for line in h.logs)
 # 2) 只读术语库：明确提示且不能提交
 h._edit_term(tb_payload)
 h.on_bridge_event(1, json.dumps({"type": "term-entry", "data": {
-    "req": h._term_req, "tbGuid": "TB-1", "entryId": 1234, "readOnly": True,
+    "req": h._term.req, "tbGuid": "TB-1", "entryId": 1234, "readOnly": True,
     "source": "旧原文", "target": "旧译文", "sourceDefinition": "",
     "targetDefinition": "", "sourceExample": "", "targetExample": ""}}))
 assert not ov.submit.isEnabled()
@@ -149,7 +153,7 @@ assert len(h.calls) == before, "只读时不得发保存请求"
 # 3) 读取失败：保留浮层但禁用保存，并显示原因
 h._edit_term(tb_payload)
 h.on_bridge_event(1, json.dumps({"type": "term-entry", "data": {
-    "req": h._term_req, "err": "模拟读取失败"}}))
+    "req": h._term.req, "err": "模拟读取失败"}}))
 assert ov.isVisible()
 assert not ov.submit.isEnabled()
 assert "读取术语条目失败" in ov.status.text() and "模拟读取失败" in ov.status.text()
@@ -157,19 +161,19 @@ assert "读取术语条目失败" in ov.status.text() and "模拟读取失败" i
 # 4) 保存失败：保留浮层，允许修改后重试
 h._edit_term(tb_payload)
 h.on_bridge_event(1, json.dumps({"type": "term-entry", "data": {
-    "req": h._term_req, "tbGuid": "TB-1", "entryId": 1234, "readOnly": False,
+    "req": h._term.req, "tbGuid": "TB-1", "entryId": 1234, "readOnly": False,
     "source": "旧原文", "target": "旧译文", "sourceDefinition": "",
     "targetDefinition": "", "sourceExample": "", "targetExample": ""}}))
 ov.submit.click()
 h.on_bridge_event(1, json.dumps({"type": "term-edit-result", "data": {
-    "req": h._term_req, "err": "没有改动或版本冲突"}}))
+    "req": h._term.req, "err": "没有改动或版本冲突"}}))
 assert ov.isVisible()
 assert "保存失败" in ov.status.text() and "版本冲突" in ov.status.text()
 assert ov.submit.isEnabled()
 
 # 5) 过期响应不得影响新一次编辑
-old_req = h._term_req
-h._term_req += 1
+old_req = h._term.req
+h._term.next_request()
 h.on_bridge_event(1, json.dumps({"type": "term-entry", "data": {
     "req": old_req, "source": "不应出现", "target": "不应出现",
     "sourceDefinition": "", "targetDefinition": "",

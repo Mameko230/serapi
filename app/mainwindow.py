@@ -20,6 +20,7 @@ from .drafts import DraftStore
 from .editor_backend import JsBridgeBackend, backend_for
 from .editor_session import EditorSession
 from .hit_coordinator import HitCoordinator
+from .overlay_coordinator import RequestSequence, TermOverlayCoordinator
 from .save_coordinator import SaveCoordinator, SaveSnapshot
 from .segment_sync import SegmentSync
 from . import appconfig, tooltips
@@ -1998,7 +1999,7 @@ class MainWindow(QMainWindow):
         self.res_panel.concordanceRequested.connect(self._run_concordance)
         self.res_panel.editTermRequested.connect(self._edit_term)
         self.res_panel.tbDetailRequested.connect(self._request_tb_detail)
-        self._concordance_gen = 0
+        self._concordance = RequestSequence()  # 语词检索请求编号：旧结果不得覆盖新检索
         self._cc_overlay = None
         sc_cc = QShortcut(QKeySequence("Ctrl+K"), self)
         sc_cc.activated.connect(self._concordance_shortcut)
@@ -2070,7 +2071,7 @@ class MainWindow(QMainWindow):
         self._stats_seq = 0
         self._conflict_overlay = None
         self._term_overlay = None
-        self._term_req = 0
+        self._term = TermOverlayCoordinator(self)  # 术语浮层请求编号与分发
         self._info = SegmentInfoCoordinator(self)   # 段信息请求身份
         self._tb_details = TbDetailCoordinator(self)  # TB 条目定义/示例请求身份
         self._account_overlay = None
@@ -2285,7 +2286,7 @@ class MainWindow(QMainWindow):
             self._conflict_overlay.hide()
         if self._term_overlay is not None:
             self._term_overlay.hide()
-        self._term_req += 1  # 使旧文档的术语列表/提交响应失效
+        self._term.reset()  # 使旧文档的术语列表/提交响应失效
         self._info.reset()   # 旧文档的段信息响应不得落到新文档
         self._tb_details.reset()
         timer = getattr(self, "_tb_highlight_timer", None)
@@ -2639,8 +2640,7 @@ class MainWindow(QMainWindow):
             self.log("请输入语词检索内容")
             self.res_panel.cc_input.setFocus()
             return
-        self._concordance_gen += 1
-        req = self._concordance_gen
+        req = self._concordance.next()
         overlay = getattr(self, "_cc_overlay", None)
         if overlay is None:
             overlay = self._cc_overlay = ConcordanceOverlay(self, self._tag_cfg)
@@ -2657,14 +2657,14 @@ class MainWindow(QMainWindow):
                 res = None
             current = getattr(self, "_cc_overlay", None)
             if (res is not None and not res.get("ok", True)
-                    and req == self._concordance_gen and current and current.req == req):
+                    and self._concordance.is_current(req) and current and current.req == req):
                 current.set_error(res.get("err") or "请求未启动")
         backend_for(self).concordance(req, text, direction, started)
 
     def _close_concordance(self):
         overlay = getattr(self, "_cc_overlay", None)
         if overlay is not None:
-            self._concordance_gen += 1  # 关闭后迟到的响应一律失效
+            self._concordance.reset()  # 关闭后迟到的响应一律失效
             self._cc_overlay = None
             overlay.hide()
             overlay.deleteLater()
@@ -2676,8 +2676,8 @@ class MainWindow(QMainWindow):
         # 首条结果 index=0、首行 row=0 都是合法值，不能用 or -1 吞掉。
         row_no = int(payload.get("row", -1))
         index = int(payload.get("index", -1))
-        if (overlay is None or req != self._concordance_gen or overlay.req != req
-                or row_no != self._cur_row):
+        if (overlay is None or not self._concordance.is_current(req)
+                or overlay.req != req or row_no != self._cur_row):
             return
         item = payload.get("item") or {}
         tokens = self._parse_editor_tokens(item.get("tgt") or "", item.get("tagDefs"))
@@ -3057,11 +3057,21 @@ class MainWindow(QMainWindow):
             self._term_overlay.editRequested.connect(self._submit_term_edit)
         return self._term_overlay
 
+    # 术语浮层端口（请求编号与结果分发在 overlay_coordinator.py）
+    def term_overlay(self):
+        return self._term_overlay
+
+    def fetch_res(self, row_no):
+        self._fetch_res(row_no)
+
+    def current_row(self):
+        return int(self._cur_row)
+
     def _term_call(self, api, params):
         """调用 bridge 的术语 API；返回 req 编号，过期响应由 req 不匹配丢弃。"""
-        self._term_req += 1
-        backend_for(self).term_call(api, self._term_req, params)
-        return self._term_req
+        req = self._term.next_request()
+        backend_for(self).term_call(api, req, params)
+        return req
 
     def open_term_editor(self):
         overlay = self._ensure_term_overlay()
@@ -3733,39 +3743,7 @@ class MainWindow(QMainWindow):
             return
         if msg.get("type") in ("term-context", "term-add-result",
                                "term-entry", "term-edit-result"):
-            try:
-                req = int(data.get("req") or -1)
-            except (TypeError, ValueError):
-                return
-            overlay = self._term_overlay
-            if req != self._term_req or overlay is None:
-                return
-            kind = msg.get("type")
-            if data.get("err"):
-                if kind == "term-context":
-                    overlay.set_busy(False)
-                    overlay.tb.clear()
-                    overlay.tb.setEnabled(False)
-                    overlay.submit.setEnabled(False)
-                    overlay.status.setText("术语库读取失败：" + str(data.get("err")))
-                elif kind == "term-entry":
-                    overlay.set_entry_error(data.get("err"))
-                else:
-                    overlay.set_error(data.get("err"))
-            elif kind == "term-context":
-                overlay.set_term_bases(data.get("items") or [], data.get("selected") or "")
-            elif kind == "term-entry":
-                overlay.set_entry(data)
-            else:
-                overlay.hide()
-                if kind == "term-edit-result":
-                    detail_key = (str(data.get("tbGuid") or ""),
-                                  str(data.get("entryId") or ""))
-                    self._tb_details.forget(detail_key)
-                    self.log(f"已更新术语：{data.get('source', '')} → {data.get('target', '')}")
-                else:
-                    self.log(f"已添加术语：{data.get('source', '')} → {data.get('target', '')}")
-                self._fetch_res(self._cur_row)
+            self._term.handle(msg.get("type"), data)
             return
         if msg.get("type") == "segment-info":
             self._update_segment_info(data)
@@ -3775,7 +3753,7 @@ class MainWindow(QMainWindow):
                 req = int(data.get("req") or -1)
             except (TypeError, ValueError):
                 return
-            if req != self._concordance_gen:
+            if not self._concordance.is_current(req):
                 return  # 连续检索时丢弃过期响应
             overlay = getattr(self, "_cc_overlay", None)
             if overlay is None or overlay.req != req:

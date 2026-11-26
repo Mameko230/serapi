@@ -39,6 +39,7 @@ $env:SERAPI_NODE = "C:\path\to\node.exe"
 | 保存/冲突/草稿 | `test_save_coordinator.py`、`test_save_flow.py`、`test_incremental_sync.py`（红线，改完跑全量） |
 | TM/TB 命中请求 | `test_hit_coordinator.py`、`test_ui_regressions.py`、`test_at_integration.py` |
 | 段信息 / TB 详情 | `test_detail_coordinator.py`、`test_term_edit.py`、`test_ui_regressions.py` |
+| 术语浮层 / 语词检索请求 | `test_overlay_coordinator.py`、`test_term_add.py`、`test_term_edit.py`、`test_ui_regressions.py` |
 | 浮层/tag 提示 | `test_tooltips.py`、`test_ui_regressions.py` |
 | 更新检查 | `test_updater.py` |
 | 配置/服务器命名 | `test_appconfig_theme.py` |
