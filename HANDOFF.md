@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 30/30 约 40s；full 47/47 约 83s。
+   - 最近结果：fast 30/30 约 39s；full 48/48 约 83s（`tests/test_release_ready.py` 自动进入全量）。
 
 ### 重构第一步
 

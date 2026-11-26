@@ -52,7 +52,20 @@ $env:SERAPI_NODE = "C:\path\to\node.exe"
 - CI 跑全量离线测试，不访问 memoQ。
 - 契约测试使用**合成 DOM/Angular shim**：假 GUID、假文本、假行数据；不提交真实页面快照。
 - 真实页面冒烟由维护者本机执行；只记录“是否支持/选择器是否命中”，不记录内容。
-- 发版前人工检查：旧版/新版编辑器各打开一次、读写一段、过滤一次、术语详情一次。
+
+## L2 发版前检查清单
+
+1. 版本号：`app/version.py` 的 `APP_VERSION` 改成目标版本，提交；tag 必须为同名 `vX.Y.Z`（CI 会校验两者一致）。
+2. 离线全量 + 发版就绪：`python tests/run_all.py --full`、`python tests/test_release_ready.py`。
+3. 本地打包自检（可选但推荐）：
+   ```powershell
+   pyinstaller --noconfirm Serapi.spec
+   # 产物：dist\Serapi\Serapi.exe；确认能启动并连上测试服务器
+   ISCC.exe /DMyAppVersion=<version> installer\Serapi.iss
+   # 产物：installer\Output\Serapi-Setup.exe
+   ```
+4. 真实 WebTrans 手工冒烟：旧版/新版各打开一次，读写一段、过滤一次、术语详情/编辑一次；新版另测 tag 胶囊、长文档跳行、Ctrl+Q、确认/拒绝。
+5. 确认没有把真实 URL/GUID/文本/截图提交进仓库；推送 tag 后由 CI 生成 zip + Setup 并挂到 GitHub Release。
 
 ## 输出与 token
 
