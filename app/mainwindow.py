@@ -3002,6 +3002,7 @@ class MainWindow(QMainWindow):
         caps = getattr(self, "_caps", {})
         if caps and not caps.get("terms"):
             self.log("当前编辑器不支持术语编辑（需要旧版编辑器）")
+            self.res_panel.set_status("当前编辑器不支持术语编辑（需要旧版编辑器）")
             return
         """右键 TB 命中 → 编辑术语：先预填命中文本，再读回定义/示例。"""
         payload = dict(payload or {})
