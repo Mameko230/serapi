@@ -123,6 +123,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
   assert.strictEqual(confirmPush.data.action, 'confirm');
   assert.strictEqual(confirmPush.data.rowNo, 5);
   assert.strictEqual(confirmPush.data.status, 'reviewer1Confirmed');
+  assert.strictEqual(confirmPush.data.mappedStatus, 'reviewer1');
 
   // 2) 拒绝第 3 行：rowNo=3 → rowId=2，POST /rows/2/reject。
   ctx.__fetches.length = 0;
@@ -138,6 +139,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
   assert.strictEqual(rejectPush.data.ok, true);
   assert.strictEqual(rejectPush.data.action, 'reject');
   assert.strictEqual(rejectPush.data.status, 'rejected');
+  assert.strictEqual(rejectPush.data.mappedStatus, 'rejected');
 
   // 3) 不再依赖合成键盘快捷键（避免落到 memoQ 内部其它活动行）。
   pm.events.length = 0;

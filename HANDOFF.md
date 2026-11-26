@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 30/30 约 40s；full 48/48 约 75s（`tests/test_release_ready.py` 自动进入全量）。
+   - 最近结果：fast 31/31 约 42s；full 49/49 约 76s（`tests/test_release_ready.py` 自动进入全量）。
 
 ### 重构第一步
 
@@ -111,7 +111,8 @@
   - **TM 插入（tag 感知，已按用户确认语义）**：TM 命中带 `srcTokens/tgtTokens` 与 `strictTags/tagPlanOk/readOnly`。插入时命中 tag 按名字映射到当前原文 tag（复用原文 PM attrs 重建），**顺序按 TM**；TM 有 tag 而原文没有 → 对应 tag 略过、只插文本（不再整条阻止）；全部能配上时 `strictTags=true`（若仍发生丢弃则整体拒绝，防 bug 静默丢 tag），配不齐时 `strictTags=false` 允许略过。写回成功后 bridge 自动 `POST /rows` 刷新该行缓存并推 `rows-updated`，避免段列表显示保存前旧译文。
   - 文本符号是逐字符 Unicode 码点（数字/数字串）：优先用 `segment.text`，没有时按码点解码，不能直接拼数字串。
   - `HitCoordinator` 增加了 Qt 侧轮询兜底（首次 pending 时用 QTimer 轮询 `tmHitsPoll`，不依赖页面定时器；页面隐藏时 setTimeout 会被冻结/节流）。
-  - **确认/拒绝（HTTP 行接口）**：新版 Ctrl+Enter / Shift+Enter 走 `POST /rows/<rowId>/(confirm|reject)`，body `{AutoOptions:{}}`（缺 AutoOptions 会 400）；rowId 由 Serapi 当前行号显式指定，**不再合成原生快捷键**——真机发现合成 Ctrl/Shift+Enter 会作用在 memoQ 内部“活动行”上，切换行后可能拒绝错行。成功响应含 `row.meta.status`，Qt 立即刷新行缓存/段列表并写日志；旧版继续用隐藏输入框派发。确认后跳转：自定义模式同前；follow 模式因 HTTP 不触发 memoQ 原生跳行，回退为“下一行”。
+  - **确认/拒绝（HTTP 行接口）**：新版 Ctrl+Enter / Shift+Enter 走 `POST /rows/<rowId>/(confirm|reject)`，body `{AutoOptions:{}}`（缺 AutoOptions 会 400）；rowId 由 Serapi 当前行号显式指定，**不再合成原生快捷键**——真机发现合成 Ctrl/Shift+Enter 会作用在 memoQ 内部“活动行”上，切换行后可能拒绝错行。成功响应含 `row.meta.status`，bridge 额外映射成 `mappedStatus`，Qt 立即 `SegModel.set_row_status` 落表（8s 权威状态保护挡住随后到达的旧缓存快照），解决“确认后左边状态栏不更新、再按一次才正常”。旧版继续用隐藏输入框派发。确认后跳转：自定义模式同前；follow 模式因 HTTP 不触发 memoQ 原生跳行，回退为“下一行”。
+  - **语词检索（新版）**：文档 API `POST /api/editor/.../docs/<doc>/concordance`，body `{side:0|1, searchText:{input,...}, resources:{liveDocs:null,transMemory:null}, oppositeSideFilter:'', oppositeSideSegment:null, sort:{orderBy:'lastChangedAtDesc',groupBy:'transMemory'}, metaToPin:['resourceTypeName'], tagView:'short', requestWeb:{}}` → `{contextId}`；再 `GET .../concordance?contextId=&skip=0&take=50` → `{hits:[{source,target,meta}], totalCount}`。source/target 是 symbols，复用 `newSymbolsTokens` 转 token；列表摘要和详情区原文都会高亮查询词（`tm_segment_html` 支持 highlight）。旧版仍走 `TranslationService/GetConcordanceResults`。
   - **新版行状态映射**：`row.meta.status` 是 camelCase 枚举（notStarted/edited/trConfirmed/manuallyConfirmed/reviewer1Confirmed/reviewer2Confirmed/rejected/assembled/preTranslated*/machineTranslated 等），按正则映射到段模型状态（reviewer1/reviewer2/rejected/confirmed/edited/untranslated）。
   - **行号列状态过滤**：点击行号表头弹出状态菜单（未编辑/已编辑/含审校/已拒绝/已锁定，多选），只过滤段表显示，不改 rowNo/激活逻辑；选择持久化到 `ui.json(statusFilter)`，表头显示“行号 · 筛”。`SegmentSync.cached_rows()` 用完整缓存数，过滤不会误导自动扩容。
   - **行号列宽度**：表头 col0 改 `Interactive`，不再 `ResizeToContents`；按行号位数只增不减地给最小宽度，用户拖动后完全尊重用户宽度并保存 `ui.json(segCol0Width)`，编辑/状态变化不再抖回。
@@ -130,7 +131,7 @@
   - **行数据 API（已用于段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,isLocked,...},source:{symbols},target:{symbols}}]`。每批 100 行；`id` 即 0 基 rowId。
   - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 条目，TB 详情显示只读条目、术语对、定义/示例/字段，底部“术语数量提醒”正常；第 3 行多条 TM；第 4 行 TM 命中带 3 个 tag（`strictTags=true/readOnly=false`，src/tgt tokens 各 4）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行；P0 修复后切到第 5 行等 7 秒，TM/TB 命中列表 6 行仍在、详情同屏。
 - **只读保护**：新版 TB 条目一律 `readOnly: true`（详情只读、不带旧版编辑接口）；TM 命中不再因 tag 问题整条只读：正常插入并可略过原文没有的 tag；`_res_insert` 仍拒绝 `readOnly` 命中。TM 插入离线契约已覆盖，真机插入冒烟可由用户双击验证。
-- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；行状态过滤只作用于已加载的缓存窗；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；新版确认/拒绝已改 HTTP 行接口并真机冒烟（确认/拒绝按行号生效）；follow 跳转因 HTTP 不触发原生跳行而近似为“下一行”，settingsBased 过滤暂不复制；字数统计靠就绪重试 + 写操作后刷新，不是每字实时；TB 术语编辑同值写回已冒烟、未修改正式术语内容；术语“添加”浮层（Ctrl+E）仍只支持旧版；Ctrl+Q 已在双术语库项目真机验证（选择/记住/清除记忆）；段信息只有注释，没有上下文/原始 ID（新版不提供）。
+- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；行状态过滤只作用于已加载的缓存窗；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；新版确认/拒绝已改 HTTP 行接口并真机冒烟（确认/拒绝按行号生效，状态立即落表）；follow 跳转因 HTTP 不触发原生跳行而近似为“下一行”，settingsBased 过滤暂不复制；字数统计靠就绪重试 + 写操作后刷新，不是每字实时；TB 术语编辑同值写回已冒烟、未修改正式术语内容；术语“添加”浮层（Ctrl+E）仍只支持旧版；Ctrl+Q 已在双术语库项目真机验证（选择/记住/清除记忆）；语词检索新版已接（POST 建上下文 + GET 取结果），符号检索能力仍受 memoQ 搜索接口限制；新版编辑器启动仍依赖页面自身加载，Serapi 侧只能做延迟探测/缓存优化；段信息只有注释，没有上下文/原始 ID（新版不提供）。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。过滤栏固定 34px 单行高、控件高 28px、去掉“原文/译文”标签改用占位符，并把多余垂直空间交给段列表（`addWidget(..., 0/1)`），不再展开成一大片空白。
 
 ## 关键红线
@@ -178,6 +179,12 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 - 过滤：输入不触发；Enter/「过滤」才调 memoQ 原生过滤；清空恢复全量。
 - 键盘：↑/↓/PageUp/PageDown/Home/End 走 `activate_row`，成功后才移动选区。
 
+## 真机冒烟记录（2026-11-26 / 1.0.1 P0）
+
+- 新版 Ctrl+K：选中原文后语词检索浮层正常打开，1 条命中、源/译详情、元信息均显示；详情区原文高亮查询词。
+- Ctrl+Enter 状态更新：HTTP 确认第 1 行后左边行号立刻从“已拒绝”变为 R1，并跳到下一行；不再需要二次确认。验证方式为生产 bridge `confirmSegment` + Qt 推送链路。
+- 复跑全量：48/48；`test_release_ready.py` 通过；版本提升到 1.0.1。
+
 ## 真机冒烟记录（2026-11-26）
 
 - 新版 tag 行：短显数字胶囊、长显 `mq:rxt displaytext=... val=...` 均正常，来回切换长短不闪退。
@@ -199,8 +206,8 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 
 ## 下一步（按顺序）
 
-1. 发版 v1.0.0：全量测试 + `tests/test_release_ready.py` 通过 → 提交 → 打 `v1.0.0` tag 推送 → CI 构建 zip/Setup 并挂 GitHub Release。用户已明确“做完这些准备发版吧。1.0.0！”。
-2. 发版后观察 CI/Release 附件；如有失败按日志修复后重跑（tag 需删掉重打或修复后新 tag 由用户确认）。
+1. 发版 v1.0.1：全量 + `tests/test_release_ready.py` → 提交 → 打 `v1.0.1` tag 推送（Git 需带代理：`-c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897`；Windows 系统代理 Git 不读取）。
+2. 下一版探索：过滤器符号搜索、新版查找替换、语词检索高亮（已完成）、启动提速；默认只做新版适配（旧版封盘）。
 
 不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。
 

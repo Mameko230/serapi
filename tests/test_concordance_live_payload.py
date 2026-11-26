@@ -44,5 +44,31 @@ assert overlay.meta_values["created"].text() == "2026/01/01 09:00:00 (UserC)"
 assert overlay.meta_values["domain"].text() == "—"
 assert overlay.meta_values["subject"].text() == "—"
 assert "示例原文" in overlay.src.toPlainText()
+# 详情区原文也必须高亮命中词（不再只有左侧列表摘要高亮）。
+overlay._select_row(0)
+_html = overlay.src.toHtml()
+assert "background:#fef08a" in _html.replace(" ", "").lower() or "background-color:#fef08a" in _html.replace(" ", "").lower(), _html[:300]
+
+# 新版 concordance 自带 tgtTokens：解析入口不得再走旧 editor-string 解析。
+from types import SimpleNamespace
+from app.mainwindow import MainWindow
+from app.overlay_coordinator import RequestSequence
+host2 = SimpleNamespace()
+host2._cc_overlay = overlay
+overlay.req = 5
+overlay.row_no = 4
+overlay.list.setCurrentRow(0)
+host2._cur_row = 4
+host2._concordance = RequestSequence(5)
+host2._map_hit_tokens = lambda tokens: (list(tokens), 0)
+def _no_old_parse(*_args):
+    raise AssertionError("新版 tgtTokens 不应走旧版 editor-string 解析")
+host2._parse_editor_tokens = _no_old_parse
+MainWindow._resolve_concordance_item(host2, {
+    "req": 5, "row": 4, "index": 0,
+    "item": {"tgtTokens": [{"t": "text", "v": "新版译文"}]},
+})
+assert overlay.tgt.toPlainText() == "新版译文", overlay.tgt.toPlainText()
+
 host.close()
 print("CONCORDANCE_LIVE_PAYLOAD_TEST: PASS")

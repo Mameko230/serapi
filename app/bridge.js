@@ -952,6 +952,8 @@
           // 项目 GUID 从 URL 取；术语“添加”仍只支持旧版，所以 terms 保持 false。
           f.termEdit = !!newProjectGuidFromUrl();
           f.termQuickAdd = !!newProjectGuidFromUrl();
+          // 新版自带 concordance 文档接口：POST /concordance 建上下文，GET 取结果。
+          f.concordance = !!newDocApiBase();
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -982,7 +984,7 @@
           ? '新版编辑器：过滤接口尚未就绪'
           : '需要旧版编辑器的原生过滤面板';
       }
-      if (!f.concordance) reasons.concordance = '需要旧版编辑器（语词检索）';
+      if (!f.concordance) reasons.concordance = '需要旧版编辑器或新版文档 API（语词检索）';
       if (!f.confirm) reasons.confirm = '需要旧版编辑器（原生确认）';
       if (!f.readSegment) reasons.readSegment = '当前段编辑器尚未就绪';
       return { ok: !!kind, editor: kind, features: f, reasons: reasons,
@@ -1870,9 +1872,17 @@
         }
         var row = (res.body && (res.body.row || res.body)) || {};
         var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
+        var mappedStatus = '';
+        try {
+          var cached = null;
+          try { cached = newRowsApiState().rows[target] || null; } catch (e) {}
+          mappedStatus = newRowStatusFromMeta(
+            { status: status }, cached ? !!cached.tgt : true);
+        } catch (e) {}
         try { newRefreshRowCache(rowId); } catch (e) {}
         __md.push('row-action-result', {
           ok: true, action: action, rowNo: target, rowId: rowId, status: status,
+          mappedStatus: mappedStatus,
         });
       }).catch(function (e) {
         __md.push('row-action-result', {
@@ -2887,6 +2897,92 @@
     };
 
     /* ---- Concordance 语词检索：直接查询当前 memoQ 项目可用的 TM ---- */
+    // 新版编辑器：POST /concordance 建检索上下文 → GET /concordance?contextId=...
+    // 返回 hits[{source,target,meta}]；source/target 都是 symbols，直接复用 newSymbolsTokens 映射。
+    function newConcordanceReq(reqId, text, direction, fail) {
+      var base = newDocApiBase();
+      if (!base) return fail('新版文档 API 未就绪');
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      var body = {
+        side: direction === 'target' ? 1 : 0,
+        searchText: {
+          input: text, isCaseSensitive: false, findWithAnyNumber: false,
+          useQuotes: false, useWildcards: false,
+        },
+        resources: { liveDocs: null, transMemory: null },
+        oppositeSideFilter: '',
+        oppositeSideSegment: null,
+        sort: { orderBy: 'lastChangedAtDesc', groupBy: 'transMemory' },
+        metaToPin: ['resourceTypeName'],
+        tagView: 'short',
+        requestWeb: {},
+      };
+      fetch(base + '/concordance', {
+        method: 'POST', credentials: 'same-origin', headers: headers,
+        body: JSON.stringify(body),
+      }).then(function (r) {
+        return r.json().then(function (j) {
+          if (r.status !== 200 || !j || !j.contextId) {
+            throw new Error((j && (j.detail || j.title)) || ('HTTP ' + r.status));
+          }
+          return String(j.contextId);
+        });
+      }).then(function (contextId) {
+        var url = base + '/concordance?' + new URLSearchParams({
+          contextId: contextId, skip: '0', take: '50',
+        }).toString();
+        return fetch(url, { credentials: 'same-origin', headers: headers })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (r.status !== 200) {
+                throw new Error((j && (j.detail || j.title)) || ('HTTP ' + r.status));
+              }
+              return j || {};
+            });
+          });
+      }).then(function (data) {
+        var hits = Array.isArray(data.hits) ? data.hits : [];
+        var items = [];
+        for (var i = 0; i < hits.length; i++) {
+          var hit = hits[i] || {};
+          var srcTokens = newSymbolsTokens(hit.source || {});
+          var tgtTokens = newSymbolsTokens(hit.target || {});
+          var meta = hit.meta || {};
+          var proj = meta.project || {};
+          var res = meta.resource || {};
+          var modified = res.lastModified || {};
+          function tokensText(tokens) {
+            var out = '';
+            for (var t = 0; t < tokens.length; t++) {
+              if (tokens[t].t === 'text') out += tokens[t].v;
+              else {
+                var disp = String(tokens[t].display || tokens[t].name || 'tag');
+                out += '[' + disp + ']';
+              }
+            }
+            return out;
+          }
+          items.push({
+            src: tokensText(srcTokens), tgt: tokensText(tgtTokens),
+            srcTokens: srcTokens, tgtTokens: tgtTokens, tagDefs: [],
+            res: String(res.name || res.id || res.type || ''),
+            doc: String(meta.documentName || ''),
+            user: String(modified.by || ''),
+            time: String(modified.at || '').slice(0, 19).replace('T', ' '),
+            project: String(proj.name || ''), client: String(proj.client || ''),
+            domain: String(proj.domain || ''), subject: String(proj.subject || ''),
+            created: String(modified.at || '').slice(0, 19).replace('T', ' '),
+          });
+        }
+        __md.push('concordance-results', {
+          req: reqId, text: text,
+          total: Number(data.totalCount || 0), items: items,
+        });
+      }).catch(function (e) { fail(e.message || e); });
+      return { ok: true, req: reqId };
+    }
+
     window.__md.api.concordanceReq = function (reqId, text, direction) {
       text = String(text || '').trim();
       direction = direction === 'target' ? 'target' : 'source';
@@ -2894,7 +2990,8 @@
         try { __md.push('concordance-error', { req: reqId, err: String(err).slice(0, 220) }); } catch (e) {}
       }
       if (!text) return fail('请输入检索词');
-      if (detectEditor() !== 'old') return fail('语词检索仅旧版支持');
+      if (detectEditor() === 'new') return newConcordanceReq(reqId, text, direction, fail);
+      if (detectEditor() !== 'old') return fail('语词检索仅新版/旧版支持');
       var core = window.WebTrans && window.WebTrans.Core;
       var doc = core && core.docInstanceId;
       if (!doc) return fail('Core.docInstanceId 未找到（请先打开文档）');

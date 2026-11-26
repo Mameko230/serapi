@@ -304,11 +304,16 @@ ah.res_panel = types.SimpleNamespace(set_status=lambda s: ah.statuses.append(str
 ah._segments = types.SimpleNamespace(invalidate=lambda: None)
 ah._schedule_seg_refresh = lambda delay, background=True: None
 ah._refresh_row_cache = lambda row: None
+ah.status_updates = []
+ah._select_current_in_view = lambda: None
+ah.seg_model = types.SimpleNamespace(
+    set_row_status=lambda row, status: ah.status_updates.append((row, status)))
 ah._apply_confirm_jump = types.MethodType(MainWindow._apply_confirm_jump, ah)
 ah._on_row_action = types.MethodType(MainWindow._on_row_action, ah)
 ah._on_row_action({"ok": True, "action": "confirm", "rowNo": 10,
-                   "status": "reviewer1Confirmed"})
+                   "status": "reviewer1Confirmed", "mappedStatus": "reviewer1"})
 assert any("已确认第 10 行" in line for line in ah.logs), ah.logs
+assert ah.status_updates == [(10, "reviewer1")], ah.status_updates
 assert ah.jumps == [11], ah.jumps
 ah._on_row_action({"ok": True, "action": "reject", "rowNo": 10,
                    "status": "rejected"})
@@ -559,6 +564,18 @@ sh._set_status_filter(["rejected"])
 assert fm.status_filter() == {"rejected"} and fm.rowCount() == 1
 assert sh.saved[-1] == {"statusFilter": ["rejected"]}
 assert any("状态过滤" in line for line in sh.logs), sh.logs
+
+# 13b) 确认/拒绝 HTTP 权威状态：立即生效，并挡住一次旧缓存快照覆盖。
+fm.set_status_filter([])
+fm.set_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "edited"}])
+fm.set_row_status(1, "reviewer1")
+assert fm._status_of(fm._all_rows[0]) == "reviewer1"
+fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "edited"}])
+assert fm._status_of(fm._all_rows[0]) == "reviewer1", "旧快照不得覆盖刚确认的状态"
+fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "reviewer1"}])
+assert 1 not in fm._authoritative_status
+fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "edited"}])
+assert fm._status_of(fm._all_rows[0]) == "reviewer1", "随后状态变化仍走两次防抖"
 
 # 14) 行号列宽度：自动只增不减；用户拖过则完全尊重用户宽度并持久化。
 wh = Dummy()

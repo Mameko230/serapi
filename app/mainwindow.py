@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """主窗口：左工作区（段列表/编辑器/状态栏），右引擎区（memoQ WebTrans 真页面）"""
 import json
+import time
 
 from PyQt6.QtCore import Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint
 from PyQt6.QtWidgets import (
@@ -138,6 +139,7 @@ class SegModel(QAbstractTableModel):
         self._rows = []
         self._status_filter = set()
         self._pending_status = {}
+        self._authoritative_status = {}  # rowNo -> (status, monotonic_ts)：HTTP 动作返回的权威状态
         self.text_color = "#334155"
         self.muted_color = "#94a3b8"
         self.tm_color = "#1d4ed8"
@@ -174,6 +176,36 @@ class SegModel(QAbstractTableModel):
             if row.get("locked"):
                 counts["locked"] = counts.get("locked", 0) + 1
         return counts
+
+    def set_row_status(self, row_no, status):
+        """HTTP 确认/拒绝返回的权威状态：立即生效，并挡住随后到达的旧快照。
+
+        段列表周期同步有“连续两次一致才变色”的防抖；单次确认只产生一次新状态，
+        若不直接落表，用户会看到状态栏不更新、再按一次才正常。
+        """
+        status = str(status or "").strip()
+        if not status:
+            return False
+        self._authoritative_status[row_no] = (status, time.monotonic())
+        self._pending_status.pop(row_no, None)
+        changed = False
+        for row in self._all_rows:
+            if row.get("rowNo") != row_no:
+                continue
+            if row.get("status") != status:
+                row["status"] = status
+                changed = True
+            for i, view in enumerate(self._rows):
+                if view.get("rowNo") == row_no:
+                    self._rows[i] = row
+                    self.dataChanged.emit(self.index(i, 0), self.index(i, 3))
+                    break
+            break
+        if changed and self._status_filter:
+            self.beginResetModel()
+            self._rebuild_visible_rows()
+            self.endResetModel()
+        return changed
 
     def set_text_colors(self, text_color, muted_color, tm_color=None):
         """主题切换时更新文字色，保证深色下可读。"""
@@ -217,6 +249,17 @@ class SegModel(QAbstractTableModel):
             row_no = row.get("rowNo")
             new_status = row.get("status")
             old_status = old.get("status")
+            auth = self._authoritative_status.get(row_no)
+            if auth is not None:
+                auth_status, auth_ts = auth
+                if new_status == auth_status:
+                    self._authoritative_status.pop(row_no, None)
+                elif time.monotonic() - auth_ts < 8.0:
+                    # 行缓存刷新有延迟：旧快照不得把刚确认/拒绝的状态覆盖回去。
+                    row["status"] = auth_status
+                    new_status = auth_status
+                else:
+                    self._authoritative_status.pop(row_no, None)
             if new_status != old_status:
                 if self._pending_status.get(row_no) == new_status:
                     self._pending_status.pop(row_no, None)
@@ -547,16 +590,29 @@ class TagTooltipBrowser(QTextBrowser):
         super().leaveEvent(event)
 
 
-def tm_segment_html(value, tag_defs=None):
-    """memoQ 编辑器字符串 → 可读文本 + 统一编号胶囊；完整 tag 放入悬停链接。"""
+def tm_segment_html(value, tag_defs=None, highlight=None):
+    """memoQ 编辑器字符串 → 可读文本 + 统一编号胶囊；完整 tag 放入悬停链接。
+
+    highlight 非空时只高亮普通文本里的查询词（tag 胶囊不受影响）。
+    """
     import html as _html
     import re as _re
     from urllib.parse import quote
     defs = {str(d.get("id")): d for d in (tag_defs or [])}
     pattern = _re.compile(r"\{\d+>|<\d+[}>]")
+    needle = _re.escape(_html.escape(str(highlight or "").strip())) if highlight else ""
+
+    def plain_text(raw):
+        out = _html.escape(str(raw or "")).replace("\n", "<br>")
+        if needle:
+            out = _re.sub(needle,
+                          lambda m: '<mark style="background:#fef08a; color:#713f12;">'
+                          + m.group(0) + '</mark>', out, flags=_re.IGNORECASE)
+        return out
+
     out, last = [], 0
     for match in pattern.finditer(str(value or "")):
-        out.append(_html.escape(str(value or "")[last:match.start()]).replace("\n", "<br>"))
+        out.append(plain_text(str(value or "")[last:match.start()]))
         code = match.group(0)
         tid = _re.search(r"\d+", code).group(0)
         d = defs.get(tid, {})
@@ -580,7 +636,7 @@ def tm_segment_html(value, tag_defs=None):
                    ' style="text-decoration:none; color:' + fg + '; background-color:' + bg + ';">&nbsp;'
                    + _html.escape(label) + '&nbsp;</a>')
         last = match.end()
-    out.append(_html.escape(str(value or "")[last:]).replace("\n", "<br>"))
+    out.append(plain_text(str(value or "")[last:]))
     return "".join(out)
 
 
@@ -877,7 +933,8 @@ class ConcordanceOverlay(QWidget):
             return
         item = self._items[index]
         self._set_metadata(item)
-        self.src.setHtml(tm_segment_html(item.get("src"), item.get("tagDefs")))
+        self.src.setHtml(tm_segment_html(item.get("src"), item.get("tagDefs"),
+                                         self.query.text()))
         self.status.setText("正在解析当前条目的 tag…")
         self.itemResolveRequested.emit({"row": self.row_no, "req": self.req,
                                         "index": index, "item": item})
@@ -2902,7 +2959,11 @@ class MainWindow(QMainWindow):
                 or overlay.req != req or row_no != self._cur_row):
             return
         item = payload.get("item") or {}
-        tokens = self._parse_editor_tokens(item.get("tgt") or "", item.get("tagDefs"))
+        if isinstance(item.get("tgtTokens"), list):
+            # 新版 concordance 直接给 symbols→tokens，跳过旧版 editor-string 解析。
+            tokens = [dict(t) for t in (item.get("tgtTokens") or [])]
+        else:
+            tokens = self._parse_editor_tokens(item.get("tgt") or "", item.get("tagDefs"))
         mapped, dropped = self._map_hit_tokens(tokens)
         overlay.set_current_tokens(req, index, mapped, dropped)
 
@@ -5092,9 +5153,14 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError):
             return
         status = str(data.get("status") or "")
+        mapped_status = str(data.get("mappedStatus") or "")
         self._segments.invalidate()
         self._schedule_seg_refresh(0, background=True)
         self._refresh_row_cache(row_no)
+        if mapped_status:
+            # 确认/拒绝 HTTP 已经带回权威状态：立即写进段表，不等下一次周期同步。
+            self.seg_model.set_row_status(row_no, mapped_status)
+            self._select_current_in_view()
         stats_fn = getattr(self, "refresh_doc_stats", None)
         if callable(stats_fn):
             QTimer.singleShot(700, stats_fn)
