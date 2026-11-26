@@ -108,6 +108,7 @@ memoQ 网页（QWebEngineView）
   └─ bridge.js 注入：页面适配层 / 能力探测 / 结构指纹 / 读写段 / 统计 / TM·TB / 术语
        ↕ QWebChannel
 app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（token ↔ QTextDocument）
+                        ├─ app/editor_backend.py     页面操作接口（旧版 = JsBridgeBackend）
                         ├─ app/editor_session.py      当前行 / 读取代际 / 激活与装载状态
                         ├─ app/save_coordinator.py    保存 / 冲突 / 切行前保存状态机
                         ├─ app/segment_sync.py        段列表同步 / 滚动加载更多
@@ -116,6 +117,7 @@ app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（tok
 ```
 
 - 页面选择器集中在 `bridge.js` 的 `PAGE` 表中，按旧版/新版分别注册；页面改版时先看结构指纹缺了哪个选择器。
+- `EditorBackend` 把主窗口对页面的调用收敛成具名操作（读/写段、切行、确认、段列表、统计、过滤、命中、段信息、术语、语词检索）；旧版实现 `JsBridgeBackend` 走页面里的 `__md.api`。新版编辑器接入时只加实现，不再往主窗口散 `call_js` 表达式。
 - 五个状态边界都通过端口与主窗口解耦：`EditorSession`（当前行/代际）、`SaveCoordinator`（保存/冲突）、`SegmentSync`（段列表同步）、`HitCoordinator`（命中请求身份与超时）、`DetailCoordinator`（段信息/TB 详情请求身份）。主窗口只实现端口，不重复做时机判断。
 - `SaveCoordinator` 只在远端行号与载入快照一致、且远端 token 未变化时才写回；否则先弹冲突浮层，由用户选择本地或 memoQ 版本，绝不静默覆盖。
 - `capabilities()` 只返回布尔能力，`fingerprint()` 只返回选择器命中和数量，不读取任何项目文本；能力缺失时 UI 置灰/提示，不静默写入。

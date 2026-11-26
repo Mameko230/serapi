@@ -17,6 +17,7 @@ from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEngineS
 from .bridge import install_bridge
 from .detail_coordinator import SegmentInfoCoordinator, TbDetailCoordinator
 from .drafts import DraftStore
+from .editor_backend import JsBridgeBackend, backend_for
 from .editor_session import EditorSession
 from .hit_coordinator import HitCoordinator
 from .save_coordinator import SaveCoordinator, SaveSnapshot
@@ -1581,6 +1582,7 @@ class MainWindow(QMainWindow):
                  probe_js: str | None = None, rt_row: int = 1, rt_modify: bool = False):
         super().__init__()
         self._session = EditorSession()
+        self._backend = JsBridgeBackend(self)
         self.setWindowTitle("Serapi · memoQ 外置编辑器")
         self.resize(1440, 900)
         # 应用级配置 + 主题基座：外层明暗 + 主题色（acrylic 玻璃的前提）
@@ -2579,7 +2581,7 @@ class MainWindow(QMainWindow):
             })
             self.log(f"已插入 tag id={t.get('id')} {t.get('name') or ''}（{kind}），"
                      f"按此键继续插入，还剩 {len(missing) - 1} 个")
-        self.call_js(f"JSON.stringify(__md.api.listTags({self._cur_row}))", done)
+        backend_for(self).list_tags(self._cur_row, done)
 
     # ---------------- 按行检索 ----------------
     def jump_to_row(self):
@@ -2647,8 +2649,6 @@ class MainWindow(QMainWindow):
             overlay.insertRequested.connect(self._concordance_insert)
             overlay.closeRequested.connect(self._close_concordance)
         overlay.begin_query(text, req, self._cur_row, direction)
-        dumped = json.dumps(text, ensure_ascii=False)
-        dumped_direction = json.dumps(direction)
 
         def started(r):
             try:
@@ -2659,8 +2659,7 @@ class MainWindow(QMainWindow):
             if (res is not None and not res.get("ok", True)
                     and req == self._concordance_gen and current and current.req == req):
                 current.set_error(res.get("err") or "请求未启动")
-        self.call_js(
-            f"JSON.stringify(__md.api.concordanceReq({req}, {dumped}, {dumped_direction}))", started)
+        backend_for(self).concordance(req, text, direction, started)
 
     def _close_concordance(self):
         overlay = getattr(self, "_cc_overlay", None)
@@ -2748,7 +2747,7 @@ class MainWindow(QMainWindow):
 
         不用轮询 runJavaScript——实测轮询会触发 Qt6Core fail-fast 崩溃（0xc0000409）。
         """
-        self.call_js(f"JSON.stringify(__md.api.tmHitsReq({int(row_no)}))", callback)
+        backend_for(self).tm_hits(row_no, callback)
 
     def apply_hits(self, tm, tb, row_no, at=None):
         self._apply_hits(tm, tb, row_no, at)
@@ -2800,7 +2799,7 @@ class MainWindow(QMainWindow):
         self.seg_info.setHtml("<span style='color:#94a3b8'>段信息读取中…</span>")
 
     def request_segment_info(self, row_no, callback):
-        self.call_js(f"JSON.stringify(__md.api.segmentInfo({int(row_no)}))", callback)
+        backend_for(self).segment_info(row_no, callback)
 
     def apply_segment_info(self, info):
         self._update_segment_info(info)
@@ -2809,9 +2808,7 @@ class MainWindow(QMainWindow):
         return self.res_panel.tb_detail(key)
 
     def request_term_detail(self, req, key):
-        body = json.dumps({"tbGuid": key[0], "entryId": key[1]}, ensure_ascii=False)
-        self.call_js(f"JSON.stringify(__md.api.termDetailReq({req}, "
-                     f"JSON.parse({json.dumps(body, ensure_ascii=False)})))")
+        backend_for(self).term_detail(req, key)
 
     def apply_tb_detail(self, key, data):
         self.res_panel.set_tb_detail(key, data)
@@ -3063,9 +3060,7 @@ class MainWindow(QMainWindow):
     def _term_call(self, api, params):
         """调用 bridge 的术语 API；返回 req 编号，过期响应由 req 不匹配丢弃。"""
         self._term_req += 1
-        payload = json.dumps(params or {}, ensure_ascii=False)
-        self.call_js(f"JSON.stringify(__md.api.{api}({self._term_req}, "
-                     f"JSON.parse({json.dumps(payload, ensure_ascii=False)})))")
+        backend_for(self).term_call(api, self._term_req, params)
         return self._term_req
 
     def open_term_editor(self):
@@ -3637,7 +3632,7 @@ class MainWindow(QMainWindow):
         """页面就绪后一次性探测；能力缺失时 UI 明确降级，不静默写错数据。"""
         if not self._editor_pid:
             return
-        self.call_js("JSON.stringify(__md.api.capabilities())", self._apply_capabilities)
+        backend_for(self).capabilities(self._apply_capabilities)
 
     def _apply_capabilities(self, r):
         try:
@@ -3828,7 +3823,7 @@ class MainWindow(QMainWindow):
                 self.doc_stats.setText("—")
                 self.doc_stats.setToolTip("memoQ 原生统计暂不可用")
 
-        self.call_js("JSON.stringify(__md.api.documentStats())", done)
+        backend_for(self).document_stats(done)
 
     # ---------------- 段列表同步端口（状态机在 segment_sync.py） ----------------
     # 这里只提供“读页面 / 更新模型 / 操作滚动条”，不做同步时机判断。
@@ -3844,7 +3839,7 @@ class MainWindow(QMainWindow):
         return bool(getattr(self, "_filter_active", False))
 
     def request_list_rows(self, callback):
-        self.call_js("JSON.stringify(__md.api.listRows())", callback)
+        backend_for(self).list_rows(callback)
 
     def apply_rows(self, rows):
         """差量更新段模型并恢复当前行选区；返回变化行数。"""
@@ -3964,16 +3959,9 @@ class MainWindow(QMainWindow):
         filter_gen = self._filter_gen
         self._next_read_gen()
         self._activating_row = None
-        if clear:
-            expr = "JSON.stringify(__md.api.clearFilterReq())"
-        else:
-            # 只传已提交的两个条件；未按 Enter 的输入不参与过滤。
-            src_text = self._filter_committed["source"]
-            tgt_text = self._filter_committed["target"]
-            expr = ("JSON.stringify(__md.api.filterReq("
-                    + json.dumps(direction, ensure_ascii=False) + ", "
-                    + json.dumps(src_text, ensure_ascii=False) + ", "
-                    + json.dumps(tgt_text, ensure_ascii=False) + "))")
+        # 只传已提交的两个条件；未按 Enter 的输入不参与过滤。
+        src_text = self._filter_committed["source"]
+        tgt_text = self._filter_committed["target"]
 
         def done(r):
             try:
@@ -4003,7 +3991,10 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(900, lambda: self._after_filter_applied(
                 clear, direction, filter_gen))
 
-        self.call_js(expr, done)
+        if clear:
+            backend_for(self).clear_filter(done)
+        else:
+            backend_for(self).filter_rows(direction, src_text, tgt_text, done)
 
     def _after_filter_applied(self, cleared, direction, filter_gen):
         if self._filter_busy or filter_gen != getattr(self, "_filter_gen", filter_gen):
@@ -4044,7 +4035,7 @@ class MainWindow(QMainWindow):
                 return
             self.read_segment(auto=True)
 
-        self.call_js("JSON.stringify(__md.api.listRows())", done)
+        backend_for(self).list_rows(done)
 
     def _select_seg_row(self, row_no):
         """把 Qt 选择落到指定 memoQ 行；只在切行成功后调用，避免假选中。"""
@@ -4161,7 +4152,7 @@ class MainWindow(QMainWindow):
                     fail_activation(f"第 {row_no} 行激活超时（最后返回: {str(res)[:120]}）")
                     return
                 QTimer.singleShot(90, poll_read)
-            self.call_js("JSON.stringify(__md.api.readSegment())", done)
+            backend_for(self).read_segment(done)
 
         def after_activate(r):
             if gen != self._read_gen:
@@ -4176,13 +4167,13 @@ class MainWindow(QMainWindow):
                 if state["tries"] > 8:
                     fail_activation(f"activateRow 多次失败：{res.get('err')}")
                     return
-                QTimer.singleShot(200, lambda: self.call_js(
-                    f"JSON.stringify(__md.api.activateRow({row_no}))", after_activate))
+                QTimer.singleShot(200, lambda: backend_for(self).activate_row(
+                    row_no, after_activate))
                 return
             poll_read()  # 不再固定等待 500ms
 
         self.log(f"切换到第 {row_no} 行……")
-        self.call_js(f"JSON.stringify(__md.api.activateRow({row_no}))", after_activate)
+        backend_for(self).activate_row(row_no, after_activate)
 
     # ---------------- 段读写 ----------------
     def _limit_inputs(self):
@@ -4257,7 +4248,7 @@ class MainWindow(QMainWindow):
             tags = (res or {}).get("tags") or []
             # 原文序列优先，译文已有补充
             self._last_tag_pool = list((res or {}).get("sourceTags") or []) + list(tags)
-        self.call_js(f"JSON.stringify(__md.api.listTags({row_no}))", done)
+        backend_for(self).list_tags(row_no, done)
 
     def read_segment(self, auto: bool = False):
         """读取 memoQ 活动段；未保存内容先落到本地草稿，绝不被远端读取覆盖。"""
@@ -4307,7 +4298,7 @@ class MainWindow(QMainWindow):
             if rn:
                 self._fetch_segment_info(row_no)
                 self._fetch_res(row_no)
-        self.call_js("JSON.stringify(__md.api.readSegment())", done)
+        backend_for(self).read_segment(done)
 
     def _read_confirmed_next(self, read_gen: int, doc_url: str):
         """确认后的兜底读取；若 row-changed 已驱动读取，代际号变化会自然取消本次。"""
@@ -4359,7 +4350,7 @@ class MainWindow(QMainWindow):
             # 等 memoQ 同步回包后刷新段列表/状态（防抖）
             self._schedule_seg_refresh(1200)
         QTimer.singleShot(3500, release_if_stuck)
-        self.call_js("JSON.stringify(__md.api.confirmSegment())", done)
+        backend_for(self).confirm_segment(done)
 
     # ---------------- 保存协调器端口（状态机在 save_coordinator.py） ----------------
     # 这里只提供“取值 / 落草稿 / 调桥接 / 更新界面”，不做任何保存时机的判断。
@@ -4401,12 +4392,10 @@ class MainWindow(QMainWindow):
             pass
 
     def request_remote(self, callback):
-        self.call_js("JSON.stringify(__md.api.readSegment())", callback)
+        backend_for(self).read_segment(callback)
 
     def request_write(self, tokens, callback):
-        inner = json.dumps(list(tokens), ensure_ascii=False)
-        expr = f"JSON.stringify(__md.api.writeSegment(JSON.parse({json.dumps(inner)})))"
-        self.call_js(expr, callback)
+        backend_for(self).write_segment(tokens, callback)
 
     def apply_written(self, snapshot: SaveSnapshot, tokens):
         """写回成功：更新基准、TM 列与标题；保存期间的新输入保持 dirty。"""
