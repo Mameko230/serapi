@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 24/24 约 30s；full 41/41 约 72s。
+   - 最近结果：fast 25/25 约 31s；full 42/42 约 75s。
 
 ### 重构第一步
 
@@ -103,19 +103,19 @@
   - `POST .../<doc>/filter`：原生过滤；`data/concordance/search`、`data/terms/*` 为术语/语词检索命令。
 - **已验证（只读）**：停放后能力探测 `proseMirror/reactFiber/active` 指纹齐全、`readSegment` 可读当前段，可信点击某行译文编辑器会切换活动行（`focus()` 亦可）。
 - **已接上的新版能力**：
-  - `listRows`：DOM 行缓存（`.translation-row` + `aria-rowindex`/`data-row-id`/`aria-rowcount`），返回行号、行 id、原文/译文摘要、状态徽标（TR/R1/R2/匹配率）；累计缓存，按行号排序。
+  - **段列表（行数据 API）**：`listRows` 优先 `POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[start..start+99], scope:'entireRow'}`，按 rowId 分页缓存并排序，**行号连续、没有虚拟网格缺口**；`metaOnly` 只取状态字段，段列表用 `entireRow`（含 source/target symbols）。状态由 `meta.status` 映射（manuallyConfirmed→confirmed、notStarted→untranslated…），TM 率取 `meta.matchRate`；文本符号按码点解码（tag 符号不显示在列表）。API 失败时回退旧的 DOM 行缓存。
   - `activateRow`：已渲染的行直接聚焦译文编辑器；未渲染的行先按 `scrollHeight/总行数` 估算滚动，再挂起，由 Qt 侧轮询 `readSegment()` 时重试聚焦（**不要用 setInterval**：隐藏页会节流）。
   - `readSegment`：新版返回 `rowNo`（aria-rowindex）、`rowId` 与同行 `srcTokens`；`writeSegment` 行为不变。
-  - `expandRows`：新版“加载更多”滚动虚拟列表，步长略小于一屏，让相邻窗口重叠、缓存不断档。
+  - `expandRows`（新版“加载更多”）：优先用行数据 API 取下一批 100 行；拉取完成 push `rows-updated`，`MainWindow` 收到后后台重同步段列表（同步忙时 600ms 后再试一次）。API 不可用才退回滚动虚拟列表。
   - **TM/TB 命中（文档 API）**：`GET .../rows/<rowId>/hits`（rowId 取行元素 `data-row-id`，0 起；行未渲染时用 rowNo-1 兜底）。返回 entries 同时含 `transMemory` 与 `termBase`：TM 映射 rate/res/src/tgt；TB 从 `languages[source.langCode].terms[source.termIndex]` 与 `languages[targetLangCode].terms[0]` 取术语对。**不要读面板 React 状态**：引擎页停放时面板不会随程序切行刷新。
   - 文本符号是逐字符 Unicode 码点（数字/数字串）：优先用 `segment.text`，没有时按码点解码，不能直接拼数字串。
   - `HitCoordinator` 增加了 Qt 侧轮询兜底（首次 pending 时用 QTimer 轮询 `tmHitsPoll`，不依赖页面定时器；页面隐藏时 setTimeout 会被冻结/节流）。
   - **段信息（注释）**：`POST /api/translation/projects/<prj>/docs/<doc>/comments`，body `{rowIds:[rowId]}`；上下文/原始 ID 新版行 meta 不暴露（只有 matchRate/status/结构信息），UI 显示“无”。注释文本兼容 `text/commentText/content/message/comment.text` 字段；响应回来时会校验 `_infoRow`，切行后丢弃旧响应。
   - **POST 必须带认证头**：`X-CSRF-TOKEN`（cookie）+ `X-Requested-With: XMLHttpRequest`（有 Bearer 时再加 `Authorization`），否则行数据/注释接口一律 400。GET 不需要。
-  - **行数据 API（已打通，下一步用来补段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,...},source:{symbols},target:{symbols}}]`，可绕开虚拟网格做按范围行数据加载。
-  - 真机验证：术语文档 5 行、长文档 2150 行；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，第 3 行 5 条 TM（101/65%…）；Serapi 右栏能看到真实日文/中文术语文案；新版段信息接口返回 200，注释为空（测试文档无注释）。
+  - **行数据 API（已用于段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,isLocked,...},source:{symbols},target:{symbols}}]`。每批 100 行；`id` 即 0 基 rowId。
+  - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，第 3 行 5 条 TM（101/65%…）；Serapi 右栏能看到真实日文/中文术语文案；新版段信息接口返回 200，注释为空（测试文档无注释）。
 - **只读保护**：新版 TM 命中按纯文本回放（含 tag 符号时 payload 带 `readOnly: true`）；TB 条目一律 `readOnly: true` 且不填 tbGuid/entryId（条目详情/编辑接口未接入，避免误触旧版 API）。`_res_insert` 遇到 readOnly 会拒绝并提示“插入功能待接入”。
-- **已知限制**：长文档虚拟网格只渲染当前窗口，段列表缓存可能非连续（跳行后出现行号跳跃；行数据 API 已打通，下一轮改用它补全）；TM 命中暂不能插入；TB 命中若条目没有目标语言译文只显示源术语；TB 条目详情/术语编辑、过滤、原生确认仍未接入；段信息只有注释，没有上下文/原始 ID。
+- **已知限制**：段列表每批 100 行按需加载（长文档滚到底再取下一批）；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；TM 命中暂不能插入；TB 命中若条目没有目标语言译文只显示源术语；TB 条目详情/术语编辑、过滤、原生确认仍未接入；段信息只有注释，没有上下文/原始 ID。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。
 
 ## 关键红线
@@ -163,9 +163,9 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 
 ## 下一步（按顺序）
 
-1. 新版段列表改用行数据 API 按范围加载（`POST /rows`，scope=`entireRow`/`metaOnly`），彻底消掉长文档虚拟网格的行号跳跃。
+1. 新版过滤（只读打开/应用视图过滤，动手前先征得用户同意）与原生确认（“确认句段”）；过滤后 rowId↔行号的映射要重新核对。
 2. 新版 TB 条目详情/术语编辑（`data/terms/definition` 等命令通道）与 TM 命中插入（tag 结构）。
-3. 新版过滤（只读打开面板/应用视图过滤，动手前征得用户同意）与原生确认（“确认句段”）。
+3. 长文档跳行直接用行数据 API 定位（`POST /rows` 已知 rowId 范围），减少估算滚动。
 4. 可选：语词检索浮层分发收口；`--selftest`/探针诊断里的 `call_js` 表达式不再收敛。
 
 不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。

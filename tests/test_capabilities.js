@@ -79,7 +79,9 @@ const nc = neu.__md.api.capabilities();
 assert.strictEqual(nc.editor, 'new');
 assert.strictEqual(nc.ok, true);
 assert.strictEqual(nc.features.listRows, false);
-assert.strictEqual(nc.features.tmHits, false);
+// 命中/段信息走文档 API：路径匹配即可用，不要求结果面板已渲染。
+assert.strictEqual(nc.features.tmHits, true);
+assert.strictEqual(nc.features.segmentInfo, true);
 assert.strictEqual(nc.features.filter, false);
 assert.strictEqual(nc.features.terms, false);
 assert.strictEqual(nc.features.confirm, false);

@@ -3816,6 +3816,14 @@ class MainWindow(QMainWindow):
         if msg.get("type") == "segment-info":
             self._update_segment_info(data)
             return
+        if msg.get("type") == "rows-updated":
+            # 新版行数据 API 拉到新一批行：后台重同步段列表（不打断当前阅读/切行）。
+            # 同步正忙时稍后再试一次，避免这批行要等到下一次切行才出现。
+            if not self._segments.busy and not self._segments.auto_loading:
+                self._segments.refresh(background=True)
+            else:
+                self._schedule_seg_refresh(600, background=True)
+            return
         if msg.get("type") in ("concordance-results", "concordance-error"): 
             try:
                 req = int(data.get("req") or -1)

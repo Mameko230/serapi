@@ -107,6 +107,43 @@ MainWindow._res_insert(ih, {"kind": "tm", "readOnly": True, "tgtDecorated": "不
 assert any("暂不支持直接插入" in line for line in ih.logs), ih.logs
 assert "插入功能待接入" in ih.res_panel.status
 
+
+# 新版行数据 API 拉到新批次：bridge 事件触发段列表后台同步，不打断当前读段。
+class BridgeHost:
+    _editor_kind = None
+    _editor_url = ""
+    _editor_pid = None
+    _engine_visible = False
+    _bridge_ready = True
+    _activating_row = None
+    _filter_busy = False
+    _probe_capabilities = None
+
+    def __init__(self):
+        self.conn_label = QLabel("")
+        self.refreshes = []
+        self._segments = types.SimpleNamespace(
+            busy=False, auto_loading=False,
+            refresh=lambda **kw: self.refreshes.append(dict(kw)))
+
+    def _schedule_seg_refresh(self, *_args, **_kwargs):
+        pass
+
+    def _set_engine_visible(self, _visible):
+        pass
+
+    def read_segment(self, auto=False):
+        raise AssertionError("rows-updated 不应触发读段")
+
+
+bh = BridgeHost()
+MainWindow.on_bridge_event(bh, 7, json.dumps({
+    "type": "rows-updated",
+    "data": {"editor": "new",
+             "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
+}))
+assert bh.refreshes == [{"background": True}], bh.refreshes
+
 old = {
     "ok": True, "editor": "old",
     "features": {"listRows": True, "tmHits": True, "segmentInfo": True,

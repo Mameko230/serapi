@@ -120,7 +120,10 @@
       var table = newRowsTable();
       var raw = table && table.getAttribute('aria-rowcount');
       var n = parseInt(raw, 10);
-      return n > 0 ? n : null;
+      if (n > 0) return n;
+      var st = window.__md._rowsApi;
+      if (st && st.total) return st.total;
+      return null;
     }
     function newSegmentEl(row, side) {
       if (!row) return null;
@@ -167,21 +170,42 @@
       return document.getElementById('translationResultsListInner')
         || document.querySelector('[data-testid="translationResultsContainer"]');
     }
+    function newSegmentSymbols(seg) {
+      if (!seg) return [];
+      if (seg.symbols) return seg.symbols;
+      if (seg.segment && seg.segment.symbols) return seg.segment.symbols;
+      return [];
+    }
+    function newSymbolChar(value) {
+      // symbols 里的文本符号通常是逐字符 Unicode 码点（数字或数字串）。
+      var n = null;
+      if (typeof value === 'number') n = value;
+      else if (typeof value === 'string' && /^\d+$/.test(value) && value.length <= 7) {
+        n = parseInt(value, 10);
+      }
+      if (n !== null && isFinite(n)) {
+        try { return String.fromCodePoint(n); } catch (e) {}
+      }
+      return String(value == null ? '' : value);
+    }
     function newSymbolsText(seg) {
-      // symbols 里的文本符号通常是逐字符 Unicode 码点（数字或数字串）。文本优先用
-      // segment.text；这里只在没有 text 时兜底解码，避免把码点当数字拼出来。
-      var symbols = (seg && seg.segment && seg.segment.symbols) || [];
+      var symbols = newSegmentSymbols(seg);
+      var out = [];
+      for (var i = 0; i < symbols.length; i++) {
+        out.push(newSymbolChar((symbols[i] || {}).value));
+      }
+      return out.join('');
+    }
+    function newSymbolsPlainText(seg) {
+      // 段列表展示用：只要文本符号，tag 占位不显示（不是编辑器内容回放）。
+      var symbols = newSegmentSymbols(seg);
       var out = [];
       for (var i = 0; i < symbols.length; i++) {
         var s = symbols[i] || {};
-        var v = s.value;
-        var n = null;
-        if (typeof v === 'number') n = v;
-        else if (typeof v === 'string' && /^\d+$/.test(v) && v.length <= 7) n = parseInt(v, 10);
-        if (n !== null && isFinite(n)) {
-          try { out.push(String.fromCodePoint(n)); continue; } catch (e) {}
+        var type = s.type;
+        if (type === 1 || type === 'text' || type === 'Text') {
+          out.push(newSymbolChar(s.value));
         }
-        out.push(String(v == null ? '' : v));
       }
       return out.join('');
     }
@@ -190,12 +214,114 @@
       return newSymbolsText(seg);
     }
     function newSymbolsHaveTags(seg) {
-      var symbols = (seg && seg.segment && seg.segment.symbols) || [];
+      var symbols = newSegmentSymbols(seg);
       for (var i = 0; i < symbols.length; i++) {
         var type = symbols[i] && symbols[i].type;
         if (type !== 1 && type !== 'text' && type !== 'Text') return true;
       }
       return false;
+    }
+    /* ---- 新版段列表（行数据 API，按范围加载）----
+       POST /api/editor/projects/<prj>/docs/<doc>/rows {rowIds:[...], scope:'entireRow'}
+       绕开虚拟网格：缓存连续行号，加载更多时再取下一批，不会出现行号跳跃。 */
+    function newRowsApiState() {
+      var docKey = location.pathname;
+      var st = window.__md._rowsApi;
+      if (!st || st.doc !== docKey) {
+        st = window.__md._rowsApi = {
+          doc: docKey, status: 'idle', fetching: false, done: false, error: '',
+          rows: {}, next: 0, total: 0, chunk: 100,
+        };
+      }
+      return st;
+    }
+    function newRowStatusFromMeta(meta, hasTarget) {
+      var st = String((meta && meta.status) || '');
+      if (st === 'manuallyConfirmed' || st === 'confirmed') return 'confirmed';
+      if (st === 'notStarted') return 'untranslated';
+      if (st === 'partiallyEdited' || st === 'preTranslated' || st === 'edited') {
+        return hasTarget ? 'edited' : 'untranslated';
+      }
+      return hasTarget ? 'edited' : 'untranslated';
+    }
+    function newRowApiEntry(raw) {
+      var id = Number(raw && raw.id);
+      if (!isFinite(id) || id < 0) return null;
+      var meta = (raw && raw.meta) || {};
+      var src = newSymbolsPlainText(raw && raw.source);
+      var tgt = newSymbolsPlainText(raw && raw.target);
+      return {
+        rowNo: id + 1, rowId: String(id), src: src, tgt: tgt,
+        locked: !!meta.isLocked, maxLen: 0,
+        status: newRowStatusFromMeta(meta, !!tgt),
+        tmRate: Number(meta.matchRate || 0) || 0,
+      };
+    }
+    function newRowsApiStart(count) {
+      var st = newRowsApiState();
+      if (st.fetching || st.done) return false;
+      var total = newRowTotal() || 0;
+      var start = st.next;
+      if (total && start >= total) { st.done = true; return false; }
+      var end = start + (count || st.chunk);
+      if (total) end = Math.min(total, end);
+      var ids = [];
+      for (var i = start; i < end; i++) ids.push(i);
+      if (!ids.length) return false;
+      var base = newDocApiBase();
+      if (!base) { st.error = '文档 API 路径未找到'; return false; }
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      var docKey = location.pathname;
+      st.fetching = true;
+      try {
+        fetch(base + '/rows', {
+          method: 'POST', credentials: 'same-origin', headers: headers,
+          body: JSON.stringify({ rowIds: ids, scope: 'entireRow' }),
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        }).then(function (rows) {
+          if (st.doc !== docKey) return;   // 已换文档：旧响应丢弃
+          if (!Array.isArray(rows)) throw new Error('行数据返回不是数组');
+          var maxId = st.next;
+          for (var i = 0; i < rows.length; i++) {
+            var entry = newRowApiEntry(rows[i]);
+            if (!entry) continue;
+            st.rows[entry.rowNo] = entry;
+            maxId = Math.max(maxId, parseInt(entry.rowId, 10) + 1);
+          }
+          st.next = maxId;
+          st.fetching = false;
+          st.status = 'done';
+          st.total = newRowTotal() || Math.max(st.total, maxId);
+          if (rows.length < ids.length) st.done = true;
+          try {
+            __md.push('rows-updated', {
+              source: 'rows-api', cached: Object.keys(st.rows).length,
+            });
+          } catch (e) {}
+        }).catch(function (e) {
+          if (st.doc !== docKey) return;
+          st.fetching = false;
+          st.error = String(e.message || e).slice(0, 160);
+        });
+      } catch (e) {
+        st.fetching = false;
+        st.error = String(e.message || e).slice(0, 160);
+      }
+      return true;
+    }
+    function newRowsApiList() {
+      var st = newRowsApiState();
+      var list = [];
+      for (var k in st.rows) {
+        if (Object.prototype.hasOwnProperty.call(st.rows, k)) list.push(st.rows[k]);
+      }
+      list.sort(function (a, b) { return a.rowNo - b.rowNo; });
+      var done = !!st.done || (st.total > 0 && st.next >= st.total);
+      return { rows: list, total: st.total || newRowTotal(), cached: list.length,
+               done: done, error: st.error || '' };
     }
     function newDocApiBase() {
       return newApiNamespace('editor');
@@ -360,6 +486,13 @@
     }
     function newListRows() {
       try {
+        // 优先行数据 API：连续行号、无虚拟网格缺口。
+        var api = newRowsApiList();
+        if (!api.rows.length && !api.error) newRowsApiStart(100);
+        if (api.rows.length) {
+          return { ok: true, rows: api.rows, total: api.total, cached: api.cached,
+                   source: 'new-api', done: api.done, error: api.error };
+        }
         var rows = newRowElements();
         var table = newRowsTable();
         if (!rows.length && !table) return { ok: false, err: '新版段列表尚未渲染' };
@@ -490,7 +623,8 @@
           f.rowChanged = true;
           f.docStats = true;
           f.listRows = !!newRowsTable();
-          f.tmHits = !!newHitsPanel();
+          // 命中走文档 API，不依赖右侧结果面板是否已渲染/打开。
+          f.tmHits = !!newDocApiBase();
           f.segmentInfo = !!newApiNamespace('translation');
           try {
             f.readSegment = !!newAnyView();
@@ -507,7 +641,7 @@
       }
       if (!f.tmHits) {
         reasons.tmHits = (kind === 'new')
-          ? '新版编辑器：翻译结果面板尚未就绪'
+          ? '新版编辑器：文档 API 尚未就绪'
           : '需要旧版编辑器（TM/TB 命中）';
       }
       if (!f.segmentInfo) {
@@ -1118,10 +1252,18 @@
       }
       return false;
     }
-    // 新版虚拟网格“加载更多”：滚动容器若干屏，触发下一批行渲染。
-    // 步长略小于一屏，让前后两次窗口有重叠，累计的缓存行不会断档。
+    // 新版“加载更多”：优先用行数据 API 取下一批（连续行号，无虚拟网格缺口）；
+    // 行数据 API 不可用（旧页面/接口报错）时退回滚动虚拟列表。
     window.__md.api.expandRows = function () {
       if (detectEditor() !== 'new') return false;
+      var api = newRowsApiState();
+      if (Object.keys(api.rows).length || api.fetching || api.status === 'done') {
+        if (api.done || (api.total && api.next >= api.total)) {
+          api.done = true;
+          return false;
+        }
+        return newRowsApiStart(100);
+      }
       var table = newRowsTable();
       if (!table) return false;
       var before = table.scrollTop;
