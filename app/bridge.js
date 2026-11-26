@@ -237,6 +237,8 @@
             attrs: { type: tagType, name: String(s.name || ''),
                      isSpecial: !!(s.display && s.display.isSpecial),
                      displayText: disp },
+            // 保留 row API 的完整符号（tagType/attributes/display），写回时直接 PUT。
+            raw: s,
           });
         } else if (type === '1' || type === 'text') {
           text += newSymbolChar(s.value);
@@ -529,18 +531,21 @@
       }
       return st;
     }
-    function newFilterSet(sourceText, targetText) {
+    function newFilterSet(sourceText, targetText, regex) {
       var src = String(sourceText == null ? '' : sourceText).trim();
       var tgt = String(targetText == null ? '' : targetText).trim();
       if (!src && !tgt) return {};
+      var useRegex = !!regex;
       var content = { shouldIncludeSegments: true };
       if (src) {
         content.source = { text: src, isCaseSensitive: false, matchType: 'any',
                            shouldMatchExactWordOrder: false };
+        if (useRegex) content.source.isRegex = true;
       }
       if (tgt) {
         content.target = { text: tgt, isCaseSensitive: false, matchType: 'any',
                            shouldMatchExactWordOrder: false };
+        if (useRegex) content.target.isRegex = true;
       }
       return { content: content };
     }
@@ -954,6 +959,8 @@
           f.termQuickAdd = !!newProjectGuidFromUrl();
           // 新版自带 concordance 文档接口：POST /concordance 建上下文，GET 取结果。
           f.concordance = !!newDocApiBase();
+          // 新版原生命令 findAndReplace 带热键；Serapi 打开引擎浮层后派发 Ctrl+F。
+          f.findReplace = true;
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -985,6 +992,9 @@
           : '需要旧版编辑器的原生过滤面板';
       }
       if (!f.concordance) reasons.concordance = '需要旧版编辑器或新版文档 API（语词检索）';
+      if (!f.findReplace && detectEditor() === 'new') {
+        reasons.findReplace = '需要新版编辑器（原生查找替换）';
+      }
       if (!f.confirm) reasons.confirm = '需要旧版编辑器（原生确认）';
       if (!f.readSegment) reasons.readSegment = '当前段编辑器尚未就绪';
       return { ok: !!kind, editor: kind, features: f, reasons: reasons,
@@ -1145,6 +1155,72 @@
       } catch (e) {}
       return res;
     }
+    // token → row API symbols（PUT /rows/<id> 的 body）：文本逐码点，tag 用原始符号。
+    function newTokenSymbols(tokens) {
+      var out = [];
+      for (var i = 0; i < (tokens || []).length; i++) {
+        var tk = tokens[i] || {};
+        if (tk.t === 'text') {
+          var chars = Array.from(String(tk.v == null ? '' : tk.v));
+          for (var c = 0; c < chars.length; c++) {
+            out.push({ type: 1, value: chars[c].codePointAt(0) });
+          }
+        } else if (tk.t === 'newline') {
+          out.push({ type: 2, tagType: 2, inlineTagType: 2, name: 'mq:ch',
+                     display: { isSpecial: true, text: 'br' },
+                     attributes: [{ type: 1, name: 'val', value: '\r\n' }] });
+        } else if (tk.t === 'tag') {
+          var raw = tk.raw;
+          if (raw && typeof raw === 'object' && Number(raw.type) === 2) {
+            out.push(raw);
+            continue;
+          }
+          var attrs = tk.attrs || {};
+          var tagType = Number(attrs.tagType);
+          if (!isFinite(tagType)) {
+            tagType = String(attrs.type || '') === 'inline-self-closed' ? 2 : 1;
+          }
+          var inline = Number(attrs.inlineTagType);
+          if (!isFinite(inline)) inline = tagType;
+          var attrsArr = Array.isArray(attrs.attributes) ? attrs.attributes : [];
+          var disp = attrs.display;
+          if (!disp || typeof disp !== 'object') {
+            disp = { isSpecial: !!attrs.isSpecial,
+                     text: String(attrs.displayText == null ? '' : attrs.displayText) };
+          }
+          out.push({ type: 2, tagType: tagType, inlineTagType: inline,
+                     name: String(attrs.name || tk.name || ''), attributes: attrsArr,
+                     display: disp });
+        }
+      }
+      return out;
+    }
+
+    // 新版保存行：PUT /rows/<rowId> {side:'target', symbols:[...]}。
+    // 必须等服务端返回后再让 SaveCoordinator 回调，否则紧接着的 HTTP 确认会作用在旧内容上
+    // （用户可见：memoQ 显示译文但状态未变，再按一次 Ctrl+Enter 才有时成功）。
+    function newPutRowSync(rowId, body) {
+      var base = newDocApiBase();
+      if (!base) throw new Error('文档 API 路径未找到');
+      var xhr = new XMLHttpRequest();
+      xhr.open('PUT', base + '/rows/' + encodeURIComponent(String(rowId)), false);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      var headers = newApiHeaders();
+      for (var k in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, k)) {
+          try { xhr.setRequestHeader(k, headers[k]); } catch (e) {}
+        }
+      }
+      xhr.send(JSON.stringify(body || {}));
+      if (xhr.status < 200 || xhr.status >= 300) {
+        throw new Error('HTTP ' + xhr.status + ' ' + String(xhr.responseText || '').slice(0, 160));
+      }
+      var parsed = null;
+      try { parsed = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+      if (!parsed) throw new Error('行保存返回不是 JSON');
+      return parsed;
+    }
+
     function newWriteSegment(view, tokens) {
       var schema = view.state.schema;
       // 克隆段内已有换行 tag 的 attrs 作为 Enter 的格式（与原文一致）
@@ -1485,13 +1561,13 @@
     /* 原生过滤：旧版过滤面板的 Enter 入口（txtSourceFilter/txtTargetFilter）。
        返回的 rowCount 就是过滤后行数；getAllCachedRows 随后只含匹配行，
        行 id 仍是原始 0 基行号（listRows 的 rowNo = id + 1）。 */
-    window.__md.api.filterReq = function (direction, sourceText, targetText) {
+    window.__md.api.filterReq = function (direction, sourceText, targetText, regex) {
       try {
         if (detectEditor() === 'new') {
           var f = newFilterState();
           f.status = 'pending';
           f.error = '';
-          var filterSet = newFilterSet(sourceText, targetText);
+          var filterSet = newFilterSet(sourceText, targetText, regex);
           var clear = !Object.keys(filterSet).length;
           newFilterPost(filterSet, function (err, rowIds) {
             if (err) {
@@ -1945,6 +2021,30 @@
       return newRowsApiJump(rowNo);
     };
 
+    // 新版原生查找替换：Qt 先打开引擎浮层，再调这里合成 Ctrl+F 打开 memoQ 自己的面板。
+    window.__md.api.openFindReplace = function () {
+      try {
+        if (detectEditor() !== 'new') return { ok: false, err: '查找替换仅新版支持' };
+        var el = null;
+        try {
+          var active = document.activeElement;
+          if (active && active.closest && active.closest('div.ProseMirror')) el = active;
+        } catch (e) {}
+        if (!el) {
+          try { el = document.querySelector('div.ProseMirror'); } catch (e) {}
+        }
+        if (!el) el = document.body;
+        var init = {
+          key: 'f', code: 'KeyF', keyCode: 70, which: 70,
+          ctrlKey: true, bubbles: true, cancelable: true, composed: true,
+        };
+        ['keydown', 'keypress', 'keyup'].forEach(function (type) {
+          try { el.dispatchEvent(new KeyboardEvent(type, init)); } catch (e) {}
+        });
+        return { ok: true };
+      } catch (e) { return { ok: false, err: 'openFindReplace ERR ' + e.message }; }
+    };
+
     window.__md.api.readSegment = function (rowId) {
       var kind = detectEditor();
       try {
@@ -1972,11 +2072,30 @@
           if (!view) return { ok: false, err: '新版编辑器 view 未找到' };
           if (view.state.doc.attrs.locked) return { ok: false, err: '该段已锁定' };
           var written = newWriteSegment(view, tokens || []);
-          if (written && written.ok) {
-            var rid = view.state.doc.attrs.rowId;
-            if (rid !== undefined && rid !== null) newRefreshRowCache(rid);
+          if (!written || !written.ok) return written;
+          var rid = view.state.doc.attrs.rowId;
+          if (rid === undefined || rid === null) {
+            return { ok: false, err: '新版行 ID 未找到' };
           }
-          return written;
+          if (typeof XMLHttpRequest !== 'function') {
+            // 离线契约测试没有 XHR：保留旧行为，只刷新缓存，不伪装成已服务端保存。
+            newRefreshRowCache(rid);
+            return { ok: true, pending: true };
+          }
+          var row = newPutRowSync(rid, { side: 'target',
+                                         symbols: newTokenSymbols(tokens || []) });
+          var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
+          var rowNo = (typeof row.id === 'number') ? row.id + 1 : null;
+          var mapped = '';
+          try { mapped = newRowStatusFromMeta({ status: status }, true); } catch (e) {}
+          try {
+            __md.push('row-write-result', {
+              ok: true, rowNo: rowNo, rowId: String(rid), status: status,
+              mappedStatus: mapped, tgt: newSymbolsText(row.target || {}).slice(0, 60),
+            });
+          } catch (e) {}
+          newRefreshRowCache(rid);
+          return { ok: true, status: status, rowNo: rowNo, rowId: String(rid) };
         }
         if (kind === 'old') return oldWriteSegment(tokens || [], rowId !== undefined && rowId !== null);
         return { ok: false, err: '不在编辑器页面' };

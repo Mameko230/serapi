@@ -204,6 +204,18 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
   - 遗留测试数据：测试术语库 A 有第一条冒烟写入的测试术语；测试术语库 B 有本轮 Ctrl+Q 写入的测试术语（用户已授权，未删除）。
 - 冒烟中发现并修复：① 启动时 `_fit_row_number_width` 早于 `_segments` 创建导致 AttributeError；② 新版文档语言识别没识别 `_termLangs` 的 `{src,tgt}` 短键，导致 ListServerProjectTBs 缺 targetLanguage 返回空、Ctrl+Q 误报“没有可用的术语库”；③ 合成确认/拒绝快捷键会落到 memoQ 内部活动行（错行），改走 HTTP 行接口。
 
+## 下一版开发（未发布，2026-11-26）
+
+- 过滤栏新增「正则」模式：`isRegex` 直传新版 filter API，可搜 `-`、`/` 等符号；开关记忆到 `ui.json`，旧版禁用。
+- 新版原生查找替换入口：工具栏放大镜 / `Ctrl+H` → 打开引擎浮层并派发原生 Ctrl+F（memoQ 自带正则/替换全部面板）。
+- 打开文档自动跟随 memoQ 上次编辑行：当前行不在缓存窗时自动 `jumpToRow` 换窗；首屏列表未就绪时有限重试，不无限自调度。
+- **Ctrl+Enter 修复（P0）**：新版写回从“只改 ProseMirror 本地 + 立即 HTTP 确认”改成 **先同步 `PUT /rows/<rowId>` 落库，成功后才确认**（sync XHR，SaveCoordinator 回调代表服务端已保存）。写回响应推送 `row-write-result`，左栏立即补译文和状态；旧缓存 8 秒内不得清空/覆盖新译文。真机验证：写入 `P0PUTTEST` → 立即确认 → 1.8s 后服务端状态 `reviewer1Confirmed`、译文保留。
+- 左栏行高 32→42、字体 12.5→13、item 竖向 padding 5→9，提升长文本可读性（译员反馈）。
+- 启动优化：能力探测/段列表首刷提前、统计延后、首屏就绪前不自动收起引擎；增加“编辑器就绪/段列表接口首次返回/首屏就绪”耗时日志。真机首屏仍受 memoQ 页面自身渲染/主线程阻塞影响（约 12s），后续需按日志继续分段定位。
+- 测试：全量 **49/49**；新增过滤正则、PUT 写回、查找替换、自动跟随、左栏写回更新等回归。
+- **UI 图标化重构只出了预览图**（`preview_icon_toolbar.png`），未改代码，等用户确认方案。
+- 用户要求：以后每次更新都要写更新内容（`CHANGELOG.md` 已建，发版时同步 Release Notes）。
+
 ## 1.0.1 发布与下一版探索（2026-11-26）
 
 - **1.0.1 已发布**：CI 成功，GitHub Release 含 `Serapi-Setup.exe` / `Serapi-win64.zip`；tag `v1.0.1` → 提交 `758de39`（docs）前一版 `c8b499c` 为代码修复提交。

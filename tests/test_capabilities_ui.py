@@ -231,13 +231,13 @@ MainWindow.on_bridge_event(bh, 7, json.dumps({
     "data": {"editor": "new",
              "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
 }))
-assert bh.schedules == [(1500, False)], bh.schedules
+assert bh.schedules == [(120, False)], bh.schedules
 MainWindow.on_bridge_event(bh, 7, json.dumps({
     "type": "row-changed",
     "data": {"editor": "new",
              "url": "https://example.test/memoqweb/editor/projects/p/docs/d"},
 }))
-assert bh.schedules == [(1500, False)], bh.schedules
+assert bh.schedules == [(120, False)], bh.schedules
 assert bh.reads == [True], bh.reads
 
 

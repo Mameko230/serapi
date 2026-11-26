@@ -1164,6 +1164,7 @@ class ShortcutsOverlay(QWidget):
         ("Ctrl+E", "打开添加术语浮层"),
         ("Ctrl+Q", "快速添加术语（单库直加 / 多库选择）"),
         ("Ctrl+Shift+F", "展开 / 收起过滤栏"),
+        ("Ctrl+H", "打开 memoQ 原生查找 / 替换"),
         ("Ctrl+G", "输入行号跳转"),
         ("Ctrl+K", "聚焦语词检索"),
         ("Ctrl+1 … Ctrl+9", "插入列表中第 N 条 TM/TB 命中"),

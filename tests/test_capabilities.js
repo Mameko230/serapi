@@ -86,6 +86,7 @@ assert.strictEqual(nc.features.filter, true);
 // 新版语词检索走文档 concordance 接口。
 assert.strictEqual(nc.features.concordance, true);
 assert.strictEqual(nc.reasons.concordance, undefined);
+assert.strictEqual(nc.features.findReplace, true);
 assert.strictEqual(nc.features.terms, false);
 // 新版 TB 术语编辑复用旧 QTermService：编辑能力开启，添加仍不支持。
 assert.strictEqual(nc.features.termEdit, true);

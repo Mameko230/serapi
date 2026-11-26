@@ -59,10 +59,16 @@ b.document_stats(callback)
 assert h.last == ("JSON.stringify(__md.api.documentStats())", callback)
 b.list_tags(7, callback)
 assert h.last == ("JSON.stringify(__md.api.listTags(7))", callback)
-b.filter_rows("source", "abc", "", callback)
-assert h.last == ("JSON.stringify(__md.api.filterReq(\"source\", \"abc\", \"\"))", callback)
+b.filter_rows("source", "abc", "", False, callback)
+assert h.last == ("JSON.stringify(__md.api.filterReq(\"source\", \"abc\", \"\", false))",
+                  callback)
+b.filter_rows("target", "-", "", True, callback)
+assert h.last == ("JSON.stringify(__md.api.filterReq(\"target\", \"-\", \"\", true))",
+                  callback)
 b.clear_filter(callback)
 assert h.last == ("JSON.stringify(__md.api.clearFilterReq())", callback)
+b.open_find_replace(callback)
+assert h.last == ("JSON.stringify(__md.api.openFindReplace())", callback)
 
 # 3) 命中 / 段信息 / 术语 / 语词检索（中文不转义，方向保持原样）。
 b.tm_hits(3, callback)

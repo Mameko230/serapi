@@ -140,6 +140,7 @@ class SegModel(QAbstractTableModel):
         self._status_filter = set()
         self._pending_status = {}
         self._authoritative_status = {}  # rowNo -> (status, monotonic_ts)：HTTP 动作返回的权威状态
+        self._authoritative_write = {}  # rowNo -> (tgt, monotonic_ts)：PUT 写回后的权威译文
         self.text_color = "#334155"
         self.muted_color = "#94a3b8"
         self.tm_color = "#1d4ed8"
@@ -207,6 +208,33 @@ class SegModel(QAbstractTableModel):
             self.endResetModel()
         return changed
 
+    def set_row_written(self, row_no, tgt=None, status=None):
+        """写回成功：用服务端返回的译文预览/状态立即更新左栏，内容不再空白。"""
+        row = None
+        for candidate in self._all_rows:
+            if candidate.get("rowNo") == row_no:
+                row = candidate
+                break
+        if row is None:
+            return False
+        if tgt is not None:
+            row["tgt"] = str(tgt)
+            self._authoritative_write[row_no] = (str(tgt), time.monotonic())
+        if status:
+            row["status"] = str(status)
+            self._pending_status.pop(row_no, None)
+            self._authoritative_status[row_no] = (str(status), time.monotonic())
+        for i, view in enumerate(self._rows):
+            if view.get("rowNo") == row_no:
+                self._rows[i] = row
+                self.dataChanged.emit(self.index(i, 0), self.index(i, 3))
+                break
+        if self._status_filter:
+            self.beginResetModel()
+            self._rebuild_visible_rows()
+            self.endResetModel()
+        return True
+
     def set_text_colors(self, text_color, muted_color, tm_color=None):
         """主题切换时更新文字色，保证深色下可读。"""
         self.text_color = text_color
@@ -260,6 +288,14 @@ class SegModel(QAbstractTableModel):
                     new_status = auth_status
                 else:
                     self._authoritative_status.pop(row_no, None)
+            aw = self._authoritative_write.get(row_no)
+            if aw is not None:
+                want_tgt, aw_ts = aw
+                if time.monotonic() - aw_ts < 8.0:
+                    # PUT 已成功但行缓存可能还是旧内容：旧快照不能把新译文清空。
+                    row["tgt"] = want_tgt
+                else:
+                    self._authoritative_write.pop(row_no, None)
             if new_status != old_status:
                 if self._pending_status.get(row_no) == new_status:
                     self._pending_status.pop(row_no, None)
@@ -403,7 +439,7 @@ class SegStatusDelegate(QStyledItemDelegate):
         bg = index.data(Qt.ItemDataRole.BackgroundRole) or QColor("#f8fafc")
         fg = index.data(Qt.ItemDataRole.ForegroundRole) or QColor("#64748b")
         locked = bool(index.data(SegModel.LOCK_ROLE))
-        card = rect.adjusted(3, 2, -3, -2)
+        card = rect.adjusted(3, 5, -3, -5)
         # 卡片本体自绘圆角；用稳定的矩形裁剪限制文字，避免部分 Qt 构建在
         # QPainterPath 裁剪 + 选中重绘时发生原生 fail-fast。
         painter.setClipRect(card, Qt.ClipOperation.IntersectClip)
@@ -1738,6 +1774,10 @@ class MainWindow(QMainWindow):
     def __init__(self, selftest: bool = False, rt_url: str | None = None,
                  probe_js: str | None = None, rt_row: int = 1, rt_modify: bool = False):
         super().__init__()
+        self._started_at = time.monotonic()
+        self._bridge_ready_at = None
+        self._first_rows_at = None
+        self._caps_complete = False
         self._session = EditorSession()
         self._backend = JsBridgeBackend(self)
         self.setWindowTitle("Serapi · memoQ 外置编辑器")
@@ -1848,6 +1888,8 @@ class MainWindow(QMainWindow):
         # 过滤栏没有按钮快捷键时只能点漏斗；给一个键盘入口，也方便真机/无障碍使用。
         sc_filter = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
         sc_filter.activated.connect(self._toggle_filter_shortcut)
+        sc_find = QShortcut(QKeySequence("Ctrl+H"), self)
+        sc_find.activated.connect(self.open_find_replace)
         sc_term = QShortcut(QKeySequence("Ctrl+E"), self)
         sc_term.activated.connect(self.open_term_editor)
         sc_quick_term = QShortcut(QKeySequence("Ctrl+Q"), self)
@@ -1959,17 +2001,18 @@ class MainWindow(QMainWindow):
         self.seg_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.seg_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.seg_table.verticalHeader().setVisible(False)
-        self.seg_table.verticalHeader().setDefaultSectionSize(32)
+        # 译员反馈行距太密：行高从 32 提到 42，配合更大竖向留白，长文本更容易扫读。
+        self.seg_table.verticalHeader().setDefaultSectionSize(42)
         self.seg_table.setShowGrid(False)
         self.seg_table.setWordWrap(False)
         self.seg_table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.seg_table.setStyleSheet(
-            f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 12.5px; border: none;"
+            f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 13px; border: none;"
             f" background: transparent; }}"
-            f"QTableView::item {{ padding: 5px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
+            f"QTableView::item {{ padding: 9px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
             f"QTableView::item:selected {{ background: rgba(37,99,235,28); color: {pal['title']}; }}"
             f"QHeaderView::section {{ background: transparent; border: none;"
-            f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 8px 10px; color: {pal['header']};"
+            f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 9px 10px; color: {pal['header']};"
             f" font-weight: normal; font-size: 12px; }}")
         hh = self.seg_table.horizontalHeader()
         # 行号列不用 ResizeToContents：内容变化会让列宽来回跳、拖宽也会被重置。
@@ -2034,6 +2077,12 @@ class MainWindow(QMainWindow):
         self.btn_filter.setAccessibleName("过滤")
         self.btn_filter.toggled.connect(self._toggle_filter_bar)
         tb_lay.addWidget(self.btn_filter)
+        self.btn_find = TransparentToolButton(FluentIcon.SEARCH)
+        self.btn_find.setFixedSize(32, 32)
+        self.btn_find.setToolTip("查找替换（memoQ 原生，Ctrl+H）")
+        self.btn_find.setAccessibleName("查找替换")
+        self.btn_find.clicked.connect(self.open_find_replace)
+        tb_lay.addWidget(self.btn_find)
         tb_lay.addStretch(1)
         from .qtedit import MqEditor
         self.editor = MqEditor()
@@ -2145,6 +2194,13 @@ class MainWindow(QMainWindow):
         self.filter_tgt.setFixedHeight(28)
         self.filter_status = QLabel("")
         self.filter_status.setStyleSheet("color:#94a3b8; background:transparent; font-size:11px;")
+        self._filter_regex = bool(self._load_ui_state().get("filterRegex", False))
+        self.chk_filter_regex = FCheckBox("正则")
+        self.chk_filter_regex.setFixedHeight(28)
+        self.chk_filter_regex.setChecked(self._filter_regex)
+        self.chk_filter_regex.setToolTip(
+            "正则模式（仅新版）：可搜索 - / 等符号；特殊字符按正则语法输入")
+        self.chk_filter_regex.toggled.connect(self._set_filter_regex)
         self.filter_apply = PushButton("过滤")
         self.filter_apply.setFixedHeight(28)
         self.filter_clear = PushButton("清除")
@@ -2157,6 +2213,7 @@ class MainWindow(QMainWindow):
         self.filter_clear.clicked.connect(self._clear_filter)
         fb.addWidget(self.filter_src, 1)
         fb.addWidget(self.filter_tgt, 1)
+        fb.addWidget(self.chk_filter_regex)
         fb.addWidget(self.filter_apply)
         fb.addWidget(self.filter_clear)
         fb.addWidget(self.filter_status)
@@ -2264,6 +2321,7 @@ class MainWindow(QMainWindow):
         self._read_gen = 0  # 读段代际号：异步回调返回时比对，过期响应直接丢弃（防切换后旧响应覆盖新内容）
         self._activating_row = None  # 程序切行期间忽略重复 row-changed，避免双读取互相取消
         self._jump_pending_row = None  # 新版长文档跳行：等待缓存窗换到目标行
+        self._follow_pending_row = None  # 新版：等待缓存窗跟随 memoQ 自动选中的当前行
         self._tm_rates = {}  # 本次文档内已实际查询的 memoQ 最佳 TM 匹配率：rowNo -> rate
         self._editor_url = ""  # 同一标签页换文档时也据此清空 TM 缓存
         # 保存状态机：行号+编辑代际+文档身份共同约束异步回调，防止迟到写回/清脏。
@@ -2645,6 +2703,48 @@ class MainWindow(QMainWindow):
         self._confirm_busy = False  # 新段已成功落地，允许下一次确认
         return draft
 
+    def _follow_current_row_in_cache(self):
+        """memoQ 打开时自动选中的“上次编辑行”也要让左边缓存表跟过去。"""
+        if getattr(self, "_cap_editor", None) != "new":
+            return
+        if not getattr(self, "_has_loaded_segment", False):
+            return
+        if self.filter_active():
+            return
+        try:
+            row_no = int(self._cur_row)
+        except (TypeError, ValueError):
+            return
+        for i in range(self.seg_model.rowCount()):
+            if self.seg_model.row_no_at(i) == row_no:
+                self._follow_retry_count = 0
+                return
+        if getattr(self, "_follow_pending_row", None) is not None:
+            return
+        if self.seg_model.rowCount() == 0:
+            # 首屏列表还没落地：有限重试，避免无限自调度。
+            retries = int(getattr(self, "_follow_retry_count", 0) or 0)
+            if retries >= 3:
+                return
+            self._follow_retry_count = retries + 1
+            QTimer.singleShot(600, self._follow_current_row_in_cache)
+            return
+        self._follow_retry_count = 0
+        self._follow_pending_row = row_no
+        self.log(f"memoQ 当前行 {row_no} 不在缓存窗，正在定位缓存…")
+        try:
+            backend_for(self).jump_rows(row_no)
+        except Exception as exc:
+            self._follow_pending_row = None
+            self.log(f"跟随当前行失败：{exc}")
+            return
+        QTimer.singleShot(5000, lambda r=row_no: self._clear_follow_pending(r))
+
+    def _clear_follow_pending(self, row_no):
+        if getattr(self, "_follow_pending_row", None) == int(row_no):
+            self._follow_pending_row = None
+            self.log(f"跟随第 {row_no} 行缓存超时，可手动输入行号跳转")
+
     def _schedule_seg_refresh(self, delay: int = 600, background: bool = True):
         """防抖同步；后台同步不重复请求文档统计，也不阻塞当前段读取。"""
         if not self._seg_rtimer.isActive() or not background:
@@ -2708,6 +2808,12 @@ class MainWindow(QMainWindow):
 
     def _auto_close_engine_enabled(self) -> bool:
         return bool((getattr(self, "_app_cfg", None) or {}).get("engine_auto_close", True))
+
+    def _maybe_auto_hide_engine(self):
+        """首屏段列表就绪后自动收起引擎；未就绪则由 bridge-ready 的兜底计时器触发。"""
+        if (getattr(self, "_engine_visible", False)
+                and self._auto_close_engine_enabled()):
+            self._set_engine_visible(False)
 
     def _set_engine_visible(self, visible: bool):
         self.btn_engine.blockSignals(True)
@@ -4216,6 +4322,8 @@ class MainWindow(QMainWindow):
 
     def _probe_capabilities(self):
         """页面就绪后一次性探测；能力缺失时 UI 明确降级，不静默写错数据。"""
+        if getattr(self, "_caps_complete", False):
+            return
         if not self._editor_pid:
             return
         backend_for(self).capabilities(self._apply_capabilities)
@@ -4238,7 +4346,7 @@ class MainWindow(QMainWindow):
             if logger:
                 logger("页面结构指纹变化，缺少选择器：" + ", ".join(missing[:6]))
         for attr, key in (("btn_filter", "filter"), ("btn_seginfo", "segmentInfo"),
-                          ("btn_cc", "concordance")):
+                          ("btn_cc", "concordance"), ("btn_find", "findReplace")):
             btn = getattr(self, attr, None)
             if btn is None:
                 continue
@@ -4246,6 +4354,17 @@ class MainWindow(QMainWindow):
             btn.setEnabled(ok)
             if not ok:
                 btn.setToolTip(reasons.get(key) or "当前编辑器不支持此功能")
+        regex_btn = getattr(self, "chk_filter_regex", None)
+        if regex_btn is not None:
+            if self._cap_editor == "new" or not self._cap_editor:
+                regex_btn.setEnabled(True)
+                regex_btn.setToolTip(
+                    "正则模式（仅新版）：可搜索 - / 等符号；特殊字符按正则语法输入")
+            else:
+                regex_btn.setEnabled(False)
+                if regex_btn.isChecked():
+                    regex_btn.setChecked(False)
+                regex_btn.setToolTip("正则过滤仅新版编辑器支持")
         if self._cap_editor == "new":
             # 能力齐全时不再显示“段列表 + TM 命中 + …”清单（太臃肿），
             # 只有缺功能/结构变化时才用 cap_label 提示。
@@ -4278,6 +4397,7 @@ class MainWindow(QMainWindow):
             all_ready = all(feats.get(k) for k in (
                 "listRows", "tmHits", "segmentInfo", "filter", "termEdit",
                 "termQuickAdd", "confirm", "reject", "readSegment", "writeSegment"))
+            self._caps_complete = all_ready
             if all_ready:
                 self.conn_label.setText("已连接 · 编辑器就绪")
                 self.conn_label.setStyleSheet("color: #059669;")
@@ -4333,26 +4453,37 @@ class MainWindow(QMainWindow):
                 # 同页换文档、整页重载或新编辑器实例都使旧异步回调失效。
                 self._reset_editor_context(url, page_id)
             self._editor_pid = page_id
-            # 编辑器就绪 → 引擎隐藏起来，工作区独占空间（可在设置里关闭自动关闭）
-            if self._engine_visible and self._auto_close_engine_enabled():
-                QTimer.singleShot(500, lambda: self._set_engine_visible(False))
+            # 编辑器就绪 → 引擎隐藏起来，工作区独占空间（可在设置里关闭自动关闭）。
+            # 先等首屏段列表落地再隐藏：页面保持可见有助于 memoQ 渲染/行 API 尽快返回。
+            if getattr(self, "_engine_visible", False) and self._auto_close_engine_enabled():
+                QTimer.singleShot(2500, self._maybe_auto_hide_engine)
             self.conn_label.setText("已连接 · 编辑器就绪")
             self.conn_label.setStyleSheet("color: #059669;")
             # 能力探测/首次段列表刷新只在新页面就绪时做一次：
             # 每条 row-changed/tm-hits/rows-updated 都触发会重复探测，
             # 而探测会写命中面板提示（历史上把刚加载的命中清空——P0）。
             if msg.get("type") == "bridge-ready":
+                if getattr(self, "_bridge_ready_at", None) is None:
+                    self._bridge_ready_at = time.monotonic()
+                    t0 = getattr(self, "_started_at", None)
+                    if t0 is not None:
+                        self.log(f"memoQ 编辑器就绪：启动耗时 "
+                                 f"{self._bridge_ready_at - t0:.1f}s")
+                self._caps_complete = False
                 probe = getattr(self, "_probe_capabilities", None)
                 if probe is not None:
-                    QTimer.singleShot(1200, probe)
-                    QTimer.singleShot(5000, probe)
-                    QTimer.singleShot(15000, probe)
+                    # 尽快探测；齐全后 _caps_complete 会取消后续探测。
+                    for delay in (60, 900, 2500):
+                        QTimer.singleShot(delay, probe)
                 stats_fn = getattr(self, "refresh_doc_stats", None)
                 if callable(stats_fn):
                     # 页面状态栏渲染晚于 bridge-ready：首次取不到时多试几次。
-                    for delay in (1800, 5000, 12000, 20000):
+                    for delay in (1200, 4000, 9000):
                         QTimer.singleShot(delay, stats_fn)
-                self._schedule_seg_refresh(1500, background=False)  # 首次完整读取并更新统计
+                # 首屏段列表立即读取；失败/页面尚未渲染时 900ms 再兜底一次。
+                self._schedule_seg_refresh(120, background=False)
+                QTimer.singleShot(900, lambda: self._schedule_seg_refresh(
+                    0, background=True))
         elif msg.get("type") == "bridge-ready" and page_id == self._editor_pid:
             # 原编辑器页导航走了（新页面会重新上报身份）
             self._editor_pid = None
@@ -4406,11 +4537,24 @@ class MainWindow(QMainWindow):
             else:
                 self._schedule_seg_refresh(600, background=True)
             return
+        if msg.get("type") == "row-write-result":
+            self._on_row_write_result(data)
+            return
         if msg.get("type") in ("jump-ready", "jump-error"):
             try:
                 row = int(data.get("rowNo") or 0)
             except (TypeError, ValueError):
                 row = 0
+            if row and getattr(self, "_follow_pending_row", None) == row:
+                self._follow_pending_row = None
+                if msg.get("type") == "jump-error":
+                    self.log(f"跟随第 {row} 行缓存失败：{data.get('err') or '未知错误'}")
+                    return
+                self._segments.invalidate()
+                self._schedule_seg_refresh(0, background=True)
+                self.log(f"缓存窗已跟随 memoQ 当前行 {row}（{data.get('windowStart')}–"
+                         f"{data.get('windowEnd')}）")
+                return
             if row and getattr(self, "_jump_pending_row", None) == row:
                 self._jump_pending_row = None
                 if msg.get("type") == "jump-error":
@@ -4491,11 +4635,24 @@ class MainWindow(QMainWindow):
         return bool(getattr(self, "_filter_active", False))
 
     def request_list_rows(self, callback):
-        backend_for(self).list_rows(callback)
+        t0 = time.monotonic()
+
+        def done(raw):
+            if getattr(self, "_first_rows_at", None) is None:
+                self.log(f"段列表接口首次返回：{time.monotonic() - t0:.1f}s")
+            callback(raw)
+        backend_for(self).list_rows(done)
 
     def apply_rows(self, rows):
         """差量更新段模型并恢复当前行选区；返回变化行数。"""
         changed = self.seg_model.update_rows(rows, self._tm_rates)
+        if rows and getattr(self, "_first_rows_at", None) is None:
+            self._first_rows_at = time.monotonic()
+            t0 = getattr(self, "_started_at", None)
+            if t0 is not None:
+                self.log(f"首屏段列表就绪：启动耗时 {self._first_rows_at - t0:.1f}s")
+            if getattr(self, "_engine_visible", False) and self._auto_close_engine_enabled():
+                QTimer.singleShot(400, self._maybe_auto_hide_engine)
         fit_width = getattr(self, "_fit_row_number_width", None)
         if callable(fit_width):
             fit_width()
@@ -4669,6 +4826,29 @@ class MainWindow(QMainWindow):
             return
         btn.setChecked(not btn.isChecked())
 
+    def open_find_replace(self):
+        """打开引擎浮层并派发 memoQ 原生 Ctrl+F（复用其查找/替换/正则能力）。"""
+        caps = getattr(self, "_caps", {})
+        if caps and not caps.get("findReplace"):
+            self.log("当前编辑器不支持原生查找替换（仅新版）")
+            return
+        if not getattr(self, "_engine_visible", False):
+            self._set_engine_visible(True)
+        self.log("已打开 memoQ 原生查找替换；完成后点引擎右上角 × 或 Esc 返回翻译")
+
+        def send():
+            try:
+                backend_for(self).open_find_replace()
+            except Exception as exc:
+                self.log(f"打开查找替换失败：{exc}")
+        QTimer.singleShot(350, send)
+
+    def _set_filter_regex(self, checked):
+        self._filter_regex = bool(checked)
+        self._save_ui_state({"filterRegex": self._filter_regex})
+        self.log("过滤模式：正则（可搜符号；特殊字符按正则语法）" if checked
+                 else "过滤模式：普通包含")
+
     def _apply_filter_from_ui(self):
         if getattr(self, "_filter_busy", False) or self._save_coordinator().busy:
             self.log("正在保存/过滤，请稍候……")
@@ -4762,7 +4942,8 @@ class MainWindow(QMainWindow):
         if clear:
             backend_for(self).clear_filter(done)
         else:
-            backend_for(self).filter_rows(direction, src_text, tgt_text, done)
+            backend_for(self).filter_rows(direction, src_text, tgt_text,
+                                          bool(getattr(self, "_filter_regex", False)), done)
 
     def _after_filter_applied(self, cleared, direction, filter_gen):
         if self._filter_busy or filter_gen != getattr(self, "_filter_gen", filter_gen):
@@ -5066,6 +5247,10 @@ class MainWindow(QMainWindow):
             if rn:
                 self._fetch_segment_info(row_no)
                 self._fetch_res(row_no)
+            # 新版：memoQ 打开时自动选中上次编辑行，左边缓存窗/列表也要跟过去。
+            follow = getattr(self, "_follow_current_row_in_cache", None)
+            if callable(follow):
+                QTimer.singleShot(120, follow)
         backend_for(self).read_segment(done)
 
     def _read_confirmed_next(self, read_gen: int, doc_url: str):
@@ -5138,6 +5323,26 @@ class MainWindow(QMainWindow):
             backend_for(self).refresh_row_cache(row_no)
         except Exception:
             pass
+
+    def _on_row_write_result(self, data):
+        """新版 PUT 行保存成功后立即更新左栏内容/状态，再等确认回执覆盖为最终状态。"""
+        if not data.get("ok"):
+            return
+        try:
+            row_no = int(data.get("rowNo") or 0)
+        except (TypeError, ValueError):
+            return
+        if row_no <= 0:
+            return
+        status = str(data.get("mappedStatus") or "")
+        tgt = data.get("tgt")
+        self.seg_model.set_row_written(row_no, tgt if isinstance(tgt, str) else None,
+                                       status or None)
+        if status:
+            self.log(f"memoQ 已保存第 {row_no} 行（{status}）")
+        select = getattr(self, "_select_current_in_view", None)
+        if callable(select):
+            select()
 
     def _on_row_action(self, data):
         """新版确认/拒绝 HTTP 结果：按行号落状态、刷缓存，并处理确认后跳转。"""

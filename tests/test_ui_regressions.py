@@ -707,4 +707,99 @@ ch.logs.clear()
 ch.copy_source_to_target()
 assert any("没有可复制的原文" in line for line in ch.logs), ch.logs
 
+# 20) 过滤正则开关：记忆到 ui.json，并写状态提示。
+fh2 = Dummy()
+fh2._filter_regex = False
+fh2.saved = []
+fh2.logs = []
+fh2._save_ui_state = lambda patch: fh2.saved.append(dict(patch))
+fh2.log = lambda text: fh2.logs.append(str(text))
+fh2._set_filter_regex = types.MethodType(MainWindow._set_filter_regex, fh2)
+fh2._set_filter_regex(True)
+assert fh2._filter_regex is True and fh2.saved[-1] == {"filterRegex": True}
+assert any("正则" in line for line in fh2.logs), fh2.logs
+
+# 21) memoQ 自动选中行跟随：当前行不在缓存窗时用 jump_rows 换窗，已在表内不折腾。
+fh3 = Dummy()
+fh3._cap_editor = "new"
+fh3._has_loaded_segment = True
+fh3._cur_row = 120
+fh3._filter_active = False
+fh3._follow_pending_row = None
+fh3._follow_retry_count = 0
+fh3.logs = []
+fh3.log = lambda text: fh3.logs.append(str(text))
+fh3.calls = []
+fh3.call_js = lambda expr, cb=None: fh3.calls.append(expr)
+fh3.filter_active = lambda: False
+fh3.seg_model = types.SimpleNamespace(
+    rowCount=lambda: 3,
+    row_no_at=lambda i: 1 + i,
+)
+fh3._follow_current_row_in_cache = types.MethodType(
+    MainWindow._follow_current_row_in_cache, fh3)
+fh3._follow_current_row_in_cache()
+assert fh3._follow_pending_row == 120, fh3._follow_pending_row
+assert fh3.calls and "jumpToRow(120)" in fh3.calls[-1], fh3.calls
+assert any("不在缓存窗" in line for line in fh3.logs), fh3.logs
+# 已在表内 → 不再跳
+fh3.seg_model = types.SimpleNamespace(
+    rowCount=lambda: 3, row_no_at=lambda i: [120, 121, 122][i])
+fh3._follow_pending_row = None
+fh3.calls.clear()
+fh3._follow_current_row_in_cache()
+assert fh3.calls == [] and fh3._follow_pending_row is None
+# 旧版不参与
+fh3._cap_editor = "old"
+fh3._cur_row = 500
+fh3.seg_model = types.SimpleNamespace(rowCount=lambda: 3, row_no_at=lambda i: 1 + i)
+fh3._follow_current_row_in_cache()
+assert fh3.calls == []
+
+# 22) 原生查找替换入口：打开引擎浮层并派发 Ctrl+F。
+from PyQt6.QtCore import QEventLoop, QTimer as _QTimer
+
+
+def _spin(ms):
+    loop = QEventLoop()
+    _QTimer.singleShot(ms, loop.quit)
+    loop.exec()
+
+
+fr = Dummy()
+fr._caps = {"findReplace": True}
+fr._engine_visible = True
+fr.calls = []
+fr.logs = []
+fr.call_js = lambda expr, cb=None: fr.calls.append(expr)
+fr.log = lambda text: fr.logs.append(str(text))
+fr._set_engine_visible = lambda visible: None
+fr.open_find_replace = types.MethodType(MainWindow.open_find_replace, fr)
+fr.open_find_replace()
+_spin(500)
+assert fr.calls and "openFindReplace" in fr.calls[-1], fr.calls
+assert any("查找替换" in line for line in fr.logs), fr.logs
+
+# 23) 新版 PUT 写回结果：左栏立即补上译文预览与状态，不再空白/白色。
+wr = Dummy()
+wr.logs = []
+wr.log = lambda text: wr.logs.append(str(text))
+wr.written = []
+wr.seg_model = types.SimpleNamespace(
+    set_row_written=lambda row, tgt, status: wr.written.append((row, tgt, status)))
+wr._select_current_in_view = lambda: None
+wr._on_row_write_result = types.MethodType(MainWindow._on_row_write_result, wr)
+wr._on_row_write_result({"ok": True, "rowNo": 5, "status": "partiallyEdited",
+                         "mappedStatus": "edited", "tgt": "新译文"})
+assert wr.written == [(5, "新译文", "edited")], wr.written
+assert any("已保存第 5 行" in line for line in wr.logs), wr.logs
+
+# 24) SegModel 写回后内容/状态立即落表；旧缓存快照仍被权威状态挡住。
+fm.set_rows([{"rowNo": 1, "src": "a", "tgt": "", "status": "untranslated"}])
+fm.set_row_written(1, "译文", "edited")
+assert fm._rows[0]["tgt"] == "译文"
+assert fm._status_of(fm._all_rows[0]) == "edited"
+fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "", "status": "untranslated"}])
+assert fm._rows[0]["tgt"] == "译文", "旧缓存不能把刚写入的译文清空"
+
 print("UI_REGRESSIONS_TEST: PASS")

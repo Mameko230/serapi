@@ -51,6 +51,30 @@ function load() {
   };
   const pushes = [];
   const fetches = [];
+  const xhrs = [];
+  function FakeXHR() {
+    this.status = 0;
+    this.responseText = '';
+    this.method = '';
+    this.url = '';
+    this.headers = {};
+  }
+  FakeXHR.prototype.open = function (method, url) {
+    this.method = method;
+    this.url = url;
+  };
+  FakeXHR.prototype.setRequestHeader = function (name, value) {
+    this.headers[name] = value;
+  };
+  FakeXHR.prototype.send = function (body) {
+    xhrs.push(this);
+    this.body = body;
+    this.status = 200;
+    this.responseText = JSON.stringify({
+      type: 'edtr', id: 4, meta: { status: 'partiallyEdited' },
+      source: { symbols: [] }, target: { symbols: [{ type: 1, value: 65 }] },
+    });
+  };
   const context = {
     console, URL, JSON, Date, Promise, Object, Array, String, Number, Boolean, Math,
     parseInt, isFinite, encodeURIComponent, decodeURIComponent,
@@ -65,6 +89,7 @@ function load() {
     document,
     localStorage: { getItem: () => null },
     getSelection: () => null,
+    XMLHttpRequest: FakeXHR,
     qt: { webChannelTransport: {} },
     QWebChannel: function (_transport, callback) {
       callback({ objects: { mdBridge: { push(payload) { pushes.push(payload); } } } });
@@ -86,7 +111,9 @@ function load() {
   context.window = context;
   context.__pushes = pushes;
   context.__fetches = fetches;
+  context.__xhrs = xhrs;
   context.__pm = pm;
+  context.__document = document;
   vm.createContext(context);
   vm.runInContext(SRC, context, { filename: 'bridge.js' });
   return context;
@@ -170,7 +197,28 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
   ctx.fetch = originalFetch;
   ctx.window.fetch = originalFetch;
 
-  // 5) 按行号刷新缓存：rowNo=2 → rowId=1（未渲染行按 rowNo-1 兜底）。
+  // 4) 新版原生查找替换：合成 Ctrl+F 打开 memoQ 自己面板。
+  pm.events.length = 0;
+  const findRet = api.openFindReplace();
+  assert.strictEqual(findRet.ok, true);
+  assert.ok(pm.events.length >= 2, pm.events.length);
+  assert.ok(pm.events.every((e) => e.key === 'f' && e.ctrlKey === true), pm.events);
+
+  // 5) 过滤正则模式：isRegex 只随开关传给服务端。
+  ctx.__fetches.length = 0;
+  api.filterReq('target', '', '-', true);
+  await tick();
+  const freq = ctx.__fetches.find((f) => f.url.endsWith('/filter'));
+  assert.ok(freq, ctx.__fetches.map((f) => f.url));
+  assert.strictEqual(freq.body.filterSet.content.target.isRegex, true);
+  assert.ok(!('isRegex' in (freq.body.filterSet.content.source || {})), freq.body);
+  ctx.__fetches.length = 0;
+  api.filterReq('source', '/', '', false);
+  await tick();
+  const freq2 = ctx.__fetches.find((f) => f.url.endsWith('/filter'));
+  assert.ok(freq2 && !('isRegex' in freq2.body.filterSet.content.source), freq2);
+
+  // 6) 按行号刷新缓存：rowNo=2 → rowId=1（未渲染行按 rowNo-1 兜底）。
   ctx.__fetches.length = 0;
   api.refreshRowCacheByRow(2);
   await tick();
@@ -178,6 +226,58 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
     (f) => f.url.endsWith('/projects/p/docs/d/rows'));
   assert.ok(refreshReq, ctx.__fetches.map((f) => f.url));
   assert.strictEqual(String(JSON.parse(refreshReq.options.body).rowIds), '1');
+
+  // 7) 新版写回必须先 PUT /rows/<id> 落库，成功后才让 SaveCoordinator 回调。
+  const host = makeEl('div');
+  pm.parentElement = host;
+  pm.closest = (sel) => (String(sel).indexOf('ProseMirror') >= 0 ? pm : null);
+  ctx.__document.activeElement = pm;
+  const schema = {
+    marks: {},
+    text: (text) => ({ isText: true, text }),
+    nodes: { tag: { create: (attrs) => ({ type: { name: 'tag' }, attrs }) } },
+  };
+  const doc = {
+    attrs: { rowId: 4, segmentType: 'target', locked: false },
+    forEach() {},
+    content: { size: 0 },
+    textBetween: () => '',
+  };
+  const view = {
+    dom: pm, state: { schema, doc, tr: { replaceWith: () => ({}) } },
+    dispatch() {},
+  };
+  const fiber = {
+    memoizedState: { memoizedState: view, next: null },
+    return: null, stateNode: null, memoizedProps: {},
+  };
+  Object.defineProperty(host, '__reactFiber$test', { value: fiber, enumerable: true });
+  ctx.__document.querySelectorAll = (sel) =>
+    (String(sel).indexOf('ProseMirror') >= 0 ? [pm] : []);
+  ctx.__xhrs.length = 0;
+  ctx.__pushes.length = 0;
+  const written = api.writeSegment([
+    { t: 'text', v: 'AB' },
+    { t: 'tag', name: 'mq:rxt',
+      attrs: { tagType: 1, inlineTagType: 1, name: 'mq:rxt',
+               attributes: [{ type: 1, name: 'val', value: '${a}' }],
+               display: { isSpecial: true, text: '2' } } },
+  ], 4);
+  assert.strictEqual(written.ok, true, written);
+  assert.strictEqual(ctx.__xhrs.length, 1);
+  const xhr = ctx.__xhrs[0];
+  assert.strictEqual(xhr.method, 'PUT');
+  assert.ok(xhr.url.endsWith('/rows/4'), xhr.url);
+  const sent = JSON.parse(xhr.body);
+  assert.strictEqual(sent.side, 'target');
+  assert.deepStrictEqual(sent.symbols.filter((s) => s.type === 1).map((s) => s.value),
+                         [65, 66]);
+  assert.ok(sent.symbols.some((s) => s.type === 2 && s.name === 'mq:rxt'), sent.symbols);
+  const jsonPushes = ctx.__pushes.map((p) => (typeof p === 'string' ? JSON.parse(p) : p));
+  assert.ok(jsonPushes.some((p) => p.type === 'row-write-result'), ctx.__pushes);
+  const wr = jsonPushes.find((p) => p.type === 'row-write-result').data;
+  assert.strictEqual(wr.rowNo, 5);
+  assert.strictEqual(wr.mappedStatus, 'edited');
 
   console.log('NEW_EDITOR_ACTIONS_TEST: PASS (offline only)');
 })().catch((e) => {

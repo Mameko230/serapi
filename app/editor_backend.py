@@ -24,7 +24,7 @@ class EditorBackend(Protocol):
     def list_rows(self, callback) -> None: ...
     def document_stats(self, callback) -> None: ...
     def list_tags(self, row_no, callback) -> None: ...
-    def filter_rows(self, direction, source, target, callback) -> None: ...
+    def filter_rows(self, direction, source, target, regex, callback) -> None: ...
     def clear_filter(self, callback) -> None: ...
     def tm_hits(self, row_no, callback) -> None: ...
     def segment_info(self, row_no, callback) -> None: ...
@@ -74,6 +74,13 @@ class JsBridgeBackend:
         else:
             self._call(expr, callback)
 
+    def open_find_replace(self, callback=None):
+        expr = "JSON.stringify(__md.api.openFindReplace())"
+        if callback is None:
+            self._call(expr)
+        else:
+            self._call(expr, callback)
+
     def refresh_row_cache(self, row_no, callback=None):
         expr = f"JSON.stringify(__md.api.refreshRowCacheByRow({int(row_no)}))"
         if callback is None:
@@ -90,11 +97,12 @@ class JsBridgeBackend:
     def list_tags(self, row_no, callback):
         self._call(f"JSON.stringify(__md.api.listTags({int(row_no)}))", callback)
 
-    def filter_rows(self, direction, source, target, callback):
+    def filter_rows(self, direction, source, target, regex, callback):
         expression = ("JSON.stringify(__md.api.filterReq("
                       + json.dumps(direction, ensure_ascii=False) + ", "
                       + json.dumps(source, ensure_ascii=False) + ", "
-                      + json.dumps(target, ensure_ascii=False) + "))")
+                      + json.dumps(target, ensure_ascii=False) + ", "
+                      + ("true" if regex else "false") + "))")
         self._call(expression, callback)
 
     def clear_filter(self, callback):
