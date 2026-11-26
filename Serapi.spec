@@ -39,6 +39,8 @@ datas = [
     ("app/hits_api.js", "app"),
     ("app/rows_runtime.js", "app"),
     ("app/hits.js", "app"),
+    ("app/lint.js", "app"),
+    ("app/qa_rules.json", "app"),
     ("app/rows_store.js", "app"),
     ("app/rows_api.js", "app"),
     ("app/filter_api.js", "app"),

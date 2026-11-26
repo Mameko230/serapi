@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const APP = path.join(__dirname, '..', 'app');
-const MODULES = ['editor_detect.js', 'symbols.js', 'comments.js', 'hits.js', 'rows_store.js', 'rows_api.js',
+const MODULES = ['editor_detect.js', 'symbols.js', 'comments.js', 'hits.js', 'lint.js', 'rows_store.js', 'rows_api.js',
   'filter_api.js', 'legacy_api.js', 'terms_model.js', 'terms_api.js', 'segment_info.js',
   'concordance_api.js', 'row_ops.js', 'tm_hits.js', 'segment_api.js', 'old_editor.js',
   'segment_view.js', 'capabilities.js', 'new_rows.js', 'row_focus.js', 'old_rows.js',

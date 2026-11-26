@@ -34,6 +34,9 @@ class SegmentSyncPortsMixin:
         timer = getattr(self, "_tb_highlight_timer", None)
         if timer is not None:
             timer.start(120)  # 只本地重算视觉层，不在每次按键后请求 memoQ
+        schedule_qa = getattr(self, "_schedule_qa", None)
+        if callable(schedule_qa):
+            schedule_qa()
 
     def _apply_tb_highlights(self, tb: list, row_no=None):
         """用当前行 memoQ TB 命中同时高亮原文和译文，不改文档内容。"""
@@ -115,6 +118,9 @@ class SegmentSyncPortsMixin:
         remote = list(remote_tokens or [])
         self._remote_tokens = remote
         draft = self._drafts.get(self._editor_url, row_no)
+        clear_qa = getattr(self, "_clear_qa_marks", None)
+        if callable(clear_qa):
+            clear_qa()
         self._loading_editor = True
         try:
             # load_tokens() 会合并文本、省略空 marks、把换行 Tag 转为 newline。
@@ -129,6 +135,12 @@ class SegmentSyncPortsMixin:
         self._edit_rev += 1
         self._has_loaded_segment = True
         self._confirm_busy = False  # 新段已成功落地，允许下一次确认
+        schedule_qa = getattr(self, "_schedule_qa", None)
+        if callable(schedule_qa):
+            schedule_qa(120)
+        refresh_context = getattr(self, "_refresh_context", None)
+        if callable(refresh_context):
+            refresh_context()
         return draft
 
     def _follow_current_row_in_cache(self):

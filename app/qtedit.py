@@ -582,7 +582,37 @@ class MqEditor(QTextEdit):
                     selections.append(selection)
                     occupied[found:end] = b"\x01" * len(term)
                 start = found + 1
-        self.setExtraSelections(selections)
+        self._term_selections = selections
+        self._apply_extra_selections()
+
+    def set_qa_marks(self, lines):
+        """实时 QA 行内标记：只画当前段警告，不改文档、不进 token 流。"""
+        selections = []
+        doc = self.document()
+        for raw in lines or []:
+            try:
+                line_no = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if line_no < 0 or line_no >= doc.blockCount():
+                continue
+            block = doc.findBlockByNumber(line_no)
+            cursor = QTextCursor(block)
+            cursor.select(QTextCursor.SelectionType.LineUnderCursor)
+            sel = QTextEdit.ExtraSelection()
+            sel.cursor = cursor
+            sel.format.setUnderlineStyle(
+                QTextCharFormat.UnderlineStyle.WaveUnderline)
+            sel.format.setUnderlineColor(QColor("#d97706"))
+            sel.format.setBackground(QColor(255, 244, 214, 110))
+            selections.append(sel)
+        self._qa_selections = selections
+        self._apply_extra_selections()
+
+    def _apply_extra_selections(self):
+        self.setExtraSelections(
+            list(getattr(self, "_term_selections", []) or [])
+            + list(getattr(self, "_qa_selections", []) or []))
 
     # ---------- 规则匹配 ----------
     def _match_entry(self, kind: str, name: str, disp: str):

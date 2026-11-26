@@ -29,7 +29,7 @@ assert "fetch(base" not in bridge and "fetch(packed.base" not in bridge, \
 
 # 新页面模块必须被注入与打包，且 README 明确结构红线。
 for name in ("api_client.js", "editor_state.js", "editor_detect.js", "row_status.js", "symbols.js",
-             "comments.js", "hits.js", "rows_store.js", "rows_api.js",
+             "comments.js", "hits.js", "lint.js", "rows_store.js", "rows_api.js",
              "filter_api.js", "legacy_api.js", "terms_model.js", "terms_api.js",
              "segment_info.js", "concordance_api.js", "row_ops.js", "tm_hits.js",
              "segment_api.js", "old_editor.js", "segment_view.js", "capabilities.js",

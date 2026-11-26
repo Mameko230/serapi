@@ -121,6 +121,10 @@ class WindowBackgroundMixin:
             self._shortcuts_panel.keep_inside()
         if getattr(self, "_quick_picker", None) is not None:
             self._quick_picker.resize(self.size())
+        if getattr(self, "_asset_query_overlay", None) is not None:
+            self._asset_query_overlay.resize(self.size())
+        if getattr(self, "_asset_capture_overlay", None) is not None:
+            self._asset_capture_overlay.resize(self.size())
         if getattr(self, "_engine_overlay", None) is not None:
             self._engine_overlay.resize(self.size())
             if getattr(self, "_engine_parked", False):

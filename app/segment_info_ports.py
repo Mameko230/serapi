@@ -39,6 +39,10 @@ class SegmentInfoPortsMixin:
 
     def apply_segment_info(self, info):
         self._update_segment_info(info)
+        try:
+            self._set_context_id((info or {}).get("contextId") or "")
+        except Exception:
+            pass
 
     def tb_detail(self, key):
         return self.res_panel.tb_detail(key)

@@ -66,6 +66,9 @@ from .term_ports import TermPortsMixin
 from .segment_sync_ports import SegmentSyncPortsMixin
 from .editor_ports import EditorPortsMixin
 from .runtime_selftest import RuntimeSelftestMixin
+from .qa_ui import QaUiMixin
+from .context_ui import ContextUiMixin
+from .assets_ui import AssetsUiMixin
 from .window_init import WindowInitMixin
 from .write_policy import WriteIntent, decide as decide_write, state_from_flags
 
@@ -138,7 +141,8 @@ class MainWindow(ReadWorkflowMixin, RowWorkflowMixin, StatsFilterWorkflowMixin,
                  TagRulesUiMixin, TabManagementMixin, CapabilitiesUiMixin,
                  BridgeEventsMixin, ResourcePortsMixin, SegmentInfoPortsMixin,
                  HitPortsMixin, TermPortsMixin, SegmentSyncPortsMixin,
-                 EditorPortsMixin, RuntimeSelftestMixin, WindowInitMixin, QMainWindow):
+                 EditorPortsMixin, RuntimeSelftestMixin, QaUiMixin, ContextUiMixin,
+                 AssetsUiMixin, WindowInitMixin, QMainWindow):
     @property
     def _cur_row(self):
         return self._session.cur_row

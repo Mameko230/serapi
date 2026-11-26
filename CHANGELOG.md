@@ -1,5 +1,20 @@
 # 更新记录
 
+## 1.1.0（2026-11-27）
+
+### 新增
+
+- 实时 QA：当前段真实编辑后跑数字一致性 / Tag 差额 / 全半角 / TB 术语 / 行长规则；右栏汇总 + 行内标记，规则可逐条开关，只警告不自动改文。
+- 游戏语境栏：常驻当前段前后各 2 段与 key/ID；按 speaker/key 聚合本会话角色既往译法，只读。
+- 个人资产：Ctrl+D 本地词典查询（个人库 > ja-zh > ja-ja > 日英兜底，不含 TB），日语活用还原、繁体释义转简体；Ctrl+Shift+D 捕获选区入库，个人库编译为 StarDict，全程本地零外发。
+
+### 工程化
+
+- 新增 `app/lint.js` + `app/qa_rules.json`（纯规则引擎/外置规则）、`app/qa.py`/`qa_ui.py`。
+- 新增 `app/context.py`/`context_ui.py`、`app/assets.py`/`assets_ui.py`。
+- 新增离线 fixture：`tests/test_lint.js`、`test_qa.py`、`test_context.py`、`test_assets.py`。
+- 新增快捷键 Ctrl+D / Ctrl+Shift+D，并登记 SMOKE N16–N24。
+
 ## 1.0.5（2026-11-27）
 
 ### 修复

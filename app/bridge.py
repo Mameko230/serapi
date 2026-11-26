@@ -109,6 +109,8 @@ def install_bridge(page, win) -> int:
          QWebEngineScript.ScriptWorldId.MainWorld),
         ("serapi-hits", (APP_DIR / "hits.js").read_text(encoding="utf-8"),
          QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-lint", (APP_DIR / "lint.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
         ("serapi-rows-store", (APP_DIR / "rows_store.js").read_text(encoding="utf-8"),
          QWebEngineScript.ScriptWorldId.MainWorld),
         ("serapi-rows-api", (APP_DIR / "rows_api.js").read_text(encoding="utf-8"),

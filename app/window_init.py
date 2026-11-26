@@ -310,6 +310,11 @@ class WindowInitMixin:
             FluentIcon.PEOPLE, "账号：切换 memoQ 服务器 / 退出账号", checkable=True)
         self.btn_account.toggled.connect(self._apply_account_visibility)
         primary.addWidget(self.btn_engine); primary.addWidget(self.btn_account)
+        self.btn_assets = self._icon_button(
+            FluentIcon.DICTIONARY,
+            "个人资产：本地词典查询（Ctrl+D）/ 捕获选区（Ctrl+Shift+D）")
+        self.btn_assets.clicked.connect(lambda: self.open_asset_query())
+        primary.addWidget(self.btn_assets)
         self.btn_theme = self._icon_button(
             FluentIcon.PALETTE, "主题：界面风格与编辑器配色", checkable=True)
         self.btn_theme.toggled.connect(self._apply_theme_visibility)
@@ -347,6 +352,7 @@ class WindowInitMixin:
         # ---- 左：段表（memoQ 式双列竖排，常显；状态色底 = 已确认绿/已编辑黄/锁定灰） ----
         self.seg_model = SegModel()
         self.seg_model.set_text_colors(self._pal["body"], self._pal["muted"], self._pal["tm"])
+        self.seg_model.modelReset.connect(self._refresh_context)
         self.seg_table = SegTableView()
         self.seg_table.setModel(self.seg_model)
         self.seg_table.can_activate = (
@@ -597,6 +603,9 @@ class WindowInitMixin:
         center = QWidget(); lay = QVBoxLayout(center); lay.setContentsMargins(12, 8, 12, 8); lay.setSpacing(8)
         lay.addWidget(topbar)
         lay.addWidget(self.vsplit, 1)
+        from .context_ui import ContextPanel
+        self.context_panel = ContextPanel(self)
+        lay.addWidget(self.context_panel)
         lay.addWidget(self.term_warning_box)
         lay.addWidget(self.status)
         center.setObjectName("card")
@@ -624,13 +633,24 @@ class WindowInitMixin:
         self._cc_overlay = None
         sc_cc = QShortcut(QKeySequence("Ctrl+K"), self)
         sc_cc.activated.connect(self._concordance_shortcut)
+        sc_dict = QShortcut(QKeySequence("Ctrl+D"), self)
+        sc_dict.activated.connect(self.open_asset_query)
+        sc_capture = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        sc_capture.activated.connect(self.open_asset_capture)
         self.res_panel.set_status("选中段后自动加载 TM/术语命中")
+        from .qa_ui import QaPanel
+        self.qa_panel = QaPanel(self)
+        self.qa_panel.ruleToggled.connect(self._set_qa_rule)
+        self.qa_panel.issueActivated.connect(self._goto_qa_issue)
+        self.qa_panel.set_config(self._ensure_qa())
+        self.qa_panel.setMaximumHeight(230)
         res_scroll = QScrollArea()
         res_scroll.setWidget(self.res_panel)
         res_scroll.setWidgetResizable(True)
         res_scroll.setFrameShape(QFrame.Shape.NoFrame)
         res_wrap = QWidget(); rw = QVBoxLayout(res_wrap); rw.setContentsMargins(0, 0, 0, 0)
-        rw.addWidget(res_scroll)
+        rw.addWidget(res_scroll, 1)
+        rw.addWidget(self.qa_panel)
         res_wrap.setObjectName("card")
         res_wrap.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         res_wrap.setStyleSheet(

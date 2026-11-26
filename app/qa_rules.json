@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "rules": {
+    "digits": true,
+    "tags": true,
+    "width": true,
+    "terms": true,
+    "lineLength": true
+  },
+  "options": {
+    "digits": {
+      "ignoreYears": false,
+      "minLength": 1
+    },
+    "width": {
+      "checkDigits": true,
+      "checkPunctuation": false
+    },
+    "terms": {
+      "caseSensitive": false
+    },
+    "lineLength": {
+      "weighted": true
+    }
+  }
+}

@@ -1194,6 +1194,8 @@ class ShortcutsOverlay(QWidget):
         ("Ctrl+H", "打开 memoQ 原生查找 / 替换"),
         ("Ctrl+G", "输入行号跳转"),
         ("Ctrl+K", "聚焦语词检索"),
+        ("Ctrl+D", "本地词典查询（个人库优先，不含 TB）"),
+        ("Ctrl+Shift+D", "捕获当前选区到个人资产库"),
         ("Ctrl+1 … Ctrl+9", "插入列表中第 N 条 TM/TB 命中"),
         ("Enter", "编辑区换行（插入换行 tag）"),
         ("Esc", "关闭快捷键 / 设置 / 引擎浮层"),

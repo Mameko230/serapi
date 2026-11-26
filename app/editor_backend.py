@@ -67,6 +67,13 @@ class JsBridgeBackend:
             f"JSON.stringify(__md.api.writeSegment(JSON.parse({json.dumps(inner)})))",
             callback)
 
+    def lint(self, payload, callback):
+        """只读 QA：在页面侧纯函数引擎里跑规则，不进入任何写路径。"""
+        inner = json.dumps(payload or {}, ensure_ascii=False)
+        self._call(
+            f"JSON.stringify(window.__mdLint.analyze(JSON.parse({json.dumps(inner)})))",
+            callback)
+
     def activate_row(self, row_no, callback):
         self._call(f"JSON.stringify(__md.api.activateRow({int(row_no)}))", callback)
 

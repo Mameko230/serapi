@@ -366,6 +366,10 @@ class SegModel(QAbstractTableModel):
             return self._rows[row].get("rowNo")
         return None
 
+    def all_rows(self):
+        """完整缓存快照（不受状态过滤影响），供上下文/读侧功能使用。"""
+        return [dict(r) for r in self._all_rows]
+
     def cached_row_count(self):
         """完整缓存行数（不受状态过滤影响，SegmentSync 用它判断是否需要扩容）。"""
         return len(self._all_rows)

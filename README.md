@@ -40,6 +40,9 @@ Serapi 不替代 memoQ，而是把"正在编辑的这一段"放大成一个干�
 - **安全自动替换候选**：日中日期 / 时间 / 数字；骨架或语义不一致时放弃生成。
 - **本地草稿**：切行自动保存、Ctrl+S 只保存、Ctrl+Enter 保存并确认；版本冲突并列展示。
 - **主题**：界面风格（默认蓝 / 青绿 / 紫罗兰 / 暖橙 / 深色整体）× 编辑器配色（浅色 / 米色 / 深色 / 护眼绿），可独立选择并记忆。
+- **实时 QA**：真实编辑后对当前段跑数字 / Tag / 全半角 / TB 术语 / 行长规则；右栏汇总 + 行内标记，可逐条开关，只警告不自动改文。
+- **游戏语境**：常驻显示当前段前后各 2 段与 key/ID；从 speaker/key 解析角色，聚合本会话同角色既往译法（只读，不请求服务器）。
+- **个人资产**：Ctrl+D 本地词典查询（个人库 > ja-zh > ja-ja > 日英兜底，不含 TB），日语活用还原、繁简展示；Ctrl+Shift+D 把选区一键捕获到个人库，编译为 StarDict，零外发。
 - **账号与服务器**：首次启动填写自己的 memoQ 服务器地址（可起名，如「公司服务器 / 测试环境」），之后可随时切换、改名、删除服务器或退出账号。
 - **检测更新**：每天首次启动静默检查一次 GitHub Release，也可在「账号」浮层手动检测；只提示版本与说明，不自动下载。
 
@@ -79,6 +82,8 @@ py -3 -m venv .venv
 | Ctrl+S | 只保存当前段 |
 | Ctrl+Enter | 保存并确认，跳下一段 |
 | Ctrl+K | 语词检索 |
+| Ctrl+D | 本地词典查询（个人库优先） |
+| Ctrl+Shift+D | 捕获选区到个人资产库 |
 | Ctrl+E | 添加术语 |
 | Ctrl+G | 按行号跳转 |
 | F9 | 插入下一个缺失 Tag |
@@ -120,7 +125,9 @@ memoQ 网页（QWebEngineView）
   ├─ row_status.js      行状态枚举 → 状态列（纯函数）
   ├─ symbols.js         memoQ symbols ↔ 文本/token（纯函数）
   ├─ comments.js        注释文本 / 锚点范围（纯函数）
-  ├─ hits.js            TM/TB 命中 → Serapi 模型（纯函数）
+  ├─ hits.js            TM/TB 命中 → Serapi 模型
+  ├─ lint.js            实时 QA 纯规则引擎
+  ├─ qa_rules.json      QA 规则开关/参数（可替换）（纯函数）
   ├─ rows_store.js      rows 缓存状态 / 单行映射 / 列表投影
   ├─ rows_api.js        rows 网络分页 / 跳窗 / 单行刷新
   ├─ filter_api.js      新版过滤状态 / filterSet / POST
@@ -183,6 +190,9 @@ app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（tok
                         ├─ app/account_panel.py        账号浮层/服务器历史
                         ├─ app/update_lifecycle.py     检查更新/提示/跳过版本
                         ├─ app/ui_style.py             全局 QSS
+                        ├─ app/qa.py / qa_ui.py        实时 QA 规则/面板
+                        ├─ app/context.py / context_ui.py 游戏语境栏
+                        ├─ app/assets.py / assets_ui.py 个人资产/词典
                         ├─ app/tag_rules_ui.py         Tag 规则页显隐/保存
                         ├─ app/tab_management.py       引擎标签页标题/关闭
                         ├─ app/capabilities_ui.py      能力探测结果应用/编辑器 flags
