@@ -490,4 +490,93 @@ assert len(inserts) == inserts_before_enter + 2
 assert inserts[-1]["whole"] is True and inserts[-1]["replaceAll"] is True
 host.close()
 
+# 13) 行号列状态过滤：只影响显示，rowNo/激活不变；过滤状态可持久化。
+fm = SegModel()
+fm.set_rows([
+    {"rowNo": 1, "src": "a", "tgt": "", "status": "untranslated"},
+    {"rowNo": 2, "src": "b", "tgt": "B", "status": "edited"},
+    {"rowNo": 3, "src": "c", "tgt": "C", "status": "rejected", "locked": True},
+    {"rowNo": 4, "src": "d", "tgt": "D", "status": "reviewer1"},
+    {"rowNo": 5, "src": "e", "tgt": "E", "status": "confirmed"},
+])
+assert fm.rowCount() == 5
+fm.set_status_filter(["edited", "rejected"])
+assert fm.rowCount() == 2
+assert [fm.row_no_at(i) for i in range(2)] == [2, 3]
+assert "筛" in fm.headerData(0, Qt.Orientation.Horizontal)
+# 过滤态下差量更新必须保留过滤结果与新文本
+rows = [dict(r) for r in fm._all_rows]
+rows[1]["tgt"] = "B2"
+fm.update_rows(rows)
+assert fm.rowCount() == 2 and fm.row_no_at(0) == 2
+assert fm.index(0, 2).data() == "B2"
+fm.set_status_filter([])
+assert fm.rowCount() == 5
+assert fm.headerData(0, Qt.Orientation.Horizontal) == "行号"
+
+sh = Dummy()
+sh.seg_model = fm
+sh._cur_row = 2
+sh.saved = []
+sh.logs = []
+sh._save_ui_state = lambda patch: sh.saved.append(dict(patch))
+sh.log = lambda text: sh.logs.append(str(text))
+sh._select_current_in_view = lambda: None
+sh._fit_row_number_width = lambda **kwargs: None
+sh._set_status_filter = types.MethodType(MainWindow._set_status_filter, sh)
+sh._set_status_filter(["rejected"])
+assert fm.status_filter() == {"rejected"} and fm.rowCount() == 1
+assert sh.saved[-1] == {"statusFilter": ["rejected"]}
+assert any("状态过滤" in line for line in sh.logs), sh.logs
+
+# 14) 行号列宽度：自动只增不减；用户拖过则完全尊重用户宽度并持久化。
+wh = Dummy()
+wh.seg_table = QTableView()
+wh.seg_model = fm
+wh.seg_table.setModel(fm)
+wh._total_rows = 2150
+wh._col0_user_width = 0
+wh._syncing_col0 = False
+wh.saved = []
+wh._save_ui_state = lambda patch: wh.saved.append(dict(patch))
+wh._fit_row_number_width = types.MethodType(MainWindow._fit_row_number_width, wh)
+wh._on_seg_header_resized = types.MethodType(MainWindow._on_seg_header_resized, wh)
+wh._fit_row_number_width(force=True)
+auto_width = wh.seg_table.horizontalHeader().sectionSize(0)
+assert auto_width >= 52, auto_width
+wh._on_seg_header_resized(0, auto_width, 140)
+assert wh._col0_user_width == 140 and wh.saved[-1] == {"segCol0Width": 140}
+wh._fit_row_number_width(force=True)
+assert wh.seg_table.horizontalHeader().sectionSize(0) == 140
+wh._syncing_col0 = True
+wh._on_seg_header_resized(0, 140, 90)   # 程序化调整不得覆盖用户宽度
+assert wh._col0_user_width == 140
+wh._syncing_col0 = False
+
+# 15) 术语数量提醒：提示出现/消失不改变固定高度容器，避免闪动与光标跳。
+from PyQt6.QtWidgets import QVBoxLayout, QLabel
+whost = Dummy()
+whost.term_warning = QLabel()
+whost.term_warning.hide()
+wbox = QWidget()
+wbox.setFixedHeight(22)
+wl = QVBoxLayout(wbox)
+wl.setContentsMargins(0, 0, 0, 0)
+wl.addWidget(whost.term_warning)
+wbox.show()
+app.processEvents()
+box_h = wbox.height()
+whost.src_view = types.SimpleNamespace(toPlainText=lambda: "a a")
+whost.editor = types.SimpleNamespace(toPlainText=lambda: "a")
+whost._tb_hits = [{"s": "a", "t": "b"}]
+whost._update_term_count_warning = types.MethodType(
+    MainWindow._update_term_count_warning, whost)
+whost._update_term_count_warning()
+assert whost.term_warning.isVisible() and wbox.height() == box_h
+whost._update_term_count_warning()   # 相同内容不重复触发
+assert whost.term_warning.isVisible()
+whost._tb_hits = []
+whost._update_term_count_warning()
+assert not whost.term_warning.isVisible() and wbox.height() == box_h
+
 print("UI_REGRESSIONS_TEST: PASS")

@@ -2,7 +2,7 @@
 """主窗口：左工作区（段列表/编辑器/状态栏），右引擎区（memoQ WebTrans 真页面）"""
 import json
 
-from PyQt6.QtCore import Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint
 from PyQt6.QtWidgets import (
     QMainWindow, QSplitter, QTabWidget, QPlainTextEdit,
     QTextEdit, QVBoxLayout, QWidget, QLabel, QLineEdit, QHBoxLayout,
@@ -133,11 +133,46 @@ class SegModel(QAbstractTableModel):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._all_rows = []
         self._rows = []
+        self._status_filter = set()
         self._pending_status = {}
         self.text_color = "#334155"
         self.muted_color = "#94a3b8"
         self.tm_color = "#1d4ed8"
+
+    # ---------------- 行状态过滤（仅影响显示，不改 rowNo/激活逻辑） ----------------
+    def _match_status_filter(self, row: dict) -> bool:
+        if not self._status_filter:
+            return True
+        if "locked" in self._status_filter and row.get("locked"):
+            return True
+        return self._status_of(row) in self._status_filter
+
+    def _rebuild_visible_rows(self):
+        self._rows = [r for r in self._all_rows if self._match_status_filter(r)]
+
+    def set_status_filter(self, values):
+        values = {str(v) for v in (values or []) if str(v)}
+        if values == self._status_filter:
+            return len(self._rows)
+        self.beginResetModel()
+        self._status_filter = values
+        self._rebuild_visible_rows()
+        self.endResetModel()
+        return len(self._rows)
+
+    def status_filter(self):
+        return set(self._status_filter)
+
+    def status_counts(self):
+        counts = {}
+        for row in self._all_rows:
+            st = self._status_of(row)
+            counts[st] = counts.get(st, 0) + 1
+            if row.get("locked"):
+                counts["locked"] = counts.get("locked", 0) + 1
+        return counts
 
     def set_text_colors(self, text_color, muted_color, tm_color=None):
         """主题切换时更新文字色，保证深色下可读。"""
@@ -152,13 +187,14 @@ class SegModel(QAbstractTableModel):
 
     def set_rows(self, rows, tm_rates=None):
         self.beginResetModel()
-        self._rows = list(rows)
+        self._all_rows = list(rows)
         self._pending_status.clear()
         if tm_rates:
-            for r in self._rows:
+            for r in self._all_rows:
                 rate = tm_rates.get(r.get("rowNo"))
                 if rate is not None:
                     r["tmRate"] = rate
+        self._rebuild_visible_rows()
         self.endResetModel()
 
     def update_rows(self, rows, tm_rates=None) -> int:
@@ -169,14 +205,14 @@ class SegModel(QAbstractTableModel):
                 rate = tm_rates.get(row.get("rowNo"))
                 if rate is not None:
                     row["tmRate"] = rate
-        old_numbers = [r.get("rowNo") for r in self._rows]
+        old_numbers = [r.get("rowNo") for r in self._all_rows]
         new_numbers = [r.get("rowNo") for r in incoming]
         if old_numbers != new_numbers:
             self.set_rows(incoming)
             return len(incoming)
         changed = 0
         for i, row in enumerate(incoming):
-            old = self._rows[i]
+            old = self._all_rows[i]
             row_no = row.get("rowNo")
             new_status = row.get("status")
             old_status = old.get("status")
@@ -191,25 +227,41 @@ class SegModel(QAbstractTableModel):
                 self._pending_status.pop(row_no, None)
             if row == old:
                 continue
-            self._rows[i] = row
-            self.dataChanged.emit(self.index(i, 0), self.index(i, 3))
+            self._all_rows[i] = row
             changed += 1
+        if not self._status_filter:
+            for i in range(min(len(self._all_rows), len(self._rows))):
+                if self._rows[i] is not self._all_rows[i]:
+                    self._rows[i] = self._all_rows[i]
+                    self.dataChanged.emit(self.index(i, 0), self.index(i, 3))
+        else:
+            # 过滤态：可见行可能变化，整体重建一次（行数仍为缓存窗大小，可接受）。
+            self.beginResetModel()
+            self._rebuild_visible_rows()
+            self.endResetModel()
         return changed
 
     def set_tm_rate(self, row_no: int, rate):
         """只更新当前已查询行的 TM 单元格，不重置整张表、不抢选择。"""
-        for i, r in enumerate(self._rows):
+        for r in self._all_rows:
             if r.get("rowNo") == row_no:
                 r["tmRate"] = rate
-                idx = self.index(i, 3)
-                self.dataChanged.emit(idx, idx, [Qt.ItemDataRole.DisplayRole,
-                                                 Qt.ItemDataRole.ToolTipRole])
+                for i, view in enumerate(self._rows):
+                    if view.get("rowNo") == row_no:
+                        idx = self.index(i, 3)
+                        self.dataChanged.emit(idx, idx, [Qt.ItemDataRole.DisplayRole,
+                                                         Qt.ItemDataRole.ToolTipRole])
+                        break
                 return
 
     def row_no_at(self, row: int):
         if 0 <= row < len(self._rows):
             return self._rows[row].get("rowNo")
         return None
+
+    def cached_row_count(self):
+        """完整缓存行数（不受状态过滤影响，SegmentSync 用它判断是否需要扩容）。"""
+        return len(self._all_rows)
 
     def rowCount(self, parent=None):
         return 0 if parent and parent.isValid() else len(self._rows)
@@ -280,7 +332,14 @@ class SegModel(QAbstractTableModel):
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+            if section == 0 and self._status_filter:
+                return "行号 · 筛"
             return ("行号", "原文", "译文", "匹配度")[section]
+        if (orientation == Qt.Orientation.Horizontal
+                and role == Qt.ItemDataRole.ToolTipRole and section == 0):
+            if self._status_filter:
+                return "行号列已启用状态过滤（点击行号表头调整）"
+            return "点击行号表头可按状态过滤"
         return None
 
 
@@ -1837,10 +1896,27 @@ class MainWindow(QMainWindow):
             f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 8px 10px; color: {pal['header']};"
             f" font-weight: normal; font-size: 12px; }}")
         hh = self.seg_table.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        # 行号列不用 ResizeToContents：内容变化会让列宽来回跳、拖宽也会被重置。
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._syncing_col0 = False
+        _ui = self._load_ui_state()
+        try:
+            self._col0_user_width = int(_ui.get("segCol0Width") or 0)
+        except (TypeError, ValueError):
+            self._col0_user_width = 0
+        self._col0_digits = 0
+        hh.sectionResized.connect(self._on_seg_header_resized)
+        hh.sectionClicked.connect(self._on_seg_header_clicked)
+        saved_status_filter = _ui.get("statusFilter") or []
+        allowed_status = {"untranslated", "edited", "confirmed", "reviewer1",
+                          "reviewer2", "rejected", "locked"}
+        if isinstance(saved_status_filter, list):
+            self.seg_model.set_status_filter(
+                [str(x) for x in saved_status_filter if str(x) in allowed_status])
+        self._fit_row_number_width(force=True)
         self.seg_table.clicked.connect(self._on_seg_clicked)
         seg_wrap = QWidget(); sh = QVBoxLayout(seg_wrap); sh.setContentsMargins(0, 0, 0, 0)
         sh.addWidget(self.seg_table)
@@ -1918,12 +1994,19 @@ class MainWindow(QMainWindow):
         self.seg_split.setHandleWidth(8)
         self.seg_split.setStyleSheet("QSplitter::handle { background: rgba(100,116,139,35);"
                                      " border-radius: 4px; margin: 12px 3px; }")
+        # 固定高度容器：提醒出现/消失时不再改变编辑区布局，避免画面闪动和光标跳动。
+        self.term_warning_box = QWidget()
+        self.term_warning_box.setFixedHeight(22)
+        _wb = QHBoxLayout(self.term_warning_box)
+        _wb.setContentsMargins(0, 0, 0, 0); _wb.setSpacing(0)
         self.term_warning = QLabel()
         self.term_warning.setWordWrap(False)
         self.term_warning.setStyleSheet(
             "QLabel { color:#92400e; background:#fef3c7; border:1px solid #f3d58a;"
-            " border-radius:8px; padding:5px 10px; }")
+            " border-radius:8px; padding:2px 10px; }")
         self.term_warning.setVisible(False)
+        _wb.addWidget(self.term_warning)
+        _wb.addStretch(1)
         self.status = QLineEdit()
         self.status.setReadOnly(True)
         self.status.setText("—")
@@ -2020,7 +2103,7 @@ class MainWindow(QMainWindow):
         center = QWidget(); lay = QVBoxLayout(center); lay.setContentsMargins(12, 8, 12, 8); lay.setSpacing(8)
         lay.addWidget(topbar)
         lay.addWidget(self.vsplit, 1)
-        lay.addWidget(self.term_warning)
+        lay.addWidget(self.term_warning_box)
         lay.addWidget(self.status)
         center.setObjectName("card")
         center.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -2428,6 +2511,9 @@ class MainWindow(QMainWindow):
             if source_count > 0 and target_count != source_count:
                 messages.append(f"缺少【{source}】术语（原文 {source_count} 次 / 译文 {target_count} 次）")
         text = "术语数量提醒：" + "；".join(messages) if messages else ""
+        if (warning.text() == text and warning.toolTip() == text
+                and warning.isVisible() == bool(messages)):
+            return
         warning.setText(text)
         warning.setToolTip(text)
         warning.setVisible(bool(messages))
@@ -4073,17 +4159,116 @@ class MainWindow(QMainWindow):
     def apply_rows(self, rows):
         """差量更新段模型并恢复当前行选区；返回变化行数。"""
         changed = self.seg_model.update_rows(rows, self._tm_rates)
+        fit_width = getattr(self, "_fit_row_number_width", None)
+        if callable(fit_width):
+            fit_width()
         # 结构变化时恢复当前行；普通差量更新不碰选择、不触发行切换。
         # 键盘切行读取完成前 _activating_row 非空：绝不提前移动选区。
         if getattr(self, "_activating_row", None) is None:
-            for i, row in enumerate(rows):
-                if row.get("rowNo") != self._cur_row:
-                    continue
+            idx = -1
+            for i in range(self.seg_model.rowCount()):
+                if self.seg_model.row_no_at(i) == self._cur_row:
+                    idx = i
+                    break
+            if idx >= 0:
                 selected = self.seg_table.selectionModel().selectedRows()
-                if not selected or selected[0].row() != i:
-                    self.seg_table.selectRow(i)
-                break
+                if not selected or selected[0].row() != idx:
+                    self.seg_table.selectRow(idx)
         return changed
+
+    # ---------------- 行号列：宽度保持 + 行状态过滤 ----------------
+    def _on_seg_header_resized(self, logical, _old, new):
+        if logical != 0 or getattr(self, "_syncing_col0", False):
+            return
+        try:
+            self._col0_user_width = int(new)
+            self._save_ui_state({"segCol0Width": int(new)})
+        except Exception:
+            pass
+
+    def _on_seg_header_clicked(self, section):
+        if section == 0:
+            self._show_status_filter_menu()
+
+    def _fit_row_number_width(self, force: bool = False):
+        """行号列只增不减地按位数给最小宽度；用户拖过就完全尊重用户宽度。"""
+        hh = self.seg_table.horizontalHeader()
+        try:
+            total = max(1, int(self._total_rows or 0))
+        except (TypeError, ValueError):
+            total = 1
+        digits = max(3, len(str(total)))
+        fm = self.seg_table.fontMetrics()
+        need = fm.horizontalAdvance("9" * digits + "  R1") + 34
+        need = max(52, min(160, need))
+        user = int(getattr(self, "_col0_user_width", 0) or 0)
+        target = user or need
+        cur = hh.sectionSize(0)
+        if not force and cur >= target:
+            return
+        self._syncing_col0 = True
+        try:
+            hh.resizeSection(0, target)
+        finally:
+            self._syncing_col0 = False
+
+    def _show_status_filter_menu(self):
+        menu = QMenu(self)
+        counts = self.seg_model.status_counts()
+        current = self.seg_model.status_filter()
+        options = [("untranslated", "未编辑"), ("edited", "已编辑"),
+                   ("confirmed", "译者已确认"), ("reviewer1", "审校1已确认"),
+                   ("reviewer2", "审校2已确认"), ("rejected", "已拒绝"),
+                   ("locked", "已锁定")]
+        for key, name in options:
+            act = menu.addAction(f"{name}（{counts.get(key, 0)}）")
+            act.setCheckable(True)
+            act.setChecked(key in current)
+            act.toggled.connect(
+                lambda checked, k=key: self._on_status_filter_action(k, checked))
+        menu.addSeparator()
+        clear_act = menu.addAction("清除状态过滤")
+        clear_act.setEnabled(bool(current))
+        clear_act.triggered.connect(lambda: self._set_status_filter([]))
+        hh = self.seg_table.horizontalHeader()
+        menu.exec(self.seg_table.mapToGlobal(QPoint(0, hh.height())))
+
+    def _on_status_filter_action(self, key, checked):
+        values = self.seg_model.status_filter()
+        if checked:
+            values.add(key)
+        else:
+            values.discard(key)
+        self._set_status_filter(sorted(values))
+
+    def _set_status_filter(self, values):
+        n = self.seg_model.set_status_filter(values)
+        try:
+            self._save_ui_state(
+                {"statusFilter": sorted(self.seg_model.status_filter())})
+        except Exception:
+            pass
+        self._fit_row_number_width(force=True)
+        self._select_current_in_view()
+        names = {"untranslated": "未编辑", "edited": "已编辑", "confirmed": "已确认",
+                 "reviewer1": "审校1", "reviewer2": "审校2", "rejected": "已拒绝",
+                 "locked": "已锁定"}
+        active = [names.get(v, v) for v in sorted(self.seg_model.status_filter())]
+        self.log("状态过滤：" + ("、".join(active) if active else "全部") + f"（{n} 行）")
+
+    def _select_current_in_view(self):
+        idx = -1
+        for i in range(self.seg_model.rowCount()):
+            if self.seg_model.row_no_at(i) == self._cur_row:
+                idx = i
+                break
+        if idx < 0:
+            self.seg_table.clearSelection()
+            return
+        selected = self.seg_table.selectionModel().selectedRows()
+        if not selected or selected[0].row() != idx:
+            self.seg_table.selectRow(idx)
+        self.seg_table.scrollTo(self.seg_model.index(idx, 0))
 
     def schedule_refresh(self, delay: int, background: bool = True):
         self._schedule_seg_refresh(delay, background=background)
@@ -4092,7 +4277,7 @@ class MainWindow(QMainWindow):
         return self.seg_table.verticalScrollBar().maximum()
 
     def cached_rows(self):
-        return self.seg_model.rowCount()
+        return self.seg_model.cached_row_count()
 
     def nudge_scroll(self):
         self._on_seg_scroll(self.seg_table.verticalScrollBar().value())

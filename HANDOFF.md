@@ -113,6 +113,9 @@
   - `HitCoordinator` 增加了 Qt 侧轮询兜底（首次 pending 时用 QTimer 轮询 `tmHitsPoll`，不依赖页面定时器；页面隐藏时 setTimeout 会被冻结/节流）。
   - **确认/拒绝（原生快捷键）**：新版 Ctrl+Enter 确认、Shift+Enter 拒绝都通过合成 `KeyboardEvent` 派发给 ProseMirror（`newDispatchEditorShortcut`），由 memoQ 自己处理确认/拒绝、状态更新和“确认后跳转”原生设置；Qt 侧仍是先保存编辑再派发，成功后 700ms 刷新行缓存、450ms 兜底读取活动行。旧版继续对隐藏输入框派发 Ctrl/Shift+Enter。
   - **新版行状态映射**：`row.meta.status` 是 camelCase 枚举（notStarted/edited/trConfirmed/manuallyConfirmed/reviewer1Confirmed/reviewer2Confirmed/rejected/assembled/preTranslated*/machineTranslated 等），按正则映射到段模型状态（reviewer1/reviewer2/rejected/confirmed/edited/untranslated）。
+  - **行号列状态过滤**：点击行号表头弹出状态菜单（未编辑/已编辑/含审校/已拒绝/已锁定，多选），只过滤段表显示，不改 rowNo/激活逻辑；选择持久化到 `ui.json(statusFilter)`，表头显示“行号 · 筛”。`SegmentSync.cached_rows()` 用完整缓存数，过滤不会误导自动扩容。
+  - **行号列宽度**：表头 col0 改 `Interactive`，不再 `ResizeToContents`；按行号位数只增不减地给最小宽度，用户拖动后完全尊重用户宽度并保存 `ui.json(segCol0Width)`，编辑/状态变化不再抖回。
+  - **术语数量提醒**：放进固定高度容器，出现/消失不再改变编辑区布局；文本/可见性没变化直接跳过，减少重绘与光标跳动。
   - **长文档跳行（小缓存窗）**：`jumpToRow(rowNo)` 直接 `POST /rows` 拉目标附近约 100 行（`rowNo-33` 起、不足时贴尾）替换 API 缓存窗，push `jump-ready`；MainWindow 收到后刷新段列表并延迟激活目标行。段列表显示原始行号（允许缺口），滚到底继续按 `st.next` 向下扩批；过滤状态下暂不支持跳行，回退普通激活。旧版跳行逻辑不变。
   - **主面板设置入口**：`SettingsPanel`（悬浮卡片）先放“确认后跳转”：follow（默认，跟随 memoQ 原生设置，含 settingsBased）/ next / previous / stay；保存到 `appconfig.jump_mode`。follow 完全交给原生 Ctrl+Enter；其它模式在确认后 900ms 校正目标行（新编辑器走 `jumpToRow` 小缓存窗）。后续设置项直接往这个面板加。
   - **过滤（原生 filter API，只读视图）**：`POST /api/editor/.../filter`，body `{filterSet:{content:{source:{text,isCaseSensitive:false,matchType:'any',shouldMatchExactWordOrder:false}, target:{...}, shouldIncludeSegments:true}}, sorting:'none'}` → `{rangesByRowIds:[{key: rowId, value:[ranges]}]}`；`key` 就是命中的 0 基 rowId。过滤后 `listRows` 只按命中 rowId 取行（`total`=命中数，行号保留原始 rowId+1，与旧版一致）；清除过滤用空 `filterSet:{}`。失败会 push `filter-error`，Qt 恢复过滤 UI 状态。
@@ -120,7 +123,7 @@
   - **行数据 API（已用于段列表）**：`POST /api/editor/projects/<prj>/docs/<doc>/rows`，body `{rowIds:[...], scope:'metaOnly'|'entireRow'}` → 返回 `[{type,id,meta:{matchRate,status,isLocked,...},source:{symbols},target:{symbols}}]`。每批 100 行；`id` 即 0 基 rowId。
   - 真机验证：术语文档 5 行、长文档 2150 行；长文档段列表 API 首次 100 行、加载更多 200 行，**行号连续无缺口**（应用日志“已缓存 100/200”，界面可见连续原文/译文）；长文档 `activateRow(100)` 后 `readSegment` 返回 `rowNo=100`；第 5 行命中 1 条 TM + 5 条 TB 术语，TB 详情显示条目 2487（只读）、原文「強化」/译文「強化哦」、定义/示例/字段（Subject: SNACK、Note: 111），底部“术语数量提醒”正常；第 3 行 5 条 TM（101/65%…）；第 4 行 TM 101% 命中带 3 个 tag（`strictTags=true/readOnly=false`，src/tgt tokens 各 4）；新版段信息接口返回 200，注释为空（测试文档无注释）；原文过滤实测命中 1 行（rowNo 3）、清除后恢复 5 行；P0 修复后切到第 5 行等 7 秒，TM/TB 命中列表 6 行仍在、详情同屏。
 - **只读保护**：新版 TB 条目一律 `readOnly: true`（详情只读、不带旧版编辑接口）；TM 命中不再因 tag 问题整条只读：正常插入并可略过原文没有的 tag；`_res_insert` 仍拒绝 `readOnly` 命中。TM 插入离线契约已覆盖，真机插入冒烟可由用户双击验证。
-- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；确认/拒绝通过合成原生快捷键实现，真机尚未冒烟；自定义跳转模式（next/previous/stay）是对原生跳转的事后校正，可能看到一次多余跳转；TB 命中详情只读（定义/示例/字段来自命中数据，术语编辑接口未接）；段信息只有注释，没有上下文/原始 ID（新版不提供）。
+- **已知限制**：段列表每批 100 行按需加载；跳行只替换缓存窗、上方不自动回补（再跳一次即可），过滤状态下暂不支持跳行；行状态过滤只作用于已加载的缓存窗；虚拟网格切行仍是估算滚动 + 重试，跳远行靠 `readSegment` 轮询聚焦；过滤只支持原文/译文“包含”匹配（matchType=any，不支持正则/大小写/状态/标签）；TM 插入真机尚未人工冒烟；确认/拒绝通过合成原生快捷键实现，真机尚未冒烟；自定义跳转模式（next/previous/stay）是对原生跳转的事后校正，可能看到一次多余跳转；TB 命中详情只读（定义/示例/字段来自命中数据，术语编辑接口未接）；段信息只有注释，没有上下文/原始 ID（新版不提供）。
 - **UI 修复**：过滤漏斗从“空文本 PillPushButton + 固定宽”改为 `TransparentToolButton(FluentIcon.FILTER)`，避免图标被裁成一条；已用真实 Windows 渲染对比确认。过滤栏固定 34px 单行高、控件高 28px、去掉“原文/译文”标签改用占位符，并把多余垂直空间交给段列表（`addWidget(..., 0/1)`），不再展开成一大片空白。
 
 ## 关键红线
@@ -170,10 +173,8 @@ python -u -m app.main --roundtrip=<授权文档URL> --probejs=<本地探针.js>
 
 ## 下一步（按顺序）
 
-1. 行号列按状态过滤（段模型层多选过滤，不影响 rowNo/激活）。
-2. 行号列拖动抖动（表头 ResizeToContents 改交互式+持久宽度）与术语数量提醒闪动（固定高度/节流）。
-3. TB 术语编辑：复用旧 `QTermService/UpdateEntry`，新版 projectGuid 从 URL 取、tbGuid/entryId 从命中取；只读库判断与还原。
-4. 全量测试后真机冒烟（tag/术语/确认/拒绝/跳转/过滤/设置）；发版等用户明确指示。
+1. TB 术语编辑：复用旧 `QTermService/UpdateEntry`，新版 projectGuid 从 URL 取、tbGuid/entryId 从命中取；只读库判断与还原。
+2. 全量测试后真机冒烟（tag/术语/确认/拒绝/跳转/过滤/设置/编辑）；发版等用户明确指示。
 
 不要等全部接完才收尾：每个能力都要先过 `--full`，并在真实页面做只读验证后再提交。
 
