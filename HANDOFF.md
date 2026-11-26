@@ -8,7 +8,7 @@
 - GitHub：`Mameko230/serapi`（public）
 - 当前版本：`1.0.0`（`app/version.py`）
 - 适配基线：memoQ WebTrans **12.5.20**（此前抓包/回归确认）；没有版本白名单，靠能力探测 + 结构指纹。
-- 当前提交：`d987659` 重构第一步：抽出 EditorSession 状态边界
+- 当前提交：`b4dd258` 重构第二步：抽出 SaveCoordinator 保存状态机
 - Release/tag：**无**（发版必须等用户明确说）
 - 本地目录：仍叫 `memodesk`；远程仓库已是 Serapi
 - 配置目录：沿用历史路径 `~/.memodesk/`（登录态、草稿、Tag 规则）；这是兼容路径，不要随手改
@@ -35,17 +35,24 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 15/15 约 21s；full 32/32 约 55s。
+   - 最近结果：fast 16/16 约 26s；full 33/33 约 53–67s。
 
 ### 重构第一步
 
 - `app/editor_session.py`：`EditorSession` 承接当前行、读取代际、激活行、装载标志。
 - `MainWindow` 通过私有属性代理到 session；旧测试 Host 仍有 fallback。
-- 这是拆分 `mainwindow.py` 的第一刀，后续继续抽 `SaveCoordinator`、段列表/详情/浮层。
+
+### 重构第二步
+
+- `app/save_coordinator.py`：`SaveCoordinator` 承接保存、冲突、切行前保存的状态机（busy / 保存代际 / pending_row / 冲突快照）。
+- 决策与落地分离：协调器只判断“何时读远端、是否允许写回、迟到回包丢弃、冲突后怎么做”；取值、草稿、桥接调用、浮层由 `MainWindow` 以端口方法实现（`has_loaded_segment` / `save_snapshot` / `put_draft` / `request_remote` / `request_write` / `apply_written` / `open_conflict` / `adopt_remote_version` / `activate_row_now` / `refresh_rows` 等）。
+- `MainWindow.save_segment`、`_resolve_save_conflict` 现在是委托；`_save_busy` / `_save_seq` / `_active_save_id` / `_pending_row` / `_save_conflict_*` 属性已删除，统一读 `self._save.*`。
+- 新增 `tests/test_save_coordinator.py`：纯 Python 假 port，锁定写回前置条件、JSON/非法回包解析、换文档/重置后的迟到回包丢弃、冲突 local/remote/dismiss 与切行目标语义。
 
 ## 关键红线
 
 - **防抖动**：`_cur_row` 是权威行；`_activating_row` 期间忽略 `row-changed`；`_seg_sync_seq` / `_read_gen` 丢弃过期快照；程序化 `selectRow` 不得反向触发激活。
+- **保存状态**只在 `SaveCoordinator` 里（`busy` / `seq+active_id` / `pending_row` / `conflict_snapshot`）；`MainWindow` 只实现端口，不要在端口里另做保存时机判断。
 - 切行/保存/确认/过滤/草稿冲突属于红线；改动后跑 `--full`。
 - 写回前必须核对行号与远端快照；宁可拒绝，不允许静默写错。
 - 浮层一律用窗口内 `QWidget`，**不要用 QDialog**（当前 Qt 环境会 fail-fast）。
@@ -72,12 +79,11 @@ python tests/run_all.py --only test_seg_nav.py --only test_filter.js
 
 ## 下一步（按顺序）
 
-1. **SaveCoordinator**：抽保存、冲突、切行前保存；保持现有回调和防抖动语义。
-2. **段列表 / 详情 / 浮层协调**继续从 `MainWindow` 拆出。
-3. 定义 **EditorBackend** 接口（旧版先实现），把新版编辑器作为独立后端接入。
-4. 再做新版编辑器完整支持（行列表、TM/TB、术语、过滤等）。
+1. **段列表 / 详情 / 浮层协调**继续从 `MainWindow` 拆出（`refresh_seg_list`、`_load_more_rows`、`_apply_hits`、`ResPanel` 交互等）。
+2. 定义 **EditorBackend** 接口（旧版先实现），把新版编辑器作为独立后端接入。
+3. 再做新版编辑器完整支持（行列表、TM/TB、术语、过滤等）。
 
-不要等 `mainwindow.py` 全部拆完才做新版；拆到 EditorBackend + 保存/段状态两个边界即可。
+不要等 `mainwindow.py` 全部拆完才做新版：保存与读取代际两个边界已经就位，拆到 EditorBackend + 段状态即可开始接新版。
 
 ## 本地目录/工作区
 
@@ -93,9 +99,10 @@ python tests/run_all.py --only test_seg_nav.py --only test_filter.js
 
 1. `README.md`、`TESTING.md`
 2. `app/editor_session.py`
-3. `app/bridge.js` 顶部的 `PAGE` / `capabilities` / `fingerprint`
-4. `app/mainwindow.py` 的 `_reset_editor_context`、`activate_row`、`read_segment`、`save_segment`
-5. `tests/test_capabilities.js`、`tests/test_capabilities_ui.py`
+3. `app/save_coordinator.py`（保存/冲突状态机；端口在哪、代际怎么算）
+4. `app/bridge.js` 顶部的 `PAGE` / `capabilities` / `fingerprint`
+5. `app/mainwindow.py` 的 `_reset_editor_context`、`activate_row`、`read_segment`、保存端口方法区、`save_segment`（委托）
+6. `tests/test_save_coordinator.py`、`tests/test_capabilities.js`、`tests/test_capabilities_ui.py`
 
 ## 发版规则
 
