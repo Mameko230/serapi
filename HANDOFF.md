@@ -8,7 +8,7 @@
 - GitHub：`Mameko230/serapi`（public）
 - 当前版本：`1.0.0`（`app/version.py`）
 - 适配基线：memoQ WebTrans **12.5.20**（此前抓包/回归确认）；没有版本白名单，靠能力探测 + 结构指纹。
-- 当前提交：`374808d` 新版接入：TM 命中只读展示与行号校验
+- 当前提交：`f5b6cef` 新版接入：TM/TB 命中改走文档 API，术语条目可用
 - Release/tag：**无**（发版必须等用户明确说）
 - 本地目录：仍叫 `memodesk`；远程仓库已是 Serapi
 - 配置目录：沿用历史路径 `~/.memodesk/`（登录态、草稿、Tag 规则）；这是兼容路径，不要随手改
