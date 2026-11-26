@@ -16,6 +16,7 @@ from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEngineS
 
 from .bridge import install_bridge
 from .drafts import DraftStore
+from .editor_session import EditorSession
 from . import appconfig, tooltips
 from .overlays import AccountOverlay, ThemePanel, UpdateOverlay
 from .updater import (
@@ -1520,9 +1521,50 @@ class EngineView(QWebEngineView):
 
 
 class MainWindow(QMainWindow):
+    @property
+    def _cur_row(self):
+        return self._session.cur_row
+
+    @_cur_row.setter
+    def _cur_row(self, value):
+        self._session.cur_row = int(value)
+
+    @property
+    def _read_gen(self):
+        return self._session.read_gen
+
+    @_read_gen.setter
+    def _read_gen(self, value):
+        self._session.read_gen = int(value)
+
+    @property
+    def _activating_row(self):
+        return self._session.activating_row
+
+    @_activating_row.setter
+    def _activating_row(self, value):
+        self._session.activating_row = None if value is None else int(value)
+
+    @property
+    def _has_loaded_segment(self):
+        return self._session.has_loaded_segment
+
+    @_has_loaded_segment.setter
+    def _has_loaded_segment(self, value):
+        self._session.has_loaded_segment = bool(value)
+
+    @property
+    def _loading_editor(self):
+        return self._session.loading_editor
+
+    @_loading_editor.setter
+    def _loading_editor(self, value):
+        self._session.loading_editor = bool(value)
+
     def __init__(self, selftest: bool = False, rt_url: str | None = None,
                  probe_js: str | None = None, rt_row: int = 1, rt_modify: bool = False):
         super().__init__()
+        self._session = EditorSession()
         self.setWindowTitle("Serapi · memoQ 外置编辑器")
         self.resize(1440, 900)
         # 应用级配置 + 主题基座：外层明暗 + 主题色（acrylic 玻璃的前提）
@@ -2253,7 +2295,11 @@ class MainWindow(QMainWindow):
 
     def _next_read_gen(self) -> int:
         """读段代际号 +1 并返回；异步回调落地前必须比对 self._read_gen"""
-        self._read_gen += 1
+        session = getattr(self, "_session", None)
+        if session is not None:
+            return session.next_read_gen()
+        # 兼容只绑定部分方法的测试 Host
+        self._read_gen = getattr(self, "_read_gen", 0) + 1
         return self._read_gen
 
     def _has_actual_edits(self):

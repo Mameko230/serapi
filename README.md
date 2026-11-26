@@ -111,6 +111,7 @@ app/bridge.py  →  app/mainwindow.py（状态机 / UI）  →  app/qtedit.py（
 ```
 
 - 页面选择器集中在 `bridge.js` 的 `PAGE` 表中，按旧版/新版分别注册；页面改版时先看结构指纹缺了哪个选择器。
+- `EditorSession` 先承接当前行、读取代际与激活/装载状态；后续保存协调、段列表会继续从主窗口拆出，给新版编辑器留接口边界。
 - `capabilities()` 只返回布尔能力，`fingerprint()` 只返回选择器命中和数量，不读取任何项目文本；能力缺失时 UI 置灰/提示，不静默写入。
 - 内容以统一 token 流往返（`{t: text | tag | newline}`），Tag 用 `(id, tagKind)` 配对。
 - 是否「有真实编辑」只由 token 差异判断，不由 Qt 的 dirty 标志判断；视觉重绘绝不写回。
