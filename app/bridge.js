@@ -197,18 +197,90 @@
       }
       return false;
     }
-    function newHitsForRow(rowNo) {
+    function newDocApiBase() {
+      return newApiNamespace('editor');
+    }
+    function newApiNamespace(ns) {
+      // /memoqweb/editor/projects/<prj>/docs/<doc> → /memoqweb/editor/api/<ns>/projects/...
+      var m = /^(\/memoqweb\/editor)(\/projects\/[^/]+\/docs\/[^/]+)/.exec(location.pathname);
+      return m ? (m[1] + '/api/' + ns + m[2]) : null;
+    }
+    function newRowIdFor(rowNo) {
+      // 渲染中的行用 data-row-id；未渲染时按 0 基行号兜底。
       var row = newRowByIndex(parseInt(rowNo, 10));
-      var wantId = row ? newRowIdOf(row) : null;
-      if (wantId === null) wantId = String(Math.max(0, parseInt(rowNo, 10) - 1));
+      var rowId = row ? newRowIdOf(row) : null;
+      if (rowId === null || rowId === undefined) {
+        rowId = String(Math.max(0, parseInt(rowNo, 10) - 1));
+      }
+      return String(rowId);
+    }
+    function newApiHeaders() {
+      // 新版 POST 需要 CSRF + XHR 标记（与页面 axios 封装一致），否则 400。
+      var h = { 'X-Requested-With': 'XMLHttpRequest' };
+      try {
+        var m = /(?:^|;\s*)X-CSRF-TOKEN=([^;]+)/.exec(document.cookie || '');
+        if (m) h['X-CSRF-TOKEN'] = decodeURIComponent(m[1]);
+      } catch (e) {}
+      try {
+        var bearer = localStorage.getItem('X-Auth-Bearer');
+        if (bearer) h['Authorization'] = 'Bearer ' + bearer;
+      } catch (e) {}
+      return h;
+    }
+    function newCommentTexts(items) {
+      var out = [];
+      for (var i = 0; i < items.length; i++) {
+        var c = items[i] || {};
+        var t = '';
+        if (typeof c === 'string') t = c;
+        else if (typeof c.text === 'string') t = c.text;
+        else if (typeof c.commentText === 'string') t = c.commentText;
+        else if (typeof c.content === 'string') t = c.content;
+        else if (typeof c.message === 'string') t = c.message;
+        else if (c.comment && typeof c.comment.text === 'string') t = c.comment.text;
+        if (t && t.trim()) out.push(t.trim());
+      }
+      return out;
+    }
+    // 新版段信息：上下文/原始 ID 新版接口不暴露（行 meta 只有状态字段），
+    // 注释由 TranslationDocument /comments 接口按 rowId 拉取（只读）。
+    function newFetchSegmentInfo(rowNo) {
+      var base = newApiNamespace('translation');
+      var rowId = newRowIdFor(rowNo);
+      if (!base) {
+        __md.push('segment-info', { ok: true, rowNo: Number(rowNo), contextId: '',
+                                    originalId: '', comments: [], commentsLoading: false,
+                                    err: '新版注释 API 路径未找到' });
+        return;
+      }
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      fetch(base + '/comments', {
+        method: 'POST', credentials: 'same-origin', headers: headers,
+        body: JSON.stringify({ rowIds: [parseInt(rowId, 10)] }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (items) {
+        if (!Array.isArray(items)) throw new Error('注释返回不是数组');
+        if (String(window.__md._infoRow) !== String(rowNo)) return;  // 已切行：丢弃
+        var info = { ok: true, rowNo: Number(rowNo), contextId: '', originalId: '',
+                     comments: newCommentTexts(items), commentsLoading: false };
+        window.__md._info = info;
+        __md.push('segment-info', info);
+      }).catch(function (e) {
+        if (String(window.__md._infoRow) !== String(rowNo)) return;
+        var info = { ok: true, rowNo: Number(rowNo), contextId: '', originalId: '',
+                     comments: [], commentsLoading: false,
+                     err: String(e.message || e).slice(0, 160) };
+        window.__md._info = info;
+        __md.push('segment-info', info);
+      });
+    }
+    function newHitsForRow(rowNo) {
       var base = newDocApiBase();
       if (!base) return { err: '新版文档 API 路径未找到' };
-      return { rowId: wantId, base: base };
-    }
-    function newDocApiBase() {
-      // /memoqweb/editor/projects/<prj>/docs/<doc> → /memoqweb/editor/api/editor/projects/...
-      var m = /^(\/memoqweb\/editor)(\/projects\/[^/]+\/docs\/[^/]+)/.exec(location.pathname);
-      return m ? (m[1] + '/api/editor' + m[2]) : null;
+      return { rowId: newRowIdFor(rowNo), base: base };
     }
     function newMapHitsEntries(entries) {
       var tm = [], tb = [];
@@ -419,6 +491,7 @@
           f.docStats = true;
           f.listRows = !!newRowsTable();
           f.tmHits = !!newHitsPanel();
+          f.segmentInfo = !!newApiNamespace('translation');
           try {
             f.readSegment = !!newAnyView();
             f.writeSegment = f.readSegment;
@@ -437,7 +510,11 @@
           ? '新版编辑器：翻译结果面板尚未就绪'
           : '需要旧版编辑器（TM/TB 命中）';
       }
-      if (!f.segmentInfo) reasons.segmentInfo = '需要旧版编辑器（段信息）';
+      if (!f.segmentInfo) {
+        reasons.segmentInfo = (kind === 'new')
+          ? '新版编辑器：注释接口尚未就绪'
+          : '需要旧版编辑器（段信息）';
+      }
       if (!f.terms) reasons.terms = '需要旧版编辑器与已加载术语库';
       if (!f.filter) reasons.filter = '需要旧版编辑器的原生过滤面板';
       if (!f.concordance) reasons.concordance = '需要旧版编辑器（语词检索）';
@@ -1880,6 +1957,13 @@
                comments: comments, commentsLoading: !!(cache && cache.status === 'pending') };
     }
     window.__md.api.segmentInfo = function (rowNo) {
+      if (detectEditor() === 'new') {
+        window.__md._infoRow = rowNo;
+        window.__md._info = { status: 'pending', rowNo: Number(rowNo) };
+        newFetchSegmentInfo(rowNo);
+        return { ok: true, rowNo: Number(rowNo), contextId: '', originalId: '',
+                 comments: [], commentsLoading: true };
+      }
       if (detectEditor() !== 'old') return { ok: false, err: '段信息仅旧版支持' };
       window.__md._infoRow = rowNo;
       var core = window.WebTrans && window.WebTrans.Core;
