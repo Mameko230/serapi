@@ -29,6 +29,7 @@ FAST_PY = {
     "test_save_coordinator.py",
     "test_save_flow.py",
     "test_seg_nav.py",
+    "test_segment_sync.py",
     "test_filter_ui.py",
     "test_capabilities_ui.py",
 }

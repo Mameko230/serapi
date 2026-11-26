@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QApplication, QLabel
 from app.mainwindow import MainWindow
 from app.qtedit import MqEditor
 from app.save_coordinator import SaveCoordinator
+from app.segment_sync import SegmentSync
 
 app = QApplication([])
 
@@ -104,6 +105,7 @@ class SaveHost:
         self._read_gen = 0
         self._activating_row = None
         self._tm_rates = {}
+        self._segments = SegmentSync(self)
         self.seg_model = RateModel()
         self.ed_label = QLabel()
         self.logs = []

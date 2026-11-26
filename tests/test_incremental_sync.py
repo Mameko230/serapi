@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QTableView
 from app.mainwindow import MainWindow, SegModel
+from app.segment_sync import SegmentSync
 
 app = QApplication([])
 rows = [
@@ -44,16 +45,26 @@ assert model.index(0, 3).data() == "85%"
 
 # 保存/确认前发出的旧 listRows 响应不得回落地状态；新同步仍正常更新。
 class SyncHost:
+    # 段列表同步端口：状态机在 app/segment_sync.py，这里只提供落地方法。
     refresh_seg_list = MainWindow.refresh_seg_list
+    supports_list_rows = MainWindow.supports_list_rows
+    sync_allowed = MainWindow.sync_allowed
+    current_doc = MainWindow.current_doc
+    filter_active = MainWindow.filter_active
+    request_list_rows = MainWindow.request_list_rows
+    apply_rows = MainWindow.apply_rows
+    schedule_refresh = MainWindow.schedule_refresh
+    scroll_max = MainWindow.scroll_max
+    cached_rows = MainWindow.cached_rows
+    nudge_scroll = MainWindow.nudge_scroll
+    request_expand_grid = MainWindow.request_expand_grid
+    later = MainWindow.later
 
     def __init__(self):
-        self._seg_sync_busy = False
-        self._seg_sync_seq = 0
+        self._segments = SegmentSync(self)
         self._editor_pid = 1
         self._editor_url = "doc-A"
         self._cur_row = 1
-        self._total_rows = 2
-        self._auto_loading_more = False
         self._tm_rates = {}
         self.seg_model = SegModel()
         self.seg_model.set_rows(rows)
@@ -82,13 +93,13 @@ class SyncHost:
 
 host = SyncHost()
 host.refresh_seg_list(background=True)
-assert len(host.callbacks) == 1 and host._seg_sync_busy
-host._seg_sync_seq += 1  # 模拟写回成功，使请求代际 1 失效
+assert len(host.callbacks) == 1 and host._segments.busy
+host._segments.invalidate()  # 模拟写回成功，使请求代际 1 失效
 host.callbacks[0]({"ok": True, "total": 2,
                    "rows": [dict(rows[0]), dict(rows[1], status="edited")]})
 assert host.seg_model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole).find("已编辑") < 0
 assert host.scheduled == [(100, True)]
-assert not host._seg_sync_busy
+assert not host._segments.busy
 host.refresh_seg_list(background=True)
 host.callbacks[1]({"ok": True, "total": 2, "rows": updated})
 assert host.seg_model.index(1, 2).data() == "B2"

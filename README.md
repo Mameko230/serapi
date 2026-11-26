@@ -109,11 +109,12 @@ memoQ 网页（QWebEngineView）
        ↕ QWebChannel
 app/bridge.py  →  app/mainwindow.py（UI / 端口）  →  app/qtedit.py（token ↔ QTextDocument）
                         ├─ app/editor_session.py     当前行 / 读取代际 / 激活与装载状态
-                        └─ app/save_coordinator.py   保存 / 冲突 / 切行前保存状态机
+                        ├─ app/save_coordinator.py   保存 / 冲突 / 切行前保存状态机
+                        └─ app/segment_sync.py       段列表同步 / 滚动加载更多
 ```
 
 - 页面选择器集中在 `bridge.js` 的 `PAGE` 表中，按旧版/新版分别注册；页面改版时先看结构指纹缺了哪个选择器。
-- `EditorSession` 承接当前行、读取代际与激活/装载状态；`SaveCoordinator` 承接保存、冲突与切行前保存。两者都通过端口与主窗口解耦，后续段列表/详情/浮层会继续从主窗口拆出。
+- 三个状态边界都通过端口与主窗口解耦：`EditorSession`（当前行/代际）、`SaveCoordinator`（保存/冲突）、`SegmentSync`（段列表同步）。主窗口只实现端口，不重复做时机判断。
 - `SaveCoordinator` 只在远端行号与载入快照一致、且远端 token 未变化时才写回；否则先弹冲突浮层，由用户选择本地或 memoQ 版本，绝不静默覆盖。
 - `capabilities()` 只返回布尔能力，`fingerprint()` 只返回选择器命中和数量，不读取任何项目文本；能力缺失时 UI 置灰/提示，不静默写入。
 - 内容以统一 token 流往返（`{t: text | tag | newline}`），Tag 用 `(id, tagKind)` 配对。
