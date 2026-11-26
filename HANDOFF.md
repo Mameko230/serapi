@@ -7,6 +7,7 @@
 - 项目名：**Serapi**
 - GitHub：`Mameko230/serapi`（public）
 - 当前版本：`1.0.0`（`app/version.py`）
+- 适配基线：memoQ WebTrans **12.5.20**（此前抓包/回归确认）；没有版本白名单，靠能力探测 + 结构指纹。
 - 当前提交：`d987659` 重构第一步：抽出 EditorSession 状态边界
 - Release/tag：**无**（发版必须等用户明确说）
 - 本地目录：仍叫 `memodesk`；远程仓库已是 Serapi
