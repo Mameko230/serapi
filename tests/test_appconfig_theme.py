@@ -30,6 +30,7 @@ assert cfg["server_history"] == []  # 不写死服务器，首次启动由用户
 assert cfg["server_names"] == {}    # 旧配置兼容：没有名称键时给空表
 assert cfg["jump_mode"] == "follow"  # 确认后跳转默认跟随 memoQ 原生设置
 assert cfg["engine_auto_close"] is True
+assert cfg["editor_line_style"] == "bplus"
 assert cfg["quick_term_tb"] == "" and cfg["quick_term_tb_name"] == ""
 cfg.update({"memoq_url": "https://x/memoqweb",
             "server_history": ["https://x/memoqweb", "https://y/memoqweb"],
@@ -38,6 +39,7 @@ cfg.update({"memoq_url": "https://x/memoqweb",
                              "": "空地址", "https://z/memoqweb": ""},
             "outer_theme": "warm", "editor_theme": "dark",
             "jump_mode": "next", "engine_auto_close": False,
+            "editor_line_style": "cells",
             "quick_term_tb": " tb-guid ", "quick_term_tb_name": " 游戏术语库 "})
 assert appconfig.save(cfg) is None
 loaded = appconfig.load()
@@ -47,15 +49,18 @@ assert loaded["server_names"] == {"https://y/memoqweb": "测试环境"}  # 空�
 assert loaded["outer_theme"] == "warm" and loaded["editor_theme"] == "dark"
 assert loaded["jump_mode"] == "next"
 assert loaded["engine_auto_close"] is False
+assert loaded["editor_line_style"] == "cells"
 assert loaded["quick_term_tb"] == "tb-guid"
 assert loaded["quick_term_tb_name"] == "游戏术语库"
 # 非法键回退到默认
 assert appconfig.save(dict(loaded, outer_theme="nope", editor_theme="nope",
-                           jump_mode="nope", engine_auto_close="nope")) is None
+                           jump_mode="nope", engine_auto_close="nope",
+                           editor_line_style="nope")) is None
 fixed = appconfig.load()
 assert fixed["outer_theme"] == "blue" and fixed["editor_theme"] == "light"
 assert fixed["jump_mode"] == "follow"
 assert fixed["engine_auto_close"] is True
+assert fixed["editor_line_style"] == "bplus"
 assert fixed["quick_term_tb"] == "tb-guid"  # 非主题类记忆不清空
 
 # 1b) 旧 app.json（只有 memoq_url / server_history）完全兼容，不丢地址
@@ -256,12 +261,19 @@ from app.overlays import SettingsPanel
 sp = SettingsPanel(host)
 seen_modes = []
 sp.jumpModeChanged.connect(seen_modes.append)
-sp.open("next", False, "游戏术语库")
+sp.open("next", False, "游戏术语库", "cells")
 assert sp._radios["next"].isChecked(), sp._radios
+assert sp.cmb_line_style.currentData() == "cells"
 assert 300 <= sp.width() < host.width()
 assert sp.chk_engine_close.isChecked() is False
 assert "游戏术语库" in sp.quick_term_label.text()
 assert sp.btn_clear_quick.isEnabled()
+line_signals = []
+sp.editorLineStyleChanged.connect(line_signals.append)
+sp.cmb_line_style.setCurrentIndex(sp.cmb_line_style.findData("bplus"))
+assert line_signals == ["bplus"], line_signals
+sp.set_line_style("cells")
+assert sp.cmb_line_style.currentData() == "cells"
 engine_signals = []
 sp.engineAutoCloseChanged.connect(engine_signals.append)
 sp.chk_engine_close.setChecked(True)
@@ -270,8 +282,9 @@ clear_signals = []
 sp.clearQuickTermRequested.connect(lambda: clear_signals.append(True))
 sp.btn_clear_quick.click()
 assert clear_signals == [True]
-sp.open("next", True, "")
+sp.open("next", True, "", "bplus")
 assert sp.chk_engine_close.isChecked() is True
+assert sp.cmb_line_style.currentData() == "bplus"
 assert "每次询问" in sp.quick_term_label.text()
 assert not sp.btn_clear_quick.isEnabled()
 sp._radios["stay"].click()

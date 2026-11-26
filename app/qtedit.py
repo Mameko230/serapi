@@ -12,7 +12,7 @@ import re
 
 from PyQt6.QtCore import Qt, QRectF, QSizeF, QObject, pyqtSignal
 from PyQt6.QtGui import (
-    QTextCharFormat, QTextFormat, QColor, QFont, QFontMetricsF,
+    QTextCharFormat, QTextFormat, QColor, QFont, QFontMetricsF, QTextBlockFormat,
     QTextObjectInterface, QPainter, QPen, QTextCursor, QSyntaxHighlighter,
 )
 from PyQt6.QtWidgets import QTextEdit
@@ -350,8 +350,8 @@ class MqEditor(QTextEdit):
         from .tooltips import TagTooltipController
         self._tag_tooltip = TagTooltipController(self)
         self.setStyleSheet(
-            "QTextEdit { font-family: 'Microsoft YaHei'; font-size: 13px; "
-            "line-height: 160%; padding: 8px; background: #ffffff; }")
+            "QTextEdit { font-family: 'Microsoft YaHei'; font-size: 16px; "
+            "padding: 8px; background: #ffffff; }")
         self._cfg = {
             'newlineTags': ['mq:ch'],
             'colorTags': [], 'boldTags': [], 'italicTags': [], 'underlineTags': [],
@@ -361,6 +361,7 @@ class MqEditor(QTextEdit):
         # 后两种均读取原文，但判定互相独立，也可与手动上限同时启用。
         self._line_limit = 0
         self._max_lines = 0
+        self._line_style = "bplus"   # bplus=细分隔线；cells=一行一格
         self._src_counts = None
         self._src_max_limit = 0
         self._nl_ids = []      # 载入时按序记住换行 tag id，写回时按序放回
@@ -371,6 +372,92 @@ class MqEditor(QTextEdit):
         self._space_handler = SpaceObject()
         self.document().documentLayout().registerHandler(OBJ_SPACE, self._space_handler)
         self.textChanged.connect(self._update_counts)
+        # 行卡片/当前行高亮是纯视觉层：光标移动时重绘，不改文档内容。
+        self.cursorPositionChanged.connect(self.viewport().update)
+
+    def set_line_style(self, style):
+        """切换中间编辑框行视觉（B+ 细分隔线 / C 一行一格），立即重排重绘。"""
+        style = style if style in ("bplus", "cells") else "bplus"
+        if style == self._line_style:
+            return
+        self._line_style = style
+        self._apply_line_readability()
+        self.viewport().update()
+
+    def _apply_line_readability(self):
+        """B+ / C 共用的行距/字号基础；C 需要更高的行盒来容纳大格子。"""
+        fmt = QTextBlockFormat()
+        pct = 205 if self._line_style == "cells" else 170
+        fmt.setLineHeight(pct, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+        margin = 8 if self._line_style == "cells" else 6
+        fmt.setTopMargin(margin)
+        fmt.setBottomMargin(margin)
+        cur = QTextCursor(self.document())
+        cur.select(QTextCursor.SelectionType.Document)
+        cur.mergeBlockFormat(fmt)
+
+    def _line_cell_rects(self):
+        """产出每个视觉行的视口矩形 + 是否当前行；用于自绘行背景卡片。"""
+        doc = self.document()
+        cur_pos = self.textCursor().position()
+        editable = not self.isReadOnly()
+        out = []
+        block = doc.begin()
+        while block.isValid():
+            layout = block.layout()
+            if layout is not None:
+                base = block.position()
+                for i in range(layout.lineCount()):
+                    line = layout.lineAt(i)
+                    pos = base + line.textStart()
+                    c = QTextCursor(doc)
+                    c.setPosition(pos)
+                    rect = self.cursorRect(c)
+                    current = bool(
+                        editable and pos <= cur_pos
+                        <= pos + max(0, line.textLength()))
+                    out.append((rect, current))
+            block = block.next()
+        return out
+
+    def paintEvent(self, event):
+        painter = None
+        try:
+            painter = QPainter(self.viewport())
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            width = max(0, self.viewport().width() - 14)
+            for idx, (rect, current) in enumerate(self._line_cell_rects()):
+                if rect.bottom() < 0 or rect.top() > self.viewport().height():
+                    continue
+                top = rect.top() + 1
+                height = max(22.0, float(rect.height()) - 2.0)
+                if self._line_style == "cells":
+                    # C：一行一格，大格子 + 当前行高亮；文本仍由编辑器自动换行。
+                    if current:
+                        painter.setBrush(QColor(59, 130, 246, 40))
+                        painter.setPen(QPen(QColor(59, 130, 246, 145), 1.3))
+                    else:
+                        painter.setBrush(QColor(255, 255, 255, 235) if idx % 2 == 0
+                                         else QColor(244, 248, 253, 235))
+                        painter.setPen(QPen(QColor(220, 230, 242), 1))
+                    painter.drawRoundedRect(QRectF(6, top, width, height), 11, 11)
+                    if current:
+                        painter.setPen(Qt.PenStyle.NoPen)
+                        painter.setBrush(QColor(37, 99, 235))
+                        painter.drawRoundedRect(QRectF(6, top, 4, height), 2, 2)
+                else:
+                    # B+：去掉斑马纹底色，只保留细分隔线；分隔线再下移几像素，
+                    # 给译文行尾（含下伸笔画）留出呼吸空间。
+                    sep_y = int(rect.bottom() + 5)
+                    if sep_y <= self.viewport().height() + 1:
+                        painter.setPen(QPen(QColor(148, 163, 184, 68), 1))
+                        painter.drawLine(9, sep_y, int(width + 8), sep_y)
+        except Exception:
+            pass
+        finally:
+            if painter is not None:
+                painter.end()
+        super().paintEvent(event)
 
     def set_cfg(self, cfg: dict):
         self._cfg = cfg
@@ -591,6 +678,7 @@ class MqEditor(QTextEdit):
             insert_tag({**common, 'name': name, 'display': disp, 'styletag': matched,
                         'tagType': tk.get('tagType', ''), 'val': tk.get('val', ''),
                         'attrs': tk.get('attrs')})
+        self._apply_line_readability()
         self._update_counts()
 
     def selected_tokens(self) -> list:

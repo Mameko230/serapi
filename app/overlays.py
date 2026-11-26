@@ -899,6 +899,7 @@ class SettingsPanel(QWidget):
     """悬浮「设置」面板：先放确认后跳转逻辑，后续继续扩充。"""
     jumpModeChanged = pyqtSignal(str)
     engineAutoCloseChanged = pyqtSignal(bool)
+    editorLineStyleChanged = pyqtSignal(str)
     clearQuickTermRequested = pyqtSignal()
     closed = pyqtSignal()
 
@@ -960,6 +961,18 @@ class SettingsPanel(QWidget):
         self.chk_engine_close.toggled.connect(self.engineAutoCloseChanged)
         lay.addWidget(self.chk_engine_close)
         lay.addWidget(self._sep())
+        style_label = QLabel("中间编辑框行样式")
+        style_label.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
+        lay.addWidget(style_label)
+        self.cmb_line_style = FComboBox()
+        self.cmb_line_style.setMinimumHeight(34)
+        self.cmb_line_style.addItem("B+：细分隔线（推荐）", userData="bplus")
+        self.cmb_line_style.addItem("C：一行一格（大格子）", userData="cells")
+        self.cmb_line_style.setToolTip(
+            "B+ 保留连续段落，只用细分隔线；C 把每行显示为独立大格子")
+        self.cmb_line_style.currentIndexChanged.connect(self._pick_line_style)
+        lay.addWidget(self.cmb_line_style)
+        lay.addWidget(self._sep())
         quick_label = QLabel("Ctrl+Q 快捷添加术语")
         quick_label.setStyleSheet("color:#475569; font-weight:600; background:transparent;")
         lay.addWidget(quick_label)
@@ -988,16 +1001,29 @@ class SettingsPanel(QWidget):
             rb.setChecked(k == key)
         self.jumpModeChanged.emit(key)
 
+    def _pick_line_style(self, _index):
+        style = self.cmb_line_style.currentData()
+        if style in ("bplus", "cells"):
+            self.editorLineStyleChanged.emit(style)
+
+    def set_line_style(self, style):
+        style = style if style in ("bplus", "cells") else "bplus"
+        idx = self.cmb_line_style.findData(style)
+        self.cmb_line_style.blockSignals(True)
+        self.cmb_line_style.setCurrentIndex(max(0, idx))
+        self.cmb_line_style.blockSignals(False)
+
     def set_current(self, mode):
         mode = mode if mode in self._radios else "follow"
         for k, rb in self._radios.items():
             rb.setChecked(k == mode)
 
-    def open(self, mode, engine_auto_close=True, quick_term_name=""):
+    def open(self, mode, engine_auto_close=True, quick_term_name="", line_style="bplus"):
         self.set_current(mode)
         self.chk_engine_close.blockSignals(True)
         self.chk_engine_close.setChecked(bool(engine_auto_close))
         self.chk_engine_close.blockSignals(False)
+        self.set_line_style(line_style)
         name = str(quick_term_name or "").strip()
         self.quick_term_label.setText(
             f"术语库：{name}（已记住）" if name else "术语库：每次询问")

@@ -439,7 +439,7 @@ class SegStatusDelegate(QStyledItemDelegate):
         bg = index.data(Qt.ItemDataRole.BackgroundRole) or QColor("#f8fafc")
         fg = index.data(Qt.ItemDataRole.ForegroundRole) or QColor("#64748b")
         locked = bool(index.data(SegModel.LOCK_ROLE))
-        card = rect.adjusted(3, 2, -3, -2)
+        card = rect.adjusted(3, 5, -3, -5)
         # 卡片本体自绘圆角；用稳定的矩形裁剪限制文字，避免部分 Qt 构建在
         # QPainterPath 裁剪 + 选中重绘时发生原生 fail-fast。
         painter.setClipRect(card, Qt.ClipOperation.IntersectClip)
@@ -2000,17 +2000,18 @@ class MainWindow(QMainWindow):
         self.seg_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.seg_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.seg_table.verticalHeader().setVisible(False)
-        self.seg_table.verticalHeader().setDefaultSectionSize(32)
+        # 译员反馈左栏行距太密：行高 32→42，配更大竖向留白；用户确认保留。
+        self.seg_table.verticalHeader().setDefaultSectionSize(42)
         self.seg_table.setShowGrid(False)
         self.seg_table.setWordWrap(False)
         self.seg_table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.seg_table.setStyleSheet(
-            f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 12.5px; border: none;"
+            f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 13px; border: none;"
             f" background: transparent; }}"
-            f"QTableView::item {{ padding: 5px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
+            f"QTableView::item {{ padding: 9px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
             f"QTableView::item:selected {{ background: rgba(37,99,235,28); color: {pal['title']}; }}"
             f"QHeaderView::section {{ background: transparent; border: none;"
-            f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 8px 10px; color: {pal['header']};"
+            f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 9px 10px; color: {pal['header']};"
             f" font-weight: normal; font-size: 12px; }}")
         hh = self.seg_table.horizontalHeader()
         # 行号列不用 ResizeToContents：内容变化会让列宽来回跳、拖宽也会被重置。
@@ -2086,7 +2087,7 @@ class MainWindow(QMainWindow):
         self.editor.setPlaceholderText("在左侧段表点一行，内容自动载入；Enter 换行，Ctrl+Enter 写回")
         # 原文与译文均透明，直接共享外层亚克力卡片；不再各带一块白色底板。
         self.editor.setStyleSheet(
-            f"QTextEdit {{ font-size: 15px; background: transparent;"
+            f"QTextEdit {{ font-size: 16px; background: transparent;"
             f" border: none; padding: 12px; color: {self._editor_theme['text']}; }}")
         self.editor.viewport().setAutoFillBackground(False)
         self.editor.countsChanged.connect(lambda s: self.status.setText(s))
@@ -2097,10 +2098,13 @@ class MainWindow(QMainWindow):
         self.src_view = MqEditor()
         self.src_view.set_cfg(self._tag_cfg)
         self.src_view.setStyleSheet(
-            f"QTextEdit {{ font-size: 15px; background: transparent; color: {self._editor_theme['source']};"
+            f"QTextEdit {{ font-size: 16px; background: transparent; color: {self._editor_theme['source']};"
             f" border: none; padding: 12px; }}")
         self.src_view.viewport().setAutoFillBackground(False)
         self.src_view.setReadOnly(True)
+        _line_style = str(self._app_cfg.get("editor_line_style") or "bplus")
+        self.editor.set_line_style(_line_style)
+        self.src_view.set_line_style(_line_style)
         self._last_src_tokens = []
         self.seg_split = QSplitter(Qt.Orientation.Horizontal)
         self.seg_split.addWidget(self.src_view)
@@ -3786,10 +3790,10 @@ class MainWindow(QMainWindow):
             self.editor_host.setStyleSheet(
                 f"QWidget#editorHost {{ background: {bg}; border: none; border-radius: 12px; }}")
         self.editor.setStyleSheet(
-            f"QTextEdit {{ font-size: 15px; background: transparent; border: none;"
+            f"QTextEdit {{ font-size: 16px; background: transparent; border: none;"
             f" padding: 12px; color: {et['text']}; }}")
         self.src_view.setStyleSheet(
-            f"QTextEdit {{ font-size: 15px; background: transparent;"
+            f"QTextEdit {{ font-size: 16px; background: transparent;"
             f" color: {et['source']}; border: none; padding: 12px; }}")
         # 引号加粗上色，跟随编辑器配色
         qc = et.get("quote") or "#2563eb"
@@ -3818,12 +3822,12 @@ class MainWindow(QMainWindow):
                 for w in (self._seg_wrap, self._center, self._res_wrap):
                     w.setStyleSheet(f"QWidget#card {{ {card} }} QWidget {{ background: transparent; }}")
                 self.seg_table.setStyleSheet(
-                    f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 12.5px; border: none;"
+                    f"QTableView {{ font-family: 'Microsoft YaHei'; font-size: 13px; border: none;"
                     f" background: transparent; }}"
-                    f"QTableView::item {{ padding: 5px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
+                    f"QTableView::item {{ padding: 9px 10px; border: none; border-bottom: 1px solid {pal['seg_item_border']}; }}"
                     f"QTableView::item:selected {{ background: rgba(37,99,235,28); color: {pal['title']}; }}"
                     f"QHeaderView::section {{ background: transparent; border: none;"
-                    f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 8px 10px; color: {pal['header']};"
+                    f" border-bottom: 1px solid {pal['seg_item_border']}; padding: 9px 10px; color: {pal['header']};"
                     f" font-weight: normal; font-size: 12px; }}")
                 self.seg_info_frame.setStyleSheet(
                     f"QFrame#seginfo {{ background: {pal['panel_bg']}; border: 1px solid {pal['panel_border']};"
@@ -4186,12 +4190,14 @@ class MainWindow(QMainWindow):
             self._settings_panel = SettingsPanel(self)
             self._settings_panel.jumpModeChanged.connect(self._set_jump_mode)
             self._settings_panel.engineAutoCloseChanged.connect(self._set_engine_auto_close)
+            self._settings_panel.editorLineStyleChanged.connect(self._set_editor_line_style)
             self._settings_panel.clearQuickTermRequested.connect(self._clear_quick_term_memory)
             self._settings_panel.closed.connect(lambda: self._set_settings_visible(False))
         self._settings_panel.open(
             str(self._app_cfg.get("jump_mode") or "follow"),
             bool(self._app_cfg.get("engine_auto_close", True)),
             str(self._app_cfg.get("quick_term_tb_name") or ""),
+            str(self._app_cfg.get("editor_line_style") or "bplus"),
         )
 
     def _set_settings_visible(self, visible):
@@ -4242,6 +4248,21 @@ class MainWindow(QMainWindow):
         self._app_cfg["engine_auto_close"] = bool(enabled)
         appconfig.save(self._app_cfg)
         self.log("选中行后自动关闭引擎页：" + ("开" if enabled else "关（用浮层右上角 × 或 Esc 手动关闭）"))
+
+    def _set_editor_line_style(self, style):
+        """用户可选：B+ 细分隔线 / C 一行一格；立即应用到原文和译文编辑框。"""
+        if style not in ("bplus", "cells"):
+            return
+        self._app_cfg["editor_line_style"] = style
+        appconfig.save(self._app_cfg)
+        for editor in (getattr(self, "src_view", None), getattr(self, "editor", None)):
+            if editor is not None:
+                try:
+                    editor.set_line_style(style)
+                except Exception:
+                    pass
+        self.log("编辑框行样式：" + ("C · 一行一格" if style == "cells"
+                                      else "B+ · 细分隔线"))
 
     def _clear_quick_term_memory(self):
         self._app_cfg["quick_term_tb"] = ""
