@@ -187,6 +187,14 @@ MainWindow._res_insert(insert_host, {
 })
 assert insert_host.editor.toPlainText() == before_text
 assert any("已取消插入" in line for line in insert_host.logs), insert_host.logs
+# 非严格模式（bridge 默认：原文缺 tag 时）：略过缺 tag、只插文本，不再整条拒绝。
+MainWindow._res_insert(insert_host, {
+    "kind": "tm", "rate": 80, "strictTags": False,
+    "tgtTokens": [{"t": "text", "v": "只插文本"},
+                  {"t": "tag", "name": "mq:nope", "tagKind": "empty"}],
+})
+assert "只插文本" in insert_host.editor.toPlainText()
+assert any("已略过" in line for line in insert_host.logs), insert_host.logs
 
 # 7) 行号列使用自绘 delegate，选中后仍由同一状态色绘制，不被 QSS 高亮替代。
 from app.mainwindow import SegStatusDelegate

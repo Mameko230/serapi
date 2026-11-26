@@ -94,7 +94,7 @@ function load(setup) {
   };
   const pushes = [];
   const fetches = [];
-  const state = { fail: false, rows: 250 };
+  const state = { fail: false, rows: 250, override: null };
   const context = {
     console, URL, JSON, Date, Promise, Object, Array, String, Number, Boolean, Math,
     parseInt, isFinite, encodeURIComponent, decodeURIComponent,
@@ -116,6 +116,7 @@ function load(setup) {
       if (state.fail) return Promise.resolve({ ok: false, status: 500 });
       const body = JSON.parse(opts.body);
       const rows = body.rowIds.map((id) => {
+        if (state.override && state.override[id]) return state.override[id];
         if (id % 5 === 0) {
           return { type: 'row', id, meta: { matchRate: 0, status: 'notStarted' },
                    source: { symbols: [{ type: 1, value: cp('S')[0] }] }, target: { symbols: [] } };
@@ -237,6 +238,38 @@ pushes.length = 0;   // bridge 启动时的 bridge-ready 不计入
   res = JSON.parse(JSON.stringify(api.listRows()));
   assert.strictEqual(res.source, 'new-grid');
   assert.strictEqual(res.ok, true);
+
+  // 6) 写回后单行缓存刷新：状态/译文立即更新，不变量整页重拉。
+  state.fail = false;
+  ctx.__md._rowsApi = null;
+  state.override = {
+    2: { type: 'row', id: 2, meta: { matchRate: 100, status: 'manuallyConfirmed' },
+         source: { symbols: [{ type: 1, value: cp('S')[0] }] },
+         target: { symbols: [{ type: 1, value: cp('改')[0] }] } },
+  };
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  assert.strictEqual(res.ok, true);
+  await tick();
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  assert.strictEqual(res.rows.length, 100);
+  pushes.length = 0;
+  const beforeRows = fetches.length;
+  assert.strictEqual(api.refreshRowCache(2), true);
+  assert.strictEqual(fetches.length, beforeRows + 1);
+  assert.strictEqual(JSON.stringify(JSON.parse(fetches[fetches.length - 1].opts.body).rowIds),
+                     '[2]');
+  await tick();
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  assert.strictEqual(res.rows[2].tgt, '改');
+  assert.strictEqual(res.rows[2].status, 'confirmed');
+  assert.ok(pushes.map((p) => JSON.parse(p)).some((p) => p.type === 'rows-updated'),
+            pushes);
+  // 未缓存的行不补洞，避免行号缺口。
+  pushes.length = 0;
+  assert.strictEqual(api.refreshRowCache(150), true);
+  await tick();
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  assert.strictEqual(res.rows.length, 100);
 
   console.log('NEW_EDITOR_ROWS_API_TEST: PASS (offline only)');
 })().catch((err) => {

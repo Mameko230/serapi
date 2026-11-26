@@ -210,10 +210,13 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   assert.strictEqual(pushed.data.tm[0].res, 'RES-A');
   assert.strictEqual(pushed.data.tm[0].srcDisp, 'src-text');
   assert.strictEqual(pushed.data.tm[0].tgtDecorated, 'tgt-text');
+  assert.strictEqual(pushed.data.tm[0].tgtDecorated, 'tgt-text');
   assert.strictEqual(pushed.data.tm[0].readOnly, false);
   assert.strictEqual(pushed.data.tm[0].strictTags, false);
+  assert.strictEqual(pushed.data.tm[0].tagPlanOk, true);
   assert.ok(pushed.data.tm[0].tgtTokens.some((t) => t.t === 'text' && t.v === 'tgt-text'),
             pushed.data.tm[0].tgtTokens);
+  assert.strictEqual(pushed.data.tb[0].readOnly, true);
   assert.strictEqual(pushed.data.tb[0].s, 'term');
   assert.strictEqual(pushed.data.tb[0].t, '术语');
   assert.strictEqual(pushed.data.tb[0].readOnly, true);
@@ -251,7 +254,8 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   assert.strictEqual(pushed.data.tm[0].srcDisp, 'こい');
   assert.strictEqual(pushed.data.tm[0].tgtDecorated, '你');
 
-  // 3) 命中里出现 tag 符号：token 流带上 tag 元数据；旧页面无源 token 时仍只读。
+  // 3) 命中里出现 tag 符号：token 流带 tag 元数据；原文没有对应 tag 时
+  //    不阻止插入（按用户规则：多余的 TM tag 略过、只插文本）。
   state.entries = [Object.assign({}, TM_ENTRY, {
     segments: {
       source: TM_ENTRY.segments.source,
@@ -268,8 +272,9 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   await tick();
   pushed = lastPush();
   assert.strictEqual(pushed.type, 'tm-hits');
-  assert.strictEqual(pushed.data.tm[0].readOnly, true);
-  assert.strictEqual(pushed.data.tm[0].strictTags, true);
+  assert.strictEqual(pushed.data.tm[0].readOnly, false);
+  assert.strictEqual(pushed.data.tm[0].strictTags, false);
+  assert.strictEqual(pushed.data.tm[0].tagPlanOk, false);
   const hitTokens = pushed.data.tm[0].tgtTokens;
   assert.ok(hitTokens.some((t) => t.t === 'text' && t.v === '甲'), hitTokens);
   const hitTag = hitTokens.find((t) => t.t === 'tag');

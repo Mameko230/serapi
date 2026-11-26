@@ -396,6 +396,40 @@
       return { rows: list, total: total, cached: list.length,
                done: done, error: st.error || '', filtered: !!filteredTotal };
     }
+    // 写回/确认后刷新单行缓存：段列表走 API 缓存，不刷新会一直显示保存前的旧译文。
+    function newRefreshRowCache(rowId) {
+      var rid = parseInt(rowId, 10);
+      if (!isFinite(rid) || rid < 0) return false;
+      var base = newDocApiBase();
+      if (!base) return false;
+      var st = newRowsApiState();
+      var docKey = location.pathname;
+      var headers = newApiHeaders();
+      headers['Content-Type'] = 'application/json';
+      try {
+        fetch(base + '/rows', {
+          method: 'POST', credentials: 'same-origin', headers: headers,
+          body: JSON.stringify({ rowIds: [rid], scope: 'entireRow' }),
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        }).then(function (rows) {
+          if (st.doc !== docKey || !Array.isArray(rows)) return;
+          var updated = 0;
+          for (var i = 0; i < rows.length; i++) {
+            var entry = newRowApiEntry(rows[i]);
+            if (!entry) continue;
+            if (!st.rows[entry.rowNo]) continue;  // 未缓存的行不用补，避免行号缺口
+            st.rows[entry.rowNo] = entry;
+            updated++;
+          }
+          if (updated) {
+            try { __md.push('rows-updated', { source: 'row-refresh' }); } catch (e) {}
+          }
+        }).catch(function () {});
+      } catch (e) { return false; }
+      return true;
+    }
     /* ---- 新版过滤（原生 filter API，只读视图操作）----
        POST /api/editor/.../filter {filterSet, sorting}
        → {rangesByRowIds:[{key: rowId, value:[ranges]}]}；key 就是命中的 0 基 rowId，
@@ -551,14 +585,16 @@
           var srcTokens = newSymbolsTokens(srcSeg);
           var tgtTokens = newSymbolsTokens(tgtSeg);
           var hasTags = newSymbolsHaveTags(srcSeg) || newSymbolsHaveTags(tgtSeg);
-          // 原文能按名字配齐的 tag 才允许插入；配不齐仍只读，避免静默丢 tag。
+          // 用户确认的插入语义：TM 的 tag 若原文也有，就按 TM 顺序映射回去；
+          // 原文没有的 tag 直接略过（只插文本），不再整条阻止插入。
           var planOk = !hasTags || newTagPlan(sourceTokens, tgtTokens);
           tm.push({
             rate: Number(h.matchRate || 0), res: String(res || ''),
             user: String(h.creator || ''), time: String(h.created || '').slice(0, 16),
             srcDisp: srcText, srcDecorated: srcText, tgtDecorated: tgtText,
             srcTokens: srcTokens, tgtTokens: tgtTokens,
-            strictTags: hasTags, readOnly: hasTags && !planOk, tagDefs: [],
+            strictTags: hasTags && planOk, tagPlanOk: planOk,
+            readOnly: false, tagDefs: [],
           });
         } else if (type === 'termBase') {
           // TB 条目：languages[lang].terms[{term}]，source 指明原文语言与词条序号。
@@ -1727,6 +1763,10 @@
       } catch (e) { return { ok: false, err: 'confirmSegment ERR ' + e.message }; }
     };
 
+    window.__md.api.refreshRowCache = function (rowId) {
+      return newRefreshRowCache(rowId);
+    };
+
     window.__md.api.readSegment = function (rowId) {
       var kind = detectEditor();
       try {
@@ -1753,7 +1793,12 @@
             || newActiveView() || newAnyView();
           if (!view) return { ok: false, err: '新版编辑器 view 未找到' };
           if (view.state.doc.attrs.locked) return { ok: false, err: '该段已锁定' };
-          return newWriteSegment(view, tokens || []);
+          var written = newWriteSegment(view, tokens || []);
+          if (written && written.ok) {
+            var rid = view.state.doc.attrs.rowId;
+            if (rid !== undefined && rid !== null) newRefreshRowCache(rid);
+          }
+          return written;
         }
         if (kind === 'old') return oldWriteSegment(tokens || [], rowId !== undefined && rowId !== null);
         return { ok: false, err: '不在编辑器页面' };

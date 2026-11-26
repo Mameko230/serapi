@@ -105,7 +105,7 @@ MainWindow.request_expand_grid(expand_old, None)
 assert "gridCtrl" in expand_old.calls[-1], expand_old.calls[-1]
 
 
-# 新版只读命中：双击不得插入（tag 结构未确认前宁可拒绝）。
+# 只读命中（TB 等）：双击不得插入。
 class InsertHost:
     _res_insert = MainWindow._res_insert
 
@@ -124,8 +124,8 @@ def _fail_insert(_tokens):
 
 ih = InsertHost()
 MainWindow._res_insert(ih, {"kind": "tm", "readOnly": True, "tgtDecorated": "不应插入"})
-assert any("暂不支持直接插入" in line for line in ih.logs), ih.logs
-assert "插入功能待接入" in ih.res_panel.status
+assert any("该命中为只读" in line for line in ih.logs), ih.logs
+assert "该命中为只读，不可插入" in ih.res_panel.status
 
 
 # 新版行数据 API 拉到新批次：bridge 事件触发段列表后台同步，不打断当前读段。

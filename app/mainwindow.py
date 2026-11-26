@@ -3076,11 +3076,11 @@ class MainWindow(QMainWindow):
     def _res_insert(self, payload: dict):
         """双击 TM/术语行 → 插入编辑器；选中内容先覆盖再插入（核心约定，勿改顺序）"""
         if payload.get("readOnly"):
-            # 新版命中先只读展示：tag 符号结构未完全确认，绝不盲目插入丢 tag 的内容。
-            self.log("新版命中暂不支持直接插入（tag 结构接入中）；内容仍保留在结果列表")
+            # 新版 TB 条目等只读命中；TM 命中只要没有 readOnly 就允许插入（缺 tag 略过）。
+            self.log("该命中为只读，未插入；内容仍保留在结果列表")
             panel = getattr(self, "res_panel", None)
             if panel is not None and hasattr(panel, "set_status"):
-                panel.set_status("新版命中可查看；插入功能待接入")
+                panel.set_status("该命中为只读，不可插入")
             return
         kind = payload.get("kind")
         if kind == "tb":
