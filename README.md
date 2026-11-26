@@ -80,12 +80,20 @@ py -3.14 -m venv .venv
 
 ## 测试
 
+日常改动先跑快速子集，提交前/发版前再跑全量：
+
 ```bash
-python -m py_compile app/*.py
-for t in tests/test_*.py; do python -u "$t"; done
-node --check app/bridge.js
-for t in tests/test_*.js; do node "$t"; done
+python tests/run_all.py --fast
+python tests/run_all.py --full
 ```
+
+只跑受影响测试：
+
+```bash
+python tests/run_all.py --only test_seg_nav.py --only test_filter.js
+```
+
+测试全部离线，不访问 memoQ，不使用真实项目内容。分层规则、改动到测试的映射见 [TESTING.md](TESTING.md)。
 
 真实渲染检查（需要真实 Windows，不要设置 `QT_QPA_PLATFORM=offscreen`）：
 
@@ -119,6 +127,7 @@ app/bridge.py  →  app/mainwindow.py（状态机 / UI）  →  app/qtedit.py（
 ## 已知限制
 
 - 桥接依赖 memoQ WebTrans 的页面结构，memoQ 升级后可能需要适配。
+- 启动时会探测当前编辑器能力：新版编辑器仅保证当前段读写，段列表、TM/TB、术语、过滤等不支持的能力会置灰或明确提示，不会静默写错数据。
 - 术语编辑仅旧版编辑器支持；只读术语库会明确提示且不会提交。
 - 新版编辑器的「原生确认」尚未实现（旧版支持）。
 - 只在 Windows + 上述固定依赖组合上验证过，其他环境需自行实测。

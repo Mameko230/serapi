@@ -32,6 +32,60 @@
       return null;
     }
 
+    /* ================= 能力探测（启动时一次性告知 Qt 侧） ================= */
+    window.__md.api.capabilities = function () {
+      var kind = detectEditor();
+      var f = {
+        listRows: false, tmHits: false, segmentInfo: false, terms: false,
+        filter: false, concordance: false, confirm: false,
+        readSegment: false, writeSegment: false, docStats: false, rowChanged: false,
+      };
+      var reasons = {};
+      try {
+        if (kind === 'old') {
+          var ctrl = oldGridCtrl();
+          var gcm = ctrl && ctrl.gridContentManager;
+          f.listRows = !!gcm;
+          f.tmHits = f.listRows;
+          f.segmentInfo = f.listRows;
+          f.readSegment = true;
+          f.writeSegment = true;
+          f.rowChanged = true;
+          f.docStats = !!document.querySelector('.status-bar-container');
+          f.confirm = !!document.getElementById('editorHiddenInput');
+          f.concordance = !!(window.WebTrans && WebTrans.Core);
+          try {
+            var core = termCore();
+            f.terms = !!(core && core.lastUsedTBGuid);
+          } catch (e) {}
+          try {
+            var fe = document.getElementById('txtSourceFilter');
+            var fs = (fe && window.angular) ? angular.element(fe).scope() : null;
+            f.filter = !!(fs && fs.ctrl
+              && typeof fs.ctrl.filterForSourceOrTarget === 'function');
+          } catch (e) {}
+        } else if (kind === 'new') {
+          f.rowChanged = true;
+          f.docStats = true;
+          try {
+            f.readSegment = !!newAnyView();
+            f.writeSegment = f.readSegment;
+          } catch (e) {}
+        }
+      } catch (e) {
+        reasons.error = String(e.message || e);
+      }
+      if (!f.listRows) reasons.listRows = '需要旧版编辑器（段列表）';
+      if (!f.tmHits) reasons.tmHits = '需要旧版编辑器（TM/TB 命中）';
+      if (!f.segmentInfo) reasons.segmentInfo = '需要旧版编辑器（段信息）';
+      if (!f.terms) reasons.terms = '需要旧版编辑器与已加载术语库';
+      if (!f.filter) reasons.filter = '需要旧版编辑器的原生过滤面板';
+      if (!f.concordance) reasons.concordance = '需要旧版编辑器（语词检索）';
+      if (!f.confirm) reasons.confirm = '需要旧版编辑器（原生确认）';
+      if (!f.readSegment) reasons.readSegment = '当前段编辑器尚未就绪';
+      return { ok: !!kind, editor: kind, features: f, reasons: reasons };
+    };
+
     /* ================= 新版编辑器（React + ProseMirror） ================= */
     function newFindView(pmEl) {
       var host = pmEl.parentElement;

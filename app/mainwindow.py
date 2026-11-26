@@ -1659,6 +1659,11 @@ class MainWindow(QMainWindow):
         primary.addWidget(self.doc_stats)
         self.conn_label = QLabel("未连接 memoQ")
         self.conn_label.setStyleSheet(f"color: {pal['faint']}; background: transparent; border: none;")
+        self.cap_label = QLabel("")
+        self.cap_label.setStyleSheet("color: #b45309; background: transparent; border: none;")
+        self.cap_label.setToolTip("当前编辑器支持的能力")
+        self.cap_label.setVisible(False)
+        primary.addWidget(self.cap_label)
         self._update_conn_tooltip()
         primary.addWidget(self.conn_label)
         self.btn_engine = PushButton("引擎"); self.btn_engine.setCheckable(True); self.btn_engine.setChecked(True)
@@ -2018,6 +2023,8 @@ class MainWindow(QMainWindow):
         self._update_manual = False
         self._update_manual_cancelled = False
         self._pending_update = None
+        self._caps = {}
+        self._cap_editor = None
         self._draft_timer = QTimer(self)
         self._draft_timer.setSingleShot(True)
         self._draft_timer.timeout.connect(self._persist_current_draft)
@@ -2200,6 +2207,15 @@ class MainWindow(QMainWindow):
         self._last_tokens = []
         self._remote_tokens = []
         self._activating_row = None
+        self._caps = {}
+        self._cap_editor = None
+        if hasattr(self, "cap_label"):
+            self.cap_label.setVisible(False)
+            self.cap_label.setText("")
+        for attr in ("btn_filter", "btn_seginfo", "btn_cc"):
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                btn.setEnabled(True)
         self._filter_active = False
         self._filter_busy = False
         self._filter_pending = None
@@ -2554,6 +2570,10 @@ class MainWindow(QMainWindow):
         self.res_panel.cc_input.setFocus()
 
     def _run_concordance(self, text: str, direction: str = "source"):
+        caps = getattr(self, "_caps", {})
+        if caps and not caps.get("concordance"):
+            self.res_panel.set_status("当前编辑器不支持语词检索")
+            return
         """在主窗口浮层中查询 memoQ Concordance；请求序号防止旧结果覆盖新检索。"""
         text = str(text or "").strip()
         direction = "target" if direction == "target" else "source"
@@ -2639,6 +2659,10 @@ class MainWindow(QMainWindow):
         return _re.sub(r"\s+", " ", _re.sub(r"\{\d+>|<\d+[}>]", "■", str(s or ""))).strip()
 
     def _fetch_res(self, row_no: int):
+        caps = getattr(self, "_caps", {})
+        if caps and not caps.get("tmHits"):
+            self.res_panel.set_status("当前编辑器不支持 TM/TB 命中")
+            return
         """选中段后拉取 TM/术语命中（异步；结果由页面 push 'tm-hits' 事件带回，
         这里只负责发请求 + 一次性超时保险。不用轮询 runJavaScript——实测轮询会触发
         Qt6Core fail-fast 崩溃（0xc0000409）。"""
@@ -2700,6 +2724,9 @@ class MainWindow(QMainWindow):
             _upd()
 
     def _fetch_segment_info(self, row_no: int):
+        caps = getattr(self, "_caps", {})
+        if caps and not caps.get("segmentInfo"):
+            return
         """读取当前段上下文/注释；文档注释由 JS 按文档缓存，切行不重复请求。"""
         self._seg_info_has_content = False
         self.seg_info_frame.setVisible(False)
@@ -2972,6 +2999,10 @@ class MainWindow(QMainWindow):
         self._term_call("termAddReq", dict(params))
 
     def _edit_term(self, payload):
+        caps = getattr(self, "_caps", {})
+        if caps and not caps.get("terms"):
+            self.log("当前编辑器不支持术语编辑（需要旧版编辑器）")
+            return
         """右键 TB 命中 → 编辑术语：先预填命中文本，再读回定义/示例。"""
         payload = dict(payload or {})
         if (payload.get("kind") or "") != "tb":
@@ -3545,6 +3576,47 @@ class MainWindow(QMainWindow):
         self._pid_seq += 1
         return self._pid_seq
 
+    def _probe_capabilities(self):
+        """页面就绪后一次性探测；能力缺失时 UI 明确降级，不静默写错数据。"""
+        if not self._editor_pid:
+            return
+        self.call_js("JSON.stringify(__md.api.capabilities())", self._apply_capabilities)
+
+    def _apply_capabilities(self, r):
+        try:
+            res = json.loads(r) if isinstance(r, str) else (r or {})
+        except Exception:
+            res = {}
+        feats = res.get("features") or {}
+        reasons = res.get("reasons") or {}
+        self._caps = feats
+        self._cap_editor = res.get("editor")
+        for attr, key in (("btn_filter", "filter"), ("btn_seginfo", "segmentInfo"),
+                          ("btn_cc", "concordance")):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            ok = bool(feats.get(key, False))
+            btn.setEnabled(ok)
+            if not ok:
+                btn.setToolTip(reasons.get(key) or "当前编辑器不支持此功能")
+        if self._cap_editor == "new":
+            text = "新版编辑器 · 仅当前段读写"
+        elif any(not v for k, v in feats.items()
+                 if k in ("listRows", "tmHits", "filter", "terms")):
+            text = "旧版编辑器 · 部分功能不可用"
+        else:
+            text = ""
+        self.cap_label.setText(text)
+        self.cap_label.setVisible(bool(text))
+        if self._cap_editor == "new":
+            self.conn_label.setText("已连接 · 新版编辑器（部分功能）")
+            self.conn_label.setStyleSheet("color: #d97706;")
+            self.res_panel.set_status("新版编辑器：仅支持当前段读写；段列表/TM/TB/术语/过滤暂不可用")
+        elif self._cap_editor == "old":
+            self.conn_label.setText("已连接 · 旧版编辑器")
+            self.conn_label.setStyleSheet("color: #059669;")
+
     def on_bridge_event(self, page_id: int, payload: str):
         import os as _os
         _trace = _os.environ.get("MEMODESK_TRACE")
@@ -3568,6 +3640,11 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(500, lambda: self._set_engine_visible(False))
             self.conn_label.setText("已连接 · 编辑器就绪")
             self.conn_label.setStyleSheet("color: #059669;")
+            probe = getattr(self, "_probe_capabilities", None)
+            if probe is not None:
+                QTimer.singleShot(1200, probe)
+                QTimer.singleShot(5000, probe)
+                QTimer.singleShot(15000, probe)
             self._schedule_seg_refresh(1500, background=False)  # 首次完整读取并更新统计
         elif msg.get("type") == "bridge-ready" and page_id == self._editor_pid:
             # 原编辑器页导航走了（新页面会重新上报身份）
@@ -3690,6 +3767,8 @@ class MainWindow(QMainWindow):
 
     def refresh_seg_list(self, background: bool = False):
         """完整读取 memoQ 缓存行以保证多人同步，但只对变化行发 Qt 更新。"""
+        if getattr(self, "_caps", {}) and not self._caps.get("listRows"):
+            return
         if (getattr(self, "_filter_busy", False) or self._seg_sync_busy
                 or (background and not self._editor_pid)):
             return
