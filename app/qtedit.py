@@ -117,6 +117,43 @@ def _name_hue(name: str) -> int:
     return h
 
 
+def tag_attrs_text(attrs) -> str:
+    """tag 属性展示：旧版是字符串；新版是 PM attrs dict。
+
+    PM 的 attributes 可能是 list 或 dict，元素形如
+    ``{"type": 1, "value": "2", "name": "displaytext"}``；dict 形态还要再取一层 value。
+    """
+    if not attrs:
+        return ''
+    if isinstance(attrs, str):
+        return attrs.strip()
+    if not isinstance(attrs, dict):
+        return str(attrs).strip()
+
+    def value_text(item):
+        if isinstance(item, dict):
+            inner = item.get('value')
+            if isinstance(inner, dict):
+                inner = inner.get('value')
+            return '' if inner is None else str(inner)
+        return str(item)
+
+    items = []
+    raw = attrs.get('attributes')
+    if isinstance(raw, list):
+        for item in raw:
+            name = str((item or {}).get('name') or '').strip() if isinstance(item, dict) else ''
+            text = value_text(item)
+            if text:
+                items.append(f'{name}="{text}"' if name else text)
+    elif isinstance(raw, dict):
+        for name, item in raw.items():
+            text = value_text(item)
+            if text:
+                items.append(f'{name}="{text}"' if name else text)
+    return ' '.join(items).strip()
+
+
 class TagObject(QTextObjectInterface, QObject):
     """tag 胶囊：memoQ 新版风格药丸。短=编号，长=名称+编号；
     颜色按 tag 名稳定哈希（标色/占位/隐藏规则仍优先）
@@ -128,37 +165,58 @@ class TagObject(QTextObjectInterface, QObject):
         self.cfg_get = cfg_get
 
     def intrinsicSize(self, doc, posInDocument, fmt):
-        payload = json.loads(fmt.property(PAYLOAD) or '{}')
-        text = self._label(payload)
+        try:
+            payload = json.loads(fmt.property(PAYLOAD) or '{}')
+            text = self._label(payload)
+        except Exception:
+            return QSizeF(20, 15)
         f = QFont("Microsoft YaHei", 7)
         w = QFontMetricsF(f).horizontalAdvance(text) + 8
         return QSizeF(w, 15)
 
+    @staticmethod
+    def _attrs_text(attrs) -> str:
+        return tag_attrs_text(attrs)
+
     def _label(self, p: dict) -> str:
-        kind = p.get('tagKind') or ('close' if is_close_tag(p.get('name', ''), p.get('display', '')) else 'open')
-        mode = (self.cfg_get() or {}).get('tagDisplay', 'long')
-        if p.get('ph'):
-            core = "■"
-        else:
-            name = re.sub(r'^\[|\]$', '', str(p.get('name') or '?'))
-            name = re.sub(r'^/', '', name).strip() or '?'
-            if mode == 'short':
-                # 序号 = memoQ 的 NumID（按出现顺序编号），不是 displaytext 属性
-                core = str(p.get('id') or '?')
+        try:
+            kind = p.get('tagKind')
+            if not kind:
+                # 新版 tag token 来自 ProseMirror，每个 tag 节点是独立标记，没有开/闭语义；
+                # 用 tagType（如 inline-closed）识别，避免把成对 tag 误标成 "{...}"。
+                if p.get('tagType'):
+                    kind = 'empty'
+                else:
+                    kind = 'close' if is_close_tag(p.get('name', ''), p.get('display', '')) else 'open'
+            mode = (self.cfg_get() or {}).get('tagDisplay', 'long')
+            if p.get('ph'):
+                core = "■"
             else:
-                # memoQ 长显风格：名称 + 完整属性（mq:ch val=" "）
-                attrs = (p.get('attrs') or '').strip()
-                disp = (p.get('display') or '').strip()
-                core = f"{name} {attrs}" if attrs else f"{name} {disp}".strip()
-                if len(core) > 36:
-                    core = core[:35] + '…'
-        if p.get('nl'):
+                name = re.sub(r'^\[|\]$', '', str(p.get('name') or '?'))
+                name = re.sub(r'^/', '', name).strip() or '?'
+                if mode == 'short':
+                    # 旧版用 NumID；新版 tag token 没有 id，退化为 memoQ 的 displayText
+                    # （就是段内看到的 tag 显示文本，例如 "1"/"2"），不能显示成 "?"。
+                    core = str(p.get('id') or p.get('display') or '?')
+                    if len(core) > 8:
+                        core = core[:7] + '…'
+                else:
+                    # memoQ 长显风格：名称 + 完整属性（mq:ch val=" "）
+                    attrs = self._attrs_text(p.get('attrs'))
+                    disp = str(p.get('display') or '').strip()
+                    core = f"{name} {attrs}" if attrs else f"{name} {disp}".strip()
+                    if len(core) > 36:
+                        core = core[:35] + '…'
+            if p.get('nl'):
+                return core
+            if kind == 'open':
+                return "{" + core
+            if kind == 'close':
+                return core + "}"
             return core
-        if kind == 'open':
-            return "{" + core
-        if kind == 'close':
-            return core + "}"
-        return core
+        except Exception:
+            # 绘制期异常在 Qt 里会直接 fail-fast 闪退，宁可退化成文本也不能抛。
+            return str(p.get('name') or p.get('display') or 'tag')[:24]
 
     def _colors(self, p: dict):
         """返回 (文字/边框色, 底色)"""
@@ -176,18 +234,26 @@ class TagObject(QTextObjectInterface, QObject):
         return fg, bg
 
     def drawObject(self, painter: QPainter, rect: QRectF, doc, posInDocument, fmt):
-        payload = json.loads(fmt.property(PAYLOAD) or '{}')
-        label = self._label(payload)
-        color, bg = self._colors(payload)
-        r = QRectF(rect.x() + 1, rect.y() + 2, rect.width() - 2, min(rect.height() - 4, 13))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(bg)
-        painter.drawRoundedRect(r, 3, 3)
-        painter.setPen(QPen(color))
-        f = QFont("Microsoft YaHei", 7)
-        f.setBold(True)
-        painter.setFont(f)
-        painter.drawText(r, Qt.AlignmentFlag.AlignCenter, label)
+        try:
+            payload = json.loads(fmt.property(PAYLOAD) or '{}')
+            label = self._label(payload)
+            color, bg = self._colors(payload)
+            r = QRectF(rect.x() + 1, rect.y() + 2, rect.width() - 2, min(rect.height() - 4, 13))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(bg)
+            painter.drawRoundedRect(r, 3, 3)
+            painter.setPen(QPen(color))
+            f = QFont("Microsoft YaHei", 7)
+            f.setBold(True)
+            painter.setFont(f)
+            painter.drawText(r, Qt.AlignmentFlag.AlignCenter, label)
+        except Exception:
+            # Qt 绘制回调里抛异常会直接导致进程 fail-fast：吞掉并退化绘制。
+            try:
+                painter.setPen(QPen(QColor("#94a3b8")))
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "tag")
+            except Exception:
+                pass
 
 
 class SpaceObject(QTextObjectInterface, QObject):
@@ -832,12 +898,14 @@ class MqEditor(QTextEdit):
             return ''
         p = json.loads(payload or '{}')
         name = str(p.get('name') or p.get('display') or 'tag')
-        attrs = str(p.get('attrs') or '').strip()
+        attrs = tag_attrs_text(p.get('attrs'))
         lines = [name]
         if attrs:
             lines.append(attrs)
         if p.get('id') not in (None, ''):
             lines.append(f"编号：{p.get('id')} · {p.get('tagKind') or p.get('kind') or 'empty'}")
+        elif p.get('tagType'):
+            lines.append(f"类型：{p.get('tagType')}")
         return '\n'.join(lines)
 
     def mouseMoveEvent(self, event):

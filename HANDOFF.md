@@ -35,7 +35,7 @@
 4. **测试工作流**
    - `TESTING.md`：L0 快测 / L1 提交前全量 / L2 发版前全量 + 构建 + 人工冒烟。
    - `tests/run_all.py`：`--fast` / `--full` / `--only` / `--list`；只打印失败与汇总。
-   - 最近结果：fast 26/26 约 34s；full 43/43 约 73s。
+   - 最近结果：fast 27/27 约 30s；full 44/44 约 75s。
 
 ### 重构第一步
 
@@ -125,6 +125,7 @@
 - **防抖动**：`_cur_row` 是权威行；`_activating_row` 期间忽略 `row-changed`；`SegmentSync.invalidate()` / `_read_gen` 丢弃过期快照；程序化 `selectRow` 不得反向触发激活。
 - **保存状态**只在 `SaveCoordinator` 里（`busy` / `seq+active_id` / `pending_row` / `conflict_snapshot`）；**段列表状态**只在 `SegmentSync` 里（`busy` / `seq` / `total_rows` / `auto_loading`）；**命中请求状态**只在 `HitCoordinator` 里（`row` / `gen`）；**详情请求状态**只在 `DetailCoordinator` 里（段信息 `gen` / TB 详情 `seq+pending`）。`MainWindow` 只实现端口，不要在端口里另做时机判断。
 - **页面操作**只走 `EditorBackend`（`backend_for(self)`）：新增/修改 `__md.api` 表达式只改 `app/editor_backend.py`，不要在 `mainwindow.py` 里散 `call_js`（`--selftest`/探针/往返诊断除外）。
+- **新版 tag 胶囊**：`readSegment` 的新版 tag token 来自 ProseMirror（`display`、`tagType`、`attrs` 是 dict，没有旧版 NumID `id`）。`qtedit` 绘制必须同时兼容两种 token：长显从 `attrs.attributes` 取属性（dict 内层再取 `value`），短显 `id` 缺失时用 `display`（memoQ displayText），并给 `intrinsicSize/drawObject` 加兜底——历史 P0：长显把 dict 当字符串 `.strip()`，Qt 绘制期 fail-fast 闪退；短显无 id 显示成 “?”。
 - **新版引擎页必须保持渲染**：新版 React 页面被 `hide()` 后会停止渲染网格/编辑器视图；隐藏引擎必须走“停放”（保持 visible、禁用交互、移出窗口可视区），不要改回直接 hide。
 - **命中面板不得被能力提示清空**：能力探测只在 `bridge-ready` 调度一次（1200/5000/15000ms）；`_apply_capabilities` 写提示必须用 `ResPanel.set_hint()`（仅在无命中时显示），`set_status()` 只用于加载中/空态。历史 P0：每条 row-changed/tm-hits/rows-updated 都重复排探测，1.2 秒后探测把刚加载的 TM/TB 列表清空，只剩详情。
 - **新版命中只读保护**：命中 payload 带 `readOnly: true` 时 `_res_insert` 必须拒绝插入（tag 结构未确认，宁可拒绝也不能丢 tag 静默插入）。
