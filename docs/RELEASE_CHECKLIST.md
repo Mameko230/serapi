@@ -1,6 +1,6 @@
 # 发布检查清单（Release Gate）
 
-> 没有完成本清单，不得把版本推到 latest。Beta / Prerelease 不受此限制，但 Release notes 必须写明未验证项。
+> **快节奏发布（2026-11-27 起）**：patch 版本完成 L0 + L1、且本次改动面做过真机验证后可直接发 latest；不再强制 Prerelease/3–7 天 soak。未跑全量 N1–N24 时，必须在 Release notes 明列未覆盖项。minor/major 仍要求完整冒烟。
 
 ## 1. 代码与测试
 
@@ -19,11 +19,11 @@
 
 ## 3. 真机冒烟
 
-- [ ] 按 [SMOKE.md](SMOKE.md) 在自己或授权测试环境完成
-- [ ] 新版 N1–N15 全部通过
-- [ ] 旧版 O1–O4 全部通过（如仍支持）
+- [ ] 在打包安装包（或便携包）上验证本次改动面
+- [ ] patch：未跑全量 N1–N15 时，Release notes 明列未覆盖项
+- [ ] minor/major：新版 N1–N15 全部通过
+- [ ] 旧版 O1–O4 全部通过（涉及旧版改动时）
 - [ ] 失败项已修复并重跑
-- [ ] 无法真机验证时：Release 标 Prerelease，并写明原因
 
 ## 4. 打包
 
@@ -35,10 +35,9 @@
 
 ## 5. 发布节奏
 
-- [ ] 先发 Prerelease
-- [ ] 至少 3–7 天 soak；如为稳定版，确认无 P0/P1 回归
-- [ ] 使用者回执（按 SMOKE 模板）已收集
-- [ ] 再打 latest
+- [ ] **快节奏发布**：patch 通过 L0/L1 + 改动面真机验证后可直接发 latest，不再要求 soak
+- [ ] minor/major 仍按完整冒烟与回执执行
+- [ ] Release notes 明列未覆盖的真机项
 
 ## 6. 合规
 

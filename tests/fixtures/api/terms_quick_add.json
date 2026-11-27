@@ -1,0 +1,16 @@
+{
+  "_fixture": {
+    "synthetic": true,
+    "service": "memoQ document quick-add term",
+    "method": "POST /terms/quick-add",
+    "note": "Synthetic request/response only; no real termbase entry is created."
+  },
+  "request": {
+    "sourceTerm": {"langCode": "jpn", "termText": "デモ原文"},
+    "targetTerm": {"langCode": "zho-CN", "termText": "演示译文"}
+  },
+  "response": {
+    "Success": true,
+    "Value": {"Result": 0}
+  }
+}

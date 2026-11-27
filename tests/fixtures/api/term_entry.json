@@ -1,0 +1,29 @@
+{
+  "_fixture": {
+    "synthetic": true,
+    "service": "memoQ termbase entry",
+    "method": "GET /resources/termbases/demo-tb-writable/entries/entry-demo-1",
+    "note": "Synthetic termbase entry with source/target terms, definitions and built-in metadata."
+  },
+  "response": {
+    "entryId": "entry-demo-1",
+    "languages": {
+      "jpn": {
+        "terms": [
+          {"id": 1, "term": "デモ原文", "matching": "half", "caseSensitivity": "permissive"}
+        ],
+        "definition": "デモ用の原文定義"
+      },
+      "zho-CN": {
+        "terms": [
+          {"id": 1, "term": "演示译文", "matching": "half", "caseSensitivity": "permissive"}
+        ],
+        "definition": "演示译文定义"
+      }
+    },
+    "builtInMetas": {
+      "Project": "DEMO",
+      "Subject": "DEMO"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "_fixture": {
+    "synthetic": true,
+    "service": "memoQ document termbase metadata",
+    "method": "GET /resources/meta",
+    "note": "Synthetic termbase metadata with a writable and a read-only termbase."
+  },
+  "response": {
+    "termBase": [
+      {
+        "id": "demo-tb-writable",
+        "name": "Demo Writable TB",
+        "isPrimary": true,
+        "isReadOnly": false,
+        "languages": [
+          {"code": "jpn", "name": "Japanese"},
+          {"code": "zho-CN", "name": "Chinese (Simplified)"}
+        ]
+      },
+      {
+        "id": "demo-tb-readonly",
+        "name": "Demo Read-Only TB",
+        "isPrimary": false,
+        "isReadOnly": true,
+        "languages": [
+          {"code": "jpn", "name": "Japanese"},
+          {"code": "zho-CN", "name": "Chinese (Simplified)"}
+        ]
+      }
+    ]
+  }
+}

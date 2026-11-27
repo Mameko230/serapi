@@ -1,0 +1,69 @@
+{
+  "_fixture": {
+    "synthetic": true,
+    "service": "memoQ editor rows",
+    "method": "POST /rows",
+    "note": "Synthetic sample. No real server, project, document, user or translated text."
+  },
+  "request": {
+    "rowIds": [0, 1, 2, 3],
+    "scope": "entireRow"
+  },
+  "response": [
+    {
+      "type": "edtr",
+      "id": 0,
+      "meta": {
+        "matchRate": 0,
+        "status": "partiallyEdited",
+        "isReadonly": false,
+        "isLocked": false
+      },
+      "source": {
+        "symbols": [
+          {"type": 1, "value": 65},
+          {"type": 2, "tagType": 1, "inlineTagType": 2, "name": "mq:rxt",
+           "attributes": [{"type": 1, "name": "val", "value": "demo-value"}],
+           "display": {"isSpecial": true, "text": "demo-value"}}
+        ]
+      },
+      "target": {"symbols": [{"type": 1, "value": 97}]}
+    },
+    {
+      "type": "edtr",
+      "id": 1,
+      "meta": {
+        "matchRate": 100,
+        "status": "manuallyConfirmed",
+        "isReadonly": false,
+        "isLocked": false
+      },
+      "source": {"symbols": [{"type": 1, "value": 66}]},
+      "target": {"symbols": [{"type": 1, "value": 98}]}
+    },
+    {
+      "type": "edtr",
+      "id": 2,
+      "meta": {
+        "matchRate": 100,
+        "status": "proofread",
+        "isReadonly": false,
+        "isLocked": false
+      },
+      "source": {"symbols": [{"type": 1, "value": 67}]},
+      "target": {"symbols": [{"type": 1, "value": 99}]}
+    },
+    {
+      "type": "edtr",
+      "id": 3,
+      "meta": {
+        "matchRate": 0,
+        "status": "rejected",
+        "isReadonly": false,
+        "isLocked": false
+      },
+      "source": {"symbols": [{"type": 1, "value": 68}]},
+      "target": {"symbols": [{"type": 1, "value": 100}]}
+    }
+  ]
+}

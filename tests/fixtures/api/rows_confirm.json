@@ -1,0 +1,16 @@
+{
+  "_fixture": {
+    "synthetic": true,
+    "service": "memoQ bulk row confirm",
+    "method": "POST /rows/confirm",
+    "note": "Synthetic accepted-job response. The real row status must still be re-read."
+  },
+  "request": {
+    "rowIds": [0],
+    "saveToTranslationMemory": true,
+    "autoOptions": {}
+  },
+  "response": {
+    "jobId": "job-demo-1"
+  }
+}

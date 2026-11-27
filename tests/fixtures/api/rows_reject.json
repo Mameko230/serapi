@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "synthetic": true,
+    "service": "memoQ per-row reject",
+    "method": "POST /rows/0/reject",
+    "note": "Synthetic row response. Rejection is per-row; no batch /rows/reject endpoint."
+  },
+  "request": {
+    "AutoOptions": {}
+  },
+  "response": {
+    "type": "edtr",
+    "id": 0,
+    "meta": {
+      "matchRate": 0,
+      "status": "rejected",
+      "isReadonly": false,
+      "isLocked": false
+    },
+    "source": {"symbols": [{"type": 1, "value": 65}]},
+    "target": {"symbols": [{"type": 1, "value": 97}]}
+  }
+}

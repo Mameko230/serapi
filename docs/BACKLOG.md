@@ -157,19 +157,20 @@
 
 ### A. API 真实响应样本库（P0）
 
-**状态**：待办
+**状态**：已实现合成样本（2026-11-27；真实抓包样本仍待维护者补充）
 
-- 现状：`tests/fixtures/api/` 只有规则说明，没有真实响应样本；接 memoQ API 仍靠命名和真机兜底。
-- 方案：抓取关键接口的脱敏 JSON（rows/confirm、rows/reject、rows 状态、terms/quick-add、TB REST、resources/meta），每个接口存一份，测试和接线都对照 fixture。
+- 现状：`tests/fixtures/api/` 原有规则说明，现已补 6 个合成响应样本：rows、rows_confirm、rows_reject、resources_meta、terms_quick_add、term_entry。
+- 方案：所有样本带 `_fixture.synthetic: true`；`tests/test_api_fixtures.py` 校验结构、状态枚举、无 URL/GUID，并确保没有伪装成真实抓包。
+- 待办：用户提供脱敏真实响应后，用真实样本替换/补充合成样本；未覆盖接口继续标 `待真机验证`。
 - 风险：脱敏必须彻底；不能把真实项目 GUID/正文/账号带进仓库。
-- 验证：新增接口接线测试必须引用 fixture；没有 fixture 的接口标 `待真机验证`。
 
 ### B. 发版门禁与版本纪律（P0）
 
-**状态**：待讨论/待执行
+**状态**：已决议（2026-11-27：正式改为快节奏发布）
 
-- 现状：`docs/RELEASE_CHECKLIST.md` 要求 L2 冒烟全过，但实际发布仍有未完整跑 N1–N29 的版本；soak 条款也没有真正执行。
-- 方案：二选一并写死——严格执行 Prerelease + 3–7 天 soak，或正式改为快节奏发布并在 CHANGELOG/发布说明中注明；L2 结果必须写 `SMOKE_RESULTS.md`。
+- 现状：1.2.2 前的规则要求 Prerelease + 3–7 天 soak，但实际发布没有执行，形成“写了不执行”的矛盾。
+- 决议：patch 版本在 L0 全量测试、L1 打包检查通过、改动面真机验证后可直接发 latest；不再强制 Prerelease/soak。minor/major 仍要求完整 N1–N24 冒烟。未跑全量冒烟时 Release notes 必须明列未覆盖项。
+- 已同步：`AGENTS.md`、`docs/AGENT_CHECKLIST.md`、`docs/RELEASE_CHECKLIST.md`、`docs/SMOKE.md`。
 - 验证：每次 tag 前检查 `SMOKE_RESULTS.md` 对应当前版本。
 
 ### C. 新版 Ctrl+E 补齐定义/示例（P1）

@@ -4,7 +4,7 @@
 
 > 原则：**任何人都不需要把 memoQ 服务器、账号或项目内容交给维护者。**
 > 维护者只在自己的测试实例上跑；使用者可在自己的服务器上跑同一份清单，只回报“通过/失败 + 脱敏错误”。
-> 没有完成本清单的版本，只能以 Beta / Prerelease 发布。
+> **快节奏发布（2026-11-27 起）**：patch 版本完成 L0/L1、本次改动面真机验证后可直接发 latest；不再强制 Beta/Prerelease 或 3–7 天 soak。未跑全量 N1–N24 时，Release notes 必须明列未覆盖项。minor/major 仍要求全量通过。
 
 ## 0. 隐私边界
 
@@ -67,9 +67,9 @@
 
 ## 4. 发布判定
 
-- 新版 N1–N24 全部通过，旧版 O1–O4 全部通过 → 可进入 stable 候选。
-- 任一失败 → 修完重跑；无法真机验证 → 只能发 Prerelease，并在 Release notes 写明“未完成真机验证”。
-- 没有测试实例的维护者：发 Beta，收集使用者按本清单的回执；至少 3 个独立环境通过后再考虑 latest。
+- patch：本次改动面通过即可发 latest；未跑全量 N1–N24 时 Release notes 明列未覆盖项。
+- minor/major：新版 N1–N24 全部通过，旧版 O1–O4 全部通过 → 可进入 stable 候选。
+- 任一失败 → 修完重跑；无法真机验证 → Release notes 写明“未完成真机验证”，patch 仍可 latest，minor/major 只能发 Prerelease。
 
 ## 5. 回报模板
 
