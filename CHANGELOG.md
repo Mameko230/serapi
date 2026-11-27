@@ -16,6 +16,8 @@
 ### 修复
 
 - 修复 R2/已确认状态在“旧 edited 快照”下显示为黄色已编辑：权威状态首次出现立即落地并加保护。
+- 修复 R2 确认状态 `proofread` 未映射：现在映射为“审校者 2 已确认”；确认/拒绝改走原生批量接口 `rows/confirm` / `rows/reject`（带 rowIds/saveToTranslationMemory/autoOptions）并轮询真实行状态，避免只改本地。
+- 修复新版 TB 编辑：通过 `resources/termbases/<tb>/entries/<id>` 读取，按 memoQ FormData 结构提交修改；Ctrl+E/Ctrl+Q 走新版 `/terms/quick-add` 与 `resources/meta`，不再依赖旧版 Core。
 - 修复左栏滚轮到底不触发加载更多：增加滚轮/到底兜底检查，未知总数时也尝试扩容。
 - 修复 Ctrl+Enter/切行闪退：补齐 `editor_ports.py` 缺失的 `RowRef` / 写策略导入。
 - 修复 Ctrl+Enter 保存后卡死：补齐 `editor_ports.py` 缺失的 `QTimer`/`json` 导入（拆分遗留），并补 `runtime_selftest`/`stats_filter_workflow`/`term_ports` 同类缺失导入。
@@ -31,7 +33,7 @@
 ### 工程化
 
 - 新增 `app/preview_context.js` 及离线测试；新增 `dictionaries/` 与 `THIRD_PARTY_NOTICES.md`。
-- 全量测试：**70/70 passed**。
+- 全量测试：**71/71 passed**。
 
 ## 1.1.0（2026-11-27）
 

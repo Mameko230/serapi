@@ -17,8 +17,8 @@
 | Ctrl+E | 通过（浮层打开；新版编辑器提示“添加术语仅旧版支持”，不再 TypeError/闪退） |
 | Ctrl+Q | 通过（长文档真机：选中原文/译文后调用新版 `/terms/quick-add`，术语成功入库并刷新 TB 命中） |
 | Ctrl+E | 通过（新版浮层从 `/resources/meta` 取 TB 列表；提交走 `/terms/quick-add`，不再因旧 Core 失败） |
-| TB 详情/编辑 | TB 详情读取正常；右键编辑条目仍依赖旧版 QTermService/Core，尚未接新版资源编辑端点 |
-| R2/R1/已确认状态 | 根因：R2 确认接口返回 `status:"proofread"` 被旧映射回退成 `edited`；已映射 R2。确认改走原生批量 `POST /rows/confirm`（带 rowIds/saveToTranslationMemory/autoOptions）并轮询真实行状态，避免只改本地 |
+| TB 详情/编辑 | 新版：`GET resources/termbases/<tb>/entries/<id>` 读取，`POST .../entries/<id>`（memoQ FormData）保存；旧 QTermService 路径保留兼容 |
+| R2/R1/已确认状态 | `proofread` → R2；确认/拒绝改走原生批量 `rows/confirm` / `rows/reject` 并轮询真实状态；权威状态持续优先 |
 | 长文档 | 通过（2150 行；Ctrl+G 跳第 1000 行，窗口 967–1066 正确加载并读取第 1000 行） |
 | 滚轮加载更多 | 通过（长文档列表底部滚动触发扩容/同步） |
 
