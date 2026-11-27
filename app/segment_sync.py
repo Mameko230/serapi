@@ -34,6 +34,7 @@ class SegmentSync:
         self.busy = False
         self.total_rows = 0
         self.auto_loading = False
+        self._load_retries = 0
 
     def invalidate(self):
         """保存/确认成功：让在途 listRows 快照失效，避免段状态回跳。"""
@@ -83,6 +84,7 @@ class SegmentSync:
                 port.log(f"段列表已同步：{changed} 行变化{extra}")
             if self.auto_loading:
                 self.auto_loading = False
+                self._load_retries = 0
                 port.nudge_scroll()
 
         port.request_list_rows(done)
@@ -108,9 +110,13 @@ class SegmentSync:
             return
         self.auto_loading = True
         if getattr(port, "is_new_editor", lambda: False)():
-            # 新版 expandRows 自己会推 rows-updated；不再固定等 900ms。
-            # 2.5s 保险：接口失败/无更多行时复位，避免滚动加载被永久卡住。
-            port.request_expand_grid(lambda _ok: None)
+            # 新版 expandRows 自己会推 rows-updated；接口返回 false 时不能
+            # 死等 2.5s，否则用户会感觉“滚到底没有反应”。失败后自动重试两次。
+            def expand_done(ok):
+                if ok is False or ok == "false":
+                    self._after_expand_failed()
+
+            port.request_expand_grid(expand_done)
             port.later(2500, self._clear_auto_loading)
             return
 
@@ -123,11 +129,26 @@ class SegmentSync:
         port.request_expand_grid(done)
 
     def _clear_auto_loading(self):
+        was_loading = self.auto_loading
         self.auto_loading = False
+        if was_loading:
+            self._retry_after_failed_load()
+
+    def _after_expand_failed(self):
+        self.auto_loading = False
+        self._retry_after_failed_load()
+
+    def _retry_after_failed_load(self):
+        """扩容偶发失败时，在仍位于底部的情况下自动重试，避免永久卡在 100 行。"""
+        if self._load_retries >= 2:
+            return
+        self._load_retries += 1
+        self.port.later(120, self.port.nudge_scroll)
 
     def on_rows_updated(self):
         """rows-updated：新版扩充/单行刷新共用；解除加载标记并后台同步。"""
         self.auto_loading = False
+        self._load_retries = 0
         if self.busy:
             self.port.schedule_refresh(120, background=True)
             return

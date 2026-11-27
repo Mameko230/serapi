@@ -209,6 +209,18 @@ s.load_more()
 p.requests[0][1](False)
 assert not s.auto_loading and p.kinds() == ["expand"]
 
+# 13b) 新版扩容偶尔返回 false：不能死等 2.5s，要自动重试并解除标记。
+p = FakePort()
+p.is_new_editor = lambda: True
+s = SegmentSync(p)
+s.load_more()
+assert p.kinds() == ["expand", "later"] and s.auto_loading
+p.requests[0][1](False)
+assert not s.auto_loading
+assert p.kinds()[-1] == "later"
+p.requests[-1][2]()  # 120ms 后重新检查滚动位置
+assert p.nudges == 1
+
 # 14) 扩容期间先回来的后台同步：清标记并让调用方重新检查滚动位置。
 p = FakePort()
 s = SegmentSync(p)
