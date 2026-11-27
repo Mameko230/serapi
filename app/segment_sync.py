@@ -90,8 +90,13 @@ class SegmentSync:
         port.request_list_rows(done)
 
     def on_scroll(self, value: int):
-        """接近底部才扩容；过滤期间行号集合已变，不自动加载。"""
+        """接近底部/顶部才扩容；过滤期间行号集合已变，不自动加载。"""
         if self.port.filter_active():
+            return
+        # 往上滚到顶：缓存窗可能只是从当前行附近开始的，需要补前面的行。
+        if value <= 3:
+            if not self.auto_loading:
+                self.load_prev()
             return
         maximum = self.port.scroll_max()
         if maximum <= 0 or value < maximum - 3:
@@ -102,6 +107,22 @@ class SegmentSync:
             return
         if not self.auto_loading:
             self.load_more()
+
+    def load_prev(self):
+        """向上扩展新版缓存窗；旧版页面没有前向窗口接口，直接跳过。"""
+        port = self.port
+        if port.filter_active() or self.auto_loading:
+            return
+        if not getattr(port, "is_new_editor", lambda: False)():
+            return
+        self.auto_loading = True
+
+        def done(ok):
+            if ok is False or ok == "false":
+                self._after_expand_failed()
+
+        port.request_prepend_grid(done)
+        port.later(2500, self._clear_auto_loading)
 
     def load_more(self):
         """让 memoQ 扩展缓存，再后台同步到段列表。"""

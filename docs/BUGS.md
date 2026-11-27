@@ -6,6 +6,8 @@
 
 | bug | 根因类别 | 守卫 |
 |---|---|---|
+| 左栏向上滚到顶不能加载前面的行 | 集成崩溃 | `tests/test_segment_sync.py`、`tests/test_new_editor_rows_api.js`（向上补窗口） |
+| QA 行数相同却误报“行数不相等” | 逻辑错误 | `tests/test_lint.js`（视觉行数一致时忽略换行 token 表示差异） |
 | 左栏滚轮到底偶尔不加载更多 | 集成崩溃 | `tests/test_segment_sync.py`（新版扩容失败自动重试） + `docs/SMOKE.md` 滚轮检查 |
 | 确认后左栏绿但服务器仍是已编辑 | API 语义 | `tests/test_new_editor_actions.js`（确认态连续两次读取） + `docs/SMOKE.md` N4 |
 | 超长单段译文编辑器白屏/卡顿 | 集成崩溃 | `tests/test_long_segment_editor.py`（超长段禁用逐行卡片自绘） + `docs/SMOKE.md` N3 |

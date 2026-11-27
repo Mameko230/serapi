@@ -309,12 +309,20 @@ pushes.length = 0;   // bridge 启动时的 bridge-ready 不计入
   assert.ok(pushes.map((p) => JSON.parse(p)).some((j) => {
     return j.type === 'jump-ready' && j.data.rowNo === 120;
   }), pushes);
+  // 8b) 向上补窗口：从当前窗口起点向前取 100 行，不覆盖已有行。
+  pushes.length = 0;
+  assert.strictEqual(api.prependRows(), true);
+  await tick();
+  res = JSON.parse(JSON.stringify(api.listRows()));
+  assert.strictEqual(res.rows.length, 186);   // 1..186（原窗口 87..186 + 前面 0..86）
+  assert.strictEqual(res.rows[0].rowNo, 1);
+  assert.ok(pushes.map((p) => JSON.parse(p)).some((p) => p.type === 'rows-updated'));
   // 窗口后继续向下扩批，不应回到第 1 行。
   assert.strictEqual(api.expandRows(), true);
   await tick();
   res = JSON.parse(JSON.stringify(api.listRows()));
-  assert.strictEqual(res.rows.length, 164);   // 187..250
-  assert.strictEqual(res.rows[0].rowNo, 87);
+  assert.strictEqual(res.rows.length, 250);   // 前面 1..186 + 后面 187..250
+  assert.strictEqual(res.rows[0].rowNo, 1);
   assert.strictEqual(res.done, true);
 
   console.log('NEW_EDITOR_ROWS_API_TEST: PASS (offline only)');

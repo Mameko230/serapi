@@ -45,6 +45,9 @@
     function newRowsApiJump(rowNo) {
       return window.__mdRowsApi.jump(newRowsDeps(), rowNo);
     }
+    function newRowsApiPrepend() {
+      return window.__mdRowsApi.prev(newRowsDeps(), 100);
+    }
     function newRowsApiList() { var f = newFilterState();
       var filteredTotal = (f.active && f.rowIds) ? f.rowIds.length : 0;
       return window.__mdRowsStore.list(newRowsApiState(), filteredTotal, deps.rowTotal()); }
@@ -114,7 +117,7 @@
       return h;
     }
 
-    return { newRowsApiState, newRowStatusFromMeta, newRowApiEntry, newRowsDeps, newRowsApiStart, newRowsApiJump, newRowsApiList, newRefreshRowCache, newRowsApiReset, newFilterState, newFilterSet, newFilterPost, newDocApiBase, newApiNamespace, newRowIdFor, newRowIdForWrite, newApiFetch, newApiHeaders };
+    return { newRowsApiState, newRowStatusFromMeta, newRowApiEntry, newRowsDeps, newRowsApiStart, newRowsApiJump, newRowsApiPrepend, newRowsApiList, newRefreshRowCache, newRowsApiReset, newFilterState, newFilterSet, newFilterPost, newDocApiBase, newApiNamespace, newRowIdFor, newRowIdForWrite, newApiFetch, newApiHeaders };
   }
   window.__mdRowsRuntime = { create: create };
 })();

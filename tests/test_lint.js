@@ -73,6 +73,14 @@ assert.strictEqual(ret.warnings.length, 1, ret.warnings);
 assert.strictEqual(ret.warnings[0].message, '行数不相等');
 assert.strictEqual(ret.warnings[0].tagNewline, true);
 
+// 3f) 视觉行数相同：换行 token 的表示差异不能报假警。
+ret = L.analyze({
+  source: [txt('a'), { t: 'newline' }, txt('b')],
+  target: [txt('a\nb')],
+  rules: { tags: true },
+});
+assert.strictEqual(ret.warnings.length, 0, ret.warnings);
+
 // 4) 全半角数字混用
 ret = L.analyze({ source: [txt('12')], target: [txt('1２')], rules: { width: true } });
 assert.strictEqual(ret.warnings.length, 1, ret.warnings);

@@ -207,6 +207,8 @@
           var t = sc.map[k].token || {};
           var info = tagDisplayInfo(t);
           var isNewline = t.t === 'newline' || String(info.name || t.name || '') === 'mq:ch';
+          // 换行 tag 的视觉/原生行数一致时，不再因 token 表示差异报假警。
+          if (isNewline && srcLines.length === tgtLines.length) return;
           add('tags', 0, isNewline ? '行数不相等'
                 : '缺少 tag ' + (t.name || t.display || '#' + (t.id || '?')) + '（' + (a - b) + ' 个）',
               { tag: t.name || '', tagId: t.id, tagNo: info.no, tagValue: info.value,
@@ -219,6 +221,7 @@
           var t2 = tc.map[k].token || {};
           var info2 = tagDisplayInfo(t2);
           var isNewline2 = t2.t === 'newline' || String(info2.name || t2.name || '') === 'mq:ch';
+          if (isNewline2 && srcLines.length === tgtLines.length) return;
           add('tags', 0, isNewline2 ? '行数不相等'
                 : '多出 tag ' + (t2.name || t2.display || '#' + (t2.id || '?')) + '（' + (b - a) + ' 个）',
               { tag: t2.name || '', tagId: t2.id, tagNo: info2.no, tagValue: info2.value,

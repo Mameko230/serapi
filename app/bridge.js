@@ -295,7 +295,7 @@
     }
     function newFindViewByRow(rowId) { return newRowFocus().newFindViewByRow(rowId); }
     function scrollGridDown(anchor) { return newRowFocus().scrollGridDown(anchor); }
-    window.__md.api.expandRows = function () { return newRowFocus().expandRows(); };
+    window.__md.api.expandRows = function () { return newRowFocus().expandRows(); }; window.__md.api.prependRows = function () { return newRowsRuntime().newRowsApiPrepend.apply(null, arguments); };
     window.__md.api.activateRow = function (rowNo) { return newRowFocus().activateRow(rowNo); };
     window.__md.api.focusSegment = function (rowIdx) { return newRowFocus().focusSegment(rowIdx); };
 

@@ -68,6 +68,9 @@ class FakePort:
     def request_expand_grid(self, callback):
         self.requests.append(("expand", callback))
 
+    def request_prepend_grid(self, callback):
+        self.requests.append(("prepend", callback))
+
     def later(self, delay, callback):
         self.requests.append(("later", delay, callback))
 
@@ -208,6 +211,22 @@ s = SegmentSync(p)
 s.load_more()
 p.requests[0][1](False)
 assert not s.auto_loading and p.kinds() == ["expand"]
+
+# 13c) 向上滚到顶：新版请求补前面的窗口；旧版不请求。
+p = FakePort()
+p.is_new_editor = lambda: True
+p.total_rows = 10
+p.cached = 5
+s = SegmentSync(p)
+s.on_scroll(0)
+assert p.kinds() == ["prepend", "later"] and s.auto_loading
+p.requests[0][1](True)
+p = FakePort()
+p.total_rows = 10
+p.cached = 5
+s = SegmentSync(p)
+s.on_scroll(0)
+assert p.requests == []
 
 # 13b) 新版扩容偶尔返回 false：不能死等 2.5s，要自动重试并解除标记。
 p = FakePort()

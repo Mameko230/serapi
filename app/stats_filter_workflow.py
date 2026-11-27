@@ -379,6 +379,13 @@ class StatsFilterWorkflowMixin:
                 " return false;})()")
         self.call_js(expr, callback)
 
+    def request_prepend_grid(self, callback):
+        """向上扩展新版行数据缓存；旧版没有对应分页接口。"""
+        if getattr(self, "_cap_editor", None) == "new":
+            self.call_js("JSON.stringify(__md.api.prependRows())", callback)
+            return
+        callback(False)
+
     def later(self, delay: int, callback):
         QTimer.singleShot(delay, callback)
 

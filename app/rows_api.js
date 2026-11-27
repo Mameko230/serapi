@@ -137,6 +137,58 @@
     return { ok: true, pending: true, windowStart: startAt + 1, windowEnd: end };
   }
 
+  function prev(deps, count) {
+    var st = deps.state();
+    if (st.fetching) return false;
+    if (st.mode !== 'window' || st.windowStart === undefined) return false;
+    var startAt = parseInt(st.windowStart, 10) || 0;
+    if (startAt <= 0) return false;
+    var end = startAt;
+    startAt = Math.max(0, startAt - (count || st.chunk || 100));
+    var ids = [];
+    for (var i = startAt; i < end; i++) ids.push(i);
+    if (!ids.length) return false;
+    var base = deps.docBase();
+    if (!base) return false;
+    var headers = deps.headers();
+    headers['Content-Type'] = 'application/json';
+    var docKey = deps.path();
+    st.fetching = true;
+    try {
+      deps.fetch(base + '/rows', {
+        method: 'POST', credentials: 'same-origin', headers: headers,
+        body: JSON.stringify({ rowIds: ids, scope: 'entireRow' }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (rows) {
+        if (st.doc !== docKey) return;
+        if (!Array.isArray(rows)) throw new Error('行数据返回不是数组');
+        for (var i = 0; i < rows.length; i++) {
+          var entry = entryOf(deps, rows[i]);
+          if (entry) st.rows[entry.rowNo] = entry;
+        }
+        st.windowStart = startAt;
+        st.fetching = false;
+        st.status = 'done';
+        st.error = '';
+        deps.push('rows-updated', { source: 'rows-api-prev',
+                                    cached: Object.keys(st.rows).length });
+      }).catch(function (e) {
+        if (st.doc !== docKey) return;
+        st.fetching = false;
+        st.error = String(e.message || e).slice(0, 160);
+        st.errorAt = Date.now();
+      });
+    } catch (e) {
+      st.fetching = false;
+      st.error = String(e.message || e).slice(0, 160);
+      st.errorAt = Date.now();
+      return false;
+    }
+    return true;
+  }
+
   function refresh(deps, rowId) {
     var rid = parseInt(rowId, 10);
     if (!isFinite(rid) || rid < 0) return false;
@@ -169,5 +221,5 @@
     return true;
   }
 
-  window.__mdRowsApi = { start: start, jump: jump, refresh: refresh };
+  window.__mdRowsApi = { start: start, jump: jump, prev: prev, refresh: refresh };
 })();

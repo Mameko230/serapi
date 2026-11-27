@@ -426,7 +426,26 @@ class MainWindow(ReadWorkflowMixin, RowWorkflowMixin, StatsFilterWorkflowMixin,
 
     def apply_rows(self, rows):
         """差量更新段模型并恢复当前行选区；返回变化行数。"""
+        first_before = None
+        try:
+            if self.seg_model.rowCount():
+                first_before = self.seg_model.row_no_at(0)
+        except Exception:
+            first_before = None
         changed = self.seg_model.update_rows(rows, self._tm_rates)
+        # 向上补行后模型在顶部插入了新行：把原来视口顶部行重新滚回顶部，
+        # 避免用户正在看的位置突然整体下移。
+        try:
+            first_after = self.seg_model.row_no_at(0) if self.seg_model.rowCount() else None
+            if first_before is not None and first_after != first_before:
+                for i in range(self.seg_model.rowCount()):
+                    if self.seg_model.row_no_at(i) == first_before:
+                        self.seg_table.scrollTo(
+                            self.seg_model.index(i, 0),
+                            QAbstractItemView.ScrollHint.PositionAtTop)
+                        break
+        except Exception:
+            pass
         if rows and getattr(self, "_first_rows_at", None) is None:
             self._first_rows_at = time.monotonic()
             t0 = getattr(self, "_started_at", None)
