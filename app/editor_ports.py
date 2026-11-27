@@ -4,6 +4,7 @@
 from PyQt6.QtCore import QTimer
 
 import json
+import time
 
 from .editor_backend import backend_for
 from .row_navigation import next_unlocked_row
@@ -259,10 +260,12 @@ class EditorPortsMixin:
             self._confirm_after_write(expected_row=row_no, expected_doc=doc_url)
             return
         rev = self._edit_rev
+        save_t0 = time.perf_counter()
 
         def saved(ok):
             if not ok:
                 return
+            self.log(f"保存完成（{int((time.perf_counter() - save_t0) * 1000)} ms），继续确认")
             if row_no != self._cur_row or doc_url != self._editor_url:
                 self.log("保存后文档或活动行已变化，本次未确认")
                 return

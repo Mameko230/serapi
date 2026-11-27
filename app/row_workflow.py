@@ -205,7 +205,9 @@ class RowWorkflowMixin:
         target = self._next_unlocked_row(row_no)
         if target is None:
             return
-        self.log(f"确认已受理，先跳到第 {target} 行；状态稍后回填")
+        t0 = getattr(self, "_confirm_t0", None)
+        elapsed = f"{int((time.perf_counter() - t0) * 1000)} ms" if t0 is not None else ""
+        self.log(f"确认已受理（{elapsed}），先跳到第 {target} 行；状态稍后回填")
         self._jump_to_row(target)
 
     def _on_row_action(self, data):

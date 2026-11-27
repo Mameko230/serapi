@@ -64,6 +64,15 @@ assert.strictEqual(ret.warnings[0].tagValue, 'item01');
 assert.strictEqual(ret.warnings[0].tagMissing, true);
 assert.strictEqual(ret.warnings[0].tagCount, 1);
 
+// 3e) 缺少的是换行 tag 时，提示用户“行数不相等”，而不是缺一个神秘 tag。
+ret = L.analyze({
+  source: [txt('a'), { t: 'newline' }, txt('b')],
+  target: [txt('ab')], rules: { tags: true },
+});
+assert.strictEqual(ret.warnings.length, 1, ret.warnings);
+assert.strictEqual(ret.warnings[0].message, '行数不相等');
+assert.strictEqual(ret.warnings[0].tagNewline, true);
+
 // 4) 全半角数字混用
 ret = L.analyze({ source: [txt('12')], target: [txt('1２')], rules: { width: true } });
 assert.strictEqual(ret.warnings.length, 1, ret.warnings);

@@ -2,6 +2,7 @@
 """读取/装载工作流：活动段读取、草稿保护、确认后兜底读取。"""
 
 import json
+import time
 
 from PyQt6.QtCore import QTimer
 
@@ -80,6 +81,7 @@ class ReadWorkflowMixin:
         state = {"tries": 0}
         gen = self._next_read_gen()
         previous_row = self._cur_row
+        read_t0 = time.perf_counter()
         overlay = getattr(self, "_cc_overlay", None)
         if overlay is not None and overlay.row_no != row_no:
             self._close_concordance()
@@ -139,7 +141,8 @@ class ReadWorkflowMixin:
                     suffix = " · 本地未保存草稿" if draft else ""
                     self.ed_label.setText(f"第 {row_no} 行{suffix}")
                     self.log((f"已恢复第 {row_no} 行的本地未保存草稿" if draft
-                              else f"已读取段 第{row_no}行，{len(self._last_tokens)} 个 token"))
+                              else (f"已读取段 第{row_no}行，{len(self._last_tokens)} 个 token"
+                                    f"（{int((time.perf_counter() - read_t0) * 1000)} ms）")))
                     self._refresh_tag_pool()
                     self._after_load_apply_limits()
                     self._fetch_segment_info(row_no)

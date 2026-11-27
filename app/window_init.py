@@ -500,19 +500,7 @@ class WindowInitMixin:
         self.seg_split.setHandleWidth(8)
         self.seg_split.setStyleSheet("QSplitter::handle { background: rgba(100,116,139,35);"
                                      " border-radius: 4px; margin: 12px 3px; }")
-        # 固定高度容器：提醒出现/消失时不再改变编辑区布局，避免画面闪动和光标跳动。
-        self.term_warning_box = QWidget()
-        self.term_warning_box.setFixedHeight(22)
-        _wb = QHBoxLayout(self.term_warning_box)
-        _wb.setContentsMargins(0, 0, 0, 0); _wb.setSpacing(0)
-        self.term_warning = QLabel()
-        self.term_warning.setWordWrap(False)
-        self.term_warning.setStyleSheet(
-            "QLabel { color:#92400e; background:#fef3c7; border:1px solid #f3d58a;"
-            " border-radius:8px; padding:2px 10px; }")
-        self.term_warning.setVisible(False)
-        _wb.addWidget(self.term_warning)
-        _wb.addStretch(1)
+        # 术语数量提醒已并入实时 QA；这里不再保留独立提醒条。
         self.status = QLineEdit()
         self.status.setReadOnly(True)
         self.status.setText("—")
@@ -620,7 +608,6 @@ class WindowInitMixin:
         from .context_ui import ContextPanel
         self.context_panel = ContextPanel(self)
         lay.addWidget(self.context_panel)
-        lay.addWidget(self.term_warning_box)
         lay.addWidget(self.status)
         center.setObjectName("card")
         center.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)

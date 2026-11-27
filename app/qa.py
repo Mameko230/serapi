@@ -140,6 +140,7 @@ def normalize_result(raw) -> dict:
             "tagValue": str(item.get("tagValue") or ""),
             "tagMissing": bool(item.get("tagMissing")),
             "tagCount": max(0, int(item.get("tagCount") or 0)),
+            "tagNewline": bool(item.get("tagNewline")),
         })
     counts = raw.get("counts") if isinstance(raw.get("counts"), dict) else {}
     return {"ok": True, "warnings": warnings,

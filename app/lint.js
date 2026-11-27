@@ -206,9 +206,11 @@
         if (a > b) {
           var t = sc.map[k].token || {};
           var info = tagDisplayInfo(t);
-          add('tags', 0, '缺少 tag ' + (t.name || t.display || '#' + (t.id || '?')) + '（' + (a - b) + ' 个）',
+          var isNewline = t.t === 'newline' || String(info.name || t.name || '') === 'mq:ch';
+          add('tags', 0, isNewline ? '行数不相等'
+                : '缺少 tag ' + (t.name || t.display || '#' + (t.id || '?')) + '（' + (a - b) + ' 个）',
               { tag: t.name || '', tagId: t.id, tagNo: info.no, tagValue: info.value,
-                tagMissing: true, tagCount: a - b });
+                tagMissing: true, tagCount: a - b, tagNewline: isNewline });
         }
       });
       tc.order.forEach(function (k) {
@@ -216,9 +218,11 @@
         if (b > a) {
           var t2 = tc.map[k].token || {};
           var info2 = tagDisplayInfo(t2);
-          add('tags', 0, '多出 tag ' + (t2.name || t2.display || '#' + (t2.id || '?')) + '（' + (b - a) + ' 个）',
+          var isNewline2 = t2.t === 'newline' || String(info2.name || t2.name || '') === 'mq:ch';
+          add('tags', 0, isNewline2 ? '行数不相等'
+                : '多出 tag ' + (t2.name || t2.display || '#' + (t2.id || '?')) + '（' + (b - a) + ' 个）',
               { tag: t2.name || '', tagId: t2.id, tagNo: info2.no, tagValue: info2.value,
-                tagMissing: false, tagCount: b - a });
+                tagMissing: false, tagCount: b - a, tagNewline: isNewline2 });
         }
       });
     }
