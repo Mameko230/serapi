@@ -157,6 +157,22 @@ async function captureAndQuit(target) {
       await new Promise((resolve) => targetView.webContents.once('did-finish-load', resolve));
     }
     await new Promise((resolve) => setTimeout(resolve, 900));
+    if (!captureEngine && process.env.SERAPI_CAPTURE_WRITE === '1') {
+      try {
+        const result = await workspace.webContents.executeJavaScript(`(async () => {
+          const el = document.querySelector('#codePane .target-text');
+          if (!el) return { ok: false, error: 'no-target' };
+          el.textContent = el.textContent + 'X';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          await saveCurrentSegment(false);
+          return { ok: true };
+        })()`, true);
+        console.log('[serapi] capture write:', JSON.stringify(result));
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      } catch (err) {
+        console.error('[serapi] capture write failed:', err);
+      }
+    }
     if (!captureEngine && process.env.SERAPI_CAPTURE_SELECT === '1') {
       try {
         await workspace.webContents.executeJavaScript(`(() => {

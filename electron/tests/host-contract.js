@@ -76,6 +76,10 @@ assert.match(workspaceJs, /workspace\.normalize_context/, 'workspace normalizes 
 assert.match(workspaceJs, /dictionary\.query/, 'workspace queries the local dictionary');
 assert.match(workspaceJs, /initDictionarySelection/, 'workspace looks up only the selected word');
 assert.match(workspaceJs, /lookupSelectedWord/, 'dictionary lookup is selection-driven');
+assert.match(workspaceJs, /saveCurrentSegment/, 'workspace has a save/confirm path');
+assert.match(workspaceJs, /write\.decide/, 'workspace asks the sidecar WritePolicy before writing');
+assert.match(workspaceJs, /writeSegment/, 'workspace calls Engine writeSegment');
+assert.match(main, /SERAPI_CAPTURE_WRITE/, 'write path has a fixture smoke hook');
 assert.match(preload, /onEngineEvent/, 'preload exposes Engine event forwarding');
 assert.match(main, /engine:event/, 'main forwards Engine events to the workspace');
 assert.match(workspaceJs, /tmHitsPoll/, 'TM/TB polling is wired through engine API');

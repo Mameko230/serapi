@@ -447,6 +447,37 @@ def _dictionary_query(params):
         "candidates": [str(c) for c in result.get("candidates") or []][:3],
     }
 
+
+_WRITE_INTENTS = {"save", "confirm", "reject", "structural", "comment"}
+
+
+def _write_decide(params):
+    intent = str((params or {}).get("intent") or "")
+    if intent not in _WRITE_INTENTS:
+        return {"ok": False, "error": "bad-intent"}
+    state = (params or {}).get("state") or {}
+    try:
+        sys.path.insert(0, str(ROOT))
+        from app.write_policy import DocumentState, WriteIntent, decide
+        decision = decide(
+            WriteIntent(intent),
+            DocumentState(
+                tracking=bool(state.get("tracking")),
+                read_only=bool(state.get("read_only") or state.get("readOnly")),
+                locked=bool(state.get("locked")),
+                has_row_id=bool(state.get("has_row_id", True)),
+                author=str(state.get("author") or ""),
+            ),
+        )
+    except Exception as exc:
+        return {"ok": False, "error": "policy-failed", "detail": str(exc)[:200]}
+    return {
+        "ok": True,
+        "allowed": bool(decision.allowed),
+        "reason": decision.reason,
+        "needsConfirmation": bool(decision.needs_confirmation),
+    }
+
 METHODS = {
     "ping": _ping,
     "version": _version,
@@ -460,6 +491,7 @@ METHODS = {
     "workspace.normalize_hits": _workspace_normalize_hits,
     "workspace.normalize_context": _workspace_normalize_context,
     "dictionary.query": _dictionary_query,
+    "write.decide": _write_decide,
 }
 
 

@@ -34,6 +34,20 @@
             ]
           };
         },
+        editorState: function () {
+          return { ok: true, tracking: false, readOnly: false, locked: false, author: 'fixture' };
+        },
+        writeSegment: function (tokens, rowId) {
+          window.__fixtureWritten = { rowId: rowId, tokens: tokens };
+          return { ok: true, row: { id: rowId, meta: { status: 'partiallyEdited' } } };
+        },
+        confirmSegment: function (rowNo) {
+          window.__fixtureConfirmed = rowNo;
+          return { ok: true, rowNo: rowNo };
+        },
+        rejectSegment: function (rowNo) {
+          return { ok: true, rowNo: rowNo };
+        },
         previewContextReq: function () {
           return {
             ok: true,

@@ -165,6 +165,7 @@ function renderEditor(seg) {
   $$("#codePane .target-text").forEach((el) => el.addEventListener("input", () => {
     $("#statusNote").textContent = "草稿 · 有未保存修改";
     $("#targetState").textContent = "草稿";
+    seg._dirty = true;
   }));
   $$("#codePane .code-row").forEach((row) => {
     row.addEventListener("click", () => {
@@ -340,6 +341,71 @@ async function lookupSelectedWord(word) {
   } catch (_) {}
 }
 
+async function saveCurrentSegment(confirm) {
+  if (workspaceSource !== "engine-listRows") {
+    toast("当前是合成快照，不能写回 memoQ");
+    return;
+  }
+  const host = window.serapiHost;
+  const seg = segments[state.current];
+  if (!host || !seg || !seg.key) return;
+  if (seg._hasTags) {
+    toast("该段含 memoQ tag，暂不支持从 Web 编辑器写回");
+    return;
+  }
+  const targetEls = Array.from(document.querySelectorAll("#codePane .target-text"));
+  const tgtLines = targetEls.map((el) => String(el.textContent || ""));
+  const tokens = [];
+  tgtLines.forEach((line, i) => {
+    if (i) tokens.push({ t: "newline" });
+    if (line) tokens.push({ t: "text", v: line });
+  });
+  try {
+    const stateReply = await host.invokeEngineApi("editorState", []);
+    const flags = (stateReply && stateReply.ok && stateReply.value) || {};
+    const decisionReply = await host.sidecar.call("write.decide", {
+      intent: confirm ? "confirm" : "save",
+      state: {
+        tracking: !!(flags.tracking || (flags.editFlags && flags.editFlags.tracking)),
+        read_only: !!(flags.readOnly || flags.read_only || (flags.editFlags && flags.editFlags.readOnly)),
+        locked: !!seg.locked,
+        has_row_id: true,
+        author: String(flags.author || ""),
+      },
+    });
+    const decision = decisionReply && decisionReply.ok ? decisionReply.result : null;
+    if (!decision || !decision.ok || !decision.allowed) {
+      toast((decision && (decision.reason || decision.error)) || "写入被策略阻止");
+      return;
+    }
+    const write = await host.invokeEngineApi("writeSegment", [tokens, seg.key]);
+    if (!write || !write.ok || !write.value || !write.value.ok) {
+      toast("写回失败：" + ((write && (write.value && write.value.err || write.error)) || "unknown"));
+      return;
+    }
+    if (confirm) {
+      const confirmed = await host.invokeEngineApi("confirmSegment", [seg.no]);
+      if (!confirmed || !confirmed.ok || !confirmed.value || !confirmed.value.ok) {
+        toast("保存完成，但确认失败");
+        return;
+      }
+    }
+    seg.tgtLines = tgtLines;
+    seg.tgt = tgtLines.join(" ");
+    seg.status = confirm ? "confirmed" : "edited";
+    seg._dirty = false;
+    seg._detailLoaded = false;
+    renderSegmentList();
+    renderEditor(seg);
+    $("#statusNote").textContent = confirm
+      ? `第 ${seg.no} 段 · 已保存并确认`
+      : `第 ${seg.no} 段 · 已保存`;
+    toast(confirm ? "已确认当前段" : "已保存当前段");
+  } catch (err) {
+    toast("写入失败：" + String(err && err.message || err));
+  }
+}
+
 function initDictionarySelection() {
   if (!window.serapiHost || !window.serapiHost.sidecar) return;
   document.addEventListener("selectionchange", () => {
@@ -390,6 +456,7 @@ async function loadSegmentDetail(index) {
     const normalized = await host.sidecar.call("workspace.normalize_segment", { segment: raw.value });
     if (!normalized || !normalized.ok || !normalized.result || !normalized.result.ok) return;
     Object.assign(seg, normalized.result.segment);
+    seg._hasTags = Array.isArray(raw.value.tokens) && raw.value.tokens.some((t) => t && t.t === "tag");
     if (segments[state.current] !== seg) return;
     try {
       const info = await host.invokeEngineApi("segmentInfo", [seg.no]);
@@ -628,6 +695,18 @@ async function initWelcome() {
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
   document.querySelector("#demoBtn").addEventListener("click", () => { el.hidden = true; });
 }
+
+document.addEventListener("keydown", (e) => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (!ctrl) return;
+  if (e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    saveCurrentSegment(false);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    saveCurrentSegment(true);
+  }
+});
 
 if (location.hash === "#dark") document.body.classList.add("dark");
 

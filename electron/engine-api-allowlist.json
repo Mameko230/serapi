@@ -15,6 +15,9 @@
     "tmHitsPoll",
     "previewContextReq",
     "concordanceReq",
-    "termDetailReq"
+    "termDetailReq",
+    "writeSegment",
+    "confirmSegment",
+    "rejectSegment"
   ]
 }

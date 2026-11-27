@@ -61,6 +61,8 @@ const requests = [
     ] },
   },
   { id: 11, method: 'dictionary.query', params: { word: '攻撃力' } },
+  { id: 12, method: 'write.decide', params: { intent: 'save', state: { locked: false, has_row_id: true } } },
+  { id: 13, method: 'write.decide', params: { intent: 'save', state: { tracking: true } } },
 ];
 const result = spawnSync(python, ['-u', sidecar], {
   cwd: path.join(root, '..'),
@@ -72,7 +74,7 @@ const result = spawnSync(python, ['-u', sidecar], {
 });
 assert.equal(result.status, 0, result.stderr || 'sidecar exited non-zero');
 const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
-assert.equal(lines.length, 11, 'expected eleven sidecar responses');
+assert.equal(lines.length, 13, 'expected thirteen sidecar responses');
 const ping = JSON.parse(lines[0]);
 const version = JSON.parse(lines[1]);
 const config = JSON.parse(lines[2]);
@@ -84,6 +86,8 @@ const qa = JSON.parse(lines[7]);
 const hits = JSON.parse(lines[8]);
 const context = JSON.parse(lines[9]);
 const dictionary = JSON.parse(lines[10]);
+const allowed = JSON.parse(lines[11]);
+const blocked = JSON.parse(lines[12]);
 assert.equal(ping.ok, true);
 assert.equal(ping.result.ok, true);
 assert.equal(version.ok, true);
@@ -121,6 +125,11 @@ assert.equal(context.result.contextLines[2][1], '当前原文');
 assert.equal(dictionary.ok, true);
 assert.ok(dictionary.result.hits.length >= 1);
 assert.ok(dictionary.result.hits[0].entries.length >= 1);
+assert.equal(allowed.ok, true);
+assert.equal(allowed.result.allowed, true);
+assert.equal(blocked.ok, true);
+assert.equal(blocked.result.allowed, false);
+assert.ok(blocked.result.reason.includes('跟踪修改'));
 assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf8')).memoq_url,
   'https://demo.example.invalid/memoqweb');
 fs.rmSync(tmpDir, { recursive: true, force: true });

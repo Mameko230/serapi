@@ -80,6 +80,10 @@ Captures the workspace View, then exits.
 - Dictionary: selecting a word in the paired editor calls sidecar
   `dictionary.query` (reuses `app/assets.py`, personal library first, no TB).
   No full-text scan; no hit → section stays hidden.
+- Write path (synthetic fixture only): `Ctrl+S` / `Ctrl+Enter` asks sidecar
+  `write.decide` first, then calls Engine `writeSegment` / `confirmSegment`.
+  Segments containing tags are currently blocked. Real memoQ write-back is
+  **待真机验证**.
 - Reverse Engine API: `serapiHost.invokeEngineApi(method, args)` → restricted
   `window.__md.api.<method>` call. The allowlist is `engine-api-allowlist.json`.
 - Tests: `npm test` runs host + sidecar contract guards.

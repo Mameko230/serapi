@@ -133,11 +133,27 @@ Electron main
 - 主题、快捷键、Tag 规则、编辑器字号迁移；
 - 真实登录冒烟与 cookie 持久化。
 
-### Step 5 — PyQt 退场
+### Step 5 — PyQt 退场（未开始）
 - 移除 QWebEngine/Qt 面板/QSS/Fluent；
 - Electron 托盘、全局快捷键、文件选择、单实例、更新器；
 - 打包、签名、升级路径；
 - 旧版回退开关保留一个版本，稳定后删除。
+
+**写路径骨架（2026-11-28，待真机验证）**
+
+- `Ctrl+S` 保存 / `Ctrl+Enter` 保存并确认；
+- Workspace 调 sidecar `write.decide`（复用 `app/write_policy.py`）；
+- 策略通过后调 Engine `writeSegment` / `confirmSegment`；
+- 含 tag 的段暂不允许从 Web 编辑器写回（避免丢 tag / 假修订）；
+- 合成 fixture 已跑通保存回执：`electron/preview-write-fixture.png`；
+- **真实 memoQ 写回、确认状态回读、WritePolicy 真机回归未完成。**
+
+**未完成**
+
+- 真实登录/项目页；
+- 真实写回后回读与状态校验；
+- 保存失败/会话过期/跟踪修改的真实冒烟；
+- PyQt 移除、打包、托盘、更新器。
 
 ## 4. 当前已知风险
 
