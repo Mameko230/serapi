@@ -69,6 +69,9 @@ assert.match(workspaceJs, /loadSegmentDetail/, 'workspace loads per-segment deta
 assert.match(workspaceJs, /workspace\.normalize_segment/, 'workspace normalizes segment tokens in the sidecar');
 assert.match(workspaceJs, /lintEngine/, 'workspace runs QA through the Engine lint engine');
 assert.match(workspaceJs, /qa\.config/, 'workspace reads QA rules from the sidecar');
+assert.match(workspaceJs, /loadHitsForSegment/, 'workspace loads TM/TB hits');
+assert.match(workspaceJs, /workspace\.normalize_hits/, 'workspace normalizes hits in the sidecar');
+assert.match(workspaceJs, /tmHitsPoll/, 'TM/TB polling is wired through engine API');
 assert.match(main, /engine:lint/, 'main exposes engine:lint IPC');
 
 console.log('HOST_CONTRACT: PASS');

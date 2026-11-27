@@ -259,6 +259,32 @@ async function ensureQaConfig() {
   return qaConfig;
 }
 
+async function loadHitsForSegment(seg, index) {
+  if (workspaceSource !== "engine-listRows") return;
+  const host = window.serapiHost;
+  if (!host || !host.invokeEngineApi || !host.sidecar) return;
+  try {
+    const started = await host.invokeEngineApi("tmHitsReq", [seg.no]);
+    if (!started || !started.ok) return;
+    let raw = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const polled = await host.invokeEngineApi("tmHitsPoll", []);
+      if (!polled || !polled.ok || !polled.value) continue;
+      raw = polled.value;
+      const status = typeof raw === "string" ? (() => { try { return JSON.parse(raw).status; } catch (_) { return ""; } })() : raw.status;
+      if (status === "done") break;
+    }
+    if (!raw) return;
+    const normalized = await host.sidecar.call("workspace.normalize_hits", { raw });
+    if (!normalized || !normalized.ok || !normalized.result || !normalized.result.ok) return;
+    if (segments[index] !== seg) return;
+    hits = normalized.result.hits || [];
+    state.selectedHit = 0;
+    renderHits();
+  } catch (_) {}
+}
+
 async function loadSegmentDetail(index) {
   if (workspaceSource !== "engine-listRows") return;
   const host = window.serapiHost;
@@ -267,7 +293,9 @@ async function loadSegmentDetail(index) {
   seg._detailLoaded = true;
   if (workspaceSource === "engine-listRows") {
     qaIssues = [];
+    hits = [];
     renderQA();
+    renderHits();
   }
   try {
     const raw = await host.invokeEngineApi("readSegment", [seg.key]);
@@ -308,6 +336,7 @@ async function loadSegmentDetail(index) {
     renderSegmentList();
     renderQA();
     renderEditor(seg);
+    loadHitsForSegment(seg, index);
     $("#statusNote").textContent = `第 ${seg.no} 段 · 已载入译文`;
   } catch (_) {
     seg._detailLoaded = false;

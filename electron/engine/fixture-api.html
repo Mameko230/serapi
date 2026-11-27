@@ -34,6 +34,22 @@
             ]
           };
         },
+        tmHitsReq: function (rowNo) {
+          window.__fixtureTm = {
+            status: 'done',
+            tm: [
+              { rate: 99, res: 'DEMO_TM', user: 'reviewer-1', time: '2026-11-12', srcDisp: '最初の行です。', tgtDecorated: '这是第一行。' },
+              { rate: 84, res: 'DEMO_TM', user: 'reviewer-2', time: '2026-11-10', srcDisp: '最初の行', tgtDecorated: '第一行' }
+            ],
+            tb: [
+              { s: '最初', t: '最初', res: 'Demo Terms', user: '', time: '' }
+            ]
+          };
+          return { ok: true, row: rowNo };
+        },
+        tmHitsPoll: function () {
+          return JSON.stringify(window.__fixtureTm || { status: 'none' });
+        },
         segmentInfo: function (rowNo) {
           return {
             ok: true, rowNo: Number(rowNo) || 1, contextId: 'fixture-context', originalId: '',

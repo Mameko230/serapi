@@ -316,6 +316,52 @@ def _qa_config(_params):
         "options": data.get("options") or {},
     }
 
+
+def _workspace_normalize_hits(params):
+    """Normalize Engine tm/tb hits for the right rail. No text is logged."""
+    raw = (params or {}).get("raw")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return {"ok": False, "error": "bad-hits-json"}
+    if not isinstance(raw, dict):
+        return {"ok": False, "error": "bad-hits"}
+    status = str(raw.get("status") or "")
+    if status not in ("done", "ok"):
+        return {"ok": False, "error": "hits-not-ready"}
+    out = []
+    for hit in raw.get("tm") or []:
+        if not isinstance(hit, dict):
+            continue
+        rate = hit.get("rate")
+        try:
+            rate = int(rate)
+        except (TypeError, ValueError):
+            rate = None
+        out.append({
+            "type": "TM",
+            "rate": ("%d%%" % rate) if rate is not None else "TM",
+            "src": str(hit.get("srcDisp") or hit.get("src") or "").strip()[:240],
+            "tgt": str(hit.get("tgtDecorated") or hit.get("tgt") or "").strip()[:240],
+            "meta": " · ".join(
+                [str(x).strip() for x in (hit.get("res"), hit.get("user"), hit.get("time")) if str(x or "").strip()]
+            )[:240] or "TM",
+        })
+    for hit in raw.get("tb") or []:
+        if not isinstance(hit, dict):
+            continue
+        out.append({
+            "type": "TB",
+            "rate": "术语",
+            "src": str(hit.get("s") or hit.get("src") or "").strip()[:240],
+            "tgt": str(hit.get("t") or hit.get("tgt") or "").strip()[:240],
+            "meta": " · ".join(
+                [str(x).strip() for x in (hit.get("res"), hit.get("user"), hit.get("time")) if str(x or "").strip()]
+            )[:240] or "术语库",
+        })
+    return {"ok": True, "hits": out[:60]}
+
 METHODS = {
     "ping": _ping,
     "version": _version,
@@ -326,6 +372,7 @@ METHODS = {
     "workspace.normalize": _workspace_normalize,
     "workspace.normalize_segment": _workspace_normalize_segment,
     "qa.config": _qa_config,
+    "workspace.normalize_hits": _workspace_normalize_hits,
 }
 
 

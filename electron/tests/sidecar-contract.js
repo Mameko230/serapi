@@ -44,6 +44,13 @@ const requests = [
       tokens: [{ t: 'text', v: '译文一行' }, { t: 'tag', name: 'mq:rxt', display: { text: 'tag1' } }, { t: 'newline' }, { t: 'text', v: '译文二行' }] } },
   },
   { id: 8, method: 'qa.config', params: {} },
+  {
+    id: 9,
+    method: 'workspace.normalize_hits',
+    params: { raw: { status: 'done',
+      tm: [{ rate: 99, res: 'DEMO_TM', user: 'rev', time: '2026-11-12', srcDisp: '原文', tgtDecorated: '译文' }],
+      tb: [{ s: '术语', t: '术语', res: 'DEMO_TB' }] } },
+  },
 ];
 const result = spawnSync(python, ['-u', sidecar], {
   cwd: path.join(root, '..'),
@@ -54,7 +61,7 @@ const result = spawnSync(python, ['-u', sidecar], {
 });
 assert.equal(result.status, 0, result.stderr || 'sidecar exited non-zero');
 const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
-assert.equal(lines.length, 8, 'expected eight sidecar responses');
+assert.equal(lines.length, 9, 'expected nine sidecar responses');
 const ping = JSON.parse(lines[0]);
 const version = JSON.parse(lines[1]);
 const config = JSON.parse(lines[2]);
@@ -63,6 +70,7 @@ const workspace = JSON.parse(lines[4]);
 const normalized = JSON.parse(lines[5]);
 const segment = JSON.parse(lines[6]);
 const qa = JSON.parse(lines[7]);
+const hits = JSON.parse(lines[8]);
 assert.equal(ping.ok, true);
 assert.equal(ping.result.ok, true);
 assert.equal(version.ok, true);
@@ -88,6 +96,11 @@ assert.equal(segment.result.segment.tgtLines[1], '译文二行');
 assert.equal(qa.ok, true);
 assert.equal(typeof qa.result.rules, 'object');
 assert.equal(qa.result.rules.digits, true);
+assert.equal(hits.ok, true);
+assert.equal(hits.result.hits.length, 2);
+assert.equal(hits.result.hits[0].type, 'TM');
+assert.equal(hits.result.hits[0].rate, '99%');
+assert.equal(hits.result.hits[1].type, 'TB');
 assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf8')).memoq_url,
   'https://demo.example.invalid/memoqweb');
 fs.rmSync(tmpDir, { recursive: true, force: true });
