@@ -1,0 +1,105 @@
+{
+  "_fixture": {
+    "synthetic": true,
+    "service": "memoQ Engine listRows",
+    "method": "window.__md.api.listRows",
+    "note": "Synthetic sample. No real server, project, document, user or translated text."
+  },
+  "result": {
+    "ok": true,
+    "rows": [
+      {
+        "rowNo": 1,
+        "rowId": "ev_0010_guard",
+        "src": "装備画面を開きます。",
+        "tgt": "打开装备界面。",
+        "status": "manuallyConfirmed",
+        "tmRate": 100,
+        "locked": false
+      },
+      {
+        "rowNo": 2,
+        "rowId": "ev_0020_guard",
+        "src": "よし、行くぞ！",
+        "tgt": "好，出发吧！",
+        "status": "partiallyEdited",
+        "tmRate": 96,
+        "locked": false
+      },
+      {
+        "rowNo": 3,
+        "rowId": "ev_0030_alice",
+        "src": "アリスは Ancient Ruins の入口に立ち、古い石扉に刻まれた紋章をじっと見つめた。\n古い石扉に刻まれた紋章を見つめた。\n「この封印は、まだ生きている……」\n風が吹くたび、青白い光が\n紋章の縁をゆっくりと伝っていく。\n「本当に開けるつもりか？」\n後ろからロウが低い声で尋ねた。\n「開けなければ、先へは進めない」\nアリスは短く答え、\n指先を石扉に触れさせる。\nその瞬間、空気が震え、\n遠くで何かが目を覚ました。",
+        "tgt": "爱丽丝站在遗迹入口。\n凝视着刻在古老石门上的纹章。\n“这道封印，还活着……”\n每当风吹过，苍白的微光\n便沿着纹章边缘缓缓游走。\n“真的打算打开它吗？”\n罗从身后低声问道。\n“不开的话，就无法继续前进。”\n爱丽丝简短地回答，\n将指尖触上石门。\n那一瞬间，空气震动，\n远处有什么东西醒了过来。",
+        "status": "proofread",
+        "tmRate": 88,
+        "locked": false
+      },
+      {
+        "rowNo": 4,
+        "rowId": "ev_0040_item",
+        "src": "回復薬を3つ使いますか？",
+        "tgt": "要使用 3 个恢复药吗？",
+        "status": "proofread",
+        "tmRate": 91,
+        "locked": false
+      },
+      {
+        "rowNo": 5,
+        "rowId": "ev_0050_save",
+        "src": "セーブデータを上書きします。",
+        "tgt": "将覆盖存档数据。",
+        "status": "untranslated",
+        "tmRate": null,
+        "locked": false
+      },
+      {
+        "rowNo": 6,
+        "rowId": "ev_0060_warn",
+        "src": "この先は危険です。",
+        "tgt": "前方危险。",
+        "status": "partiallyEdited",
+        "tmRate": 73,
+        "locked": false
+      },
+      {
+        "rowNo": 7,
+        "rowId": "ev_0070_town",
+        "src": "町へ戻りましょう。",
+        "tgt": "回城吧。",
+        "status": "manuallyConfirmed",
+        "tmRate": 100,
+        "locked": false
+      },
+      {
+        "rowNo": 8,
+        "rowId": "ev_0080_level",
+        "src": "レベルが上がりました！",
+        "tgt": "等级提升了！",
+        "status": "translated",
+        "tmRate": 68,
+        "locked": false
+      },
+      {
+        "rowNo": 9,
+        "rowId": "ev_0090_menu",
+        "src": "設定画面に移動します。",
+        "tgt": "前往设置画面。",
+        "status": "partiallyEdited",
+        "tmRate": 84,
+        "locked": false
+      },
+      {
+        "rowNo": 10,
+        "rowId": "ev_0100_continue",
+        "src": "コンティニューしますか？",
+        "tgt": "要继续吗？",
+        "status": "rejected",
+        "tmRate": 77,
+        "locked": false
+      }
+    ],
+    "total": 10,
+    "source": "new-api"
+  }
+}

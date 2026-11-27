@@ -19,20 +19,54 @@ function applySnapshot(snapshot) {
   hits = Array.isArray(snapshot.hits) ? snapshot.hits : [];
   projectInfo = snapshot.project || {};
   state.current = Math.max(0, Math.min(segments.length - 1, Number(snapshot.current) || 0));
+  state.currentLine = Math.max(0, Number(snapshot.currentLine) || 0);
   state.selectedHit = 0;
   if (projectInfo.name) document.querySelector(".crumb-project").textContent = projectInfo.name;
-  if (projectInfo.file) document.querySelector(".crumb-file").textContent = projectInfo.file;
-  if (projectInfo.languages) document.querySelector(".lang").textContent = projectInfo.languages;
+  if ("file" in projectInfo) document.querySelector(".crumb-file").textContent = projectInfo.file || "—";
+  if ("languages" in projectInfo) document.querySelector(".lang").textContent = projectInfo.languages || "—";
   if (projectInfo.progress) {
     const p = projectInfo.progress;
     $("#progressText").textContent = `${Number(p.done || 0).toLocaleString()} / ${Number(p.total || 0).toLocaleString()}`;
     const bar = document.querySelector(".mini-progress i");
     if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(p.percent) || 0))}%`;
+    document.querySelector("#statusProgress").textContent =
+      `${Number(p.done || 0).toLocaleString()} / ${Number(p.total || 0).toLocaleString()} · ${Number(p.percent || 0).toFixed(1)}%`;
+  } else {
+    document.querySelector("#statusProgress").textContent = "—";
+  }
+  document.querySelector("#contextPanel").hidden = contextLines.length === 0;
+  const dictionary = snapshot.dictionary || null;
+  document.querySelector("#dictSection").hidden = !dictionary;
+  if (dictionary) {
+    document.querySelector("#dictTerm").textContent = dictionary.term || "";
+    document.querySelector("#dictReading").textContent = dictionary.reading || "";
+    document.querySelector("#dictMeaning").textContent = dictionary.meaning || "";
+    document.querySelector(".dict-source").textContent = dictionary.source || "个人库";
   }
   return true;
 }
 
-async function loadWorkspaceSnapshot() {
+async function loadEngineSnapshot() {
+  const host = window.serapiHost;
+  if (!host || !host.invokeEngineApi || !host.sidecar) return false;
+  try {
+    // The real path: ask memoQ for the row list, then normalize in Python.
+    const listed = await host.invokeEngineApi("listRows", []);
+    if (!listed || !listed.ok || !listed.value || !listed.value.ok) return false;
+    const rows = listed.value.rows;
+    if (!Array.isArray(rows) || !rows.length) return false;
+    const normalized = await host.sidecar.call("workspace.normalize", {
+      rows,
+      project: { name: "memoQ", file: "", languages: "", progress: null },
+    });
+    if (!normalized || !normalized.ok || !normalized.result) return false;
+    return applySnapshot(normalized.result);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function loadSyntheticSnapshot() {
   if (!window.serapiHost || !window.serapiHost.sidecar) return false;
   try {
     const reply = await window.serapiHost.sidecar.call("workspace.snapshot", {});
@@ -41,6 +75,11 @@ async function loadWorkspaceSnapshot() {
   } catch (_) {
     return false;
   }
+}
+
+async function loadWorkspaceSnapshot() {
+  if (await loadEngineSnapshot()) return true;
+  return loadSyntheticSnapshot();
 }
 
 const state = { current: 2, currentLine: 3, filter: "all", hitFilter: "all", selectedHit: 0, contextCollapsed: false };
@@ -72,7 +111,8 @@ function renderSegmentList() {
 }
 
 function renderContext() {
-  $("#ctxSpeaker").textContent = segments[state.current].speaker;
+  const seg = segments[state.current];
+  $("#ctxSpeaker").textContent = seg.speaker || "—";
   $("#contextTrack").innerHTML = contextLines.map(([label, text], i) => `<div class="ctx-item ${i === 2 ? "current" : ""}">
     <div class="ctx-no">${i === 2 ? '<span class="ctx-current-mark"></span>' : ""}${label}</div>
     <div class="ctx-src">${esc(text)}</div></div>`).join("");
@@ -101,7 +141,9 @@ function codeRows(seg, qaLine = -1) {
 function renderEditor(seg) {
   $("#editorRow").textContent = "第 " + seg.no + " 段";
   $("#editorKey").textContent = seg.key;
-  $("#editorStat").textContent = `${seg.srcLines.length} 行 · 28 / 42 字`;
+  const srcChars = (seg.src || "").length;
+  const tgtChars = (seg.tgt || "").length;
+  $("#editorStat").textContent = `${seg.srcLines.length} 行 · ${srcChars} / ${tgtChars} 字`;
   $("#codePane").innerHTML = codeRows(seg, qaIssues[0] ? qaIssues[0].line : -1);
   const qaLine = qaIssues.find((q) => q.severity === "error");
   if (qaLine) {
@@ -123,12 +165,26 @@ function renderEditor(seg) {
     });
   });
   $("#targetState").textContent = statusLabels[seg.status];
+  $("#infoSpeaker").textContent = seg.speaker || "—";
+  $("#infoContext").textContent = seg.contextId || "—";
+  $("#infoComments").textContent = Number.isFinite(seg.comments) ? seg.comments : "—";
+  $("#infoLocked").textContent = seg.locked ? "是" : "—";
+  document.querySelector("#statusCurrent").textContent =
+    `${seg.no} / ${segments.length ? segments[segments.length - 1].no : seg.no}`;
+  document.querySelector("#railId").textContent = "#" + seg.no;
 }
 
 function renderQA() {
-  $("#qaList").innerHTML = qaIssues.map((q, i) => `<div class="qa-item ${q.severity}" data-index="${i}" tabindex="0">
+  const errors = qaIssues.filter((q) => q.severity === "error").length;
+  const warnings = qaIssues.filter((q) => q.severity === "warn").length;
+  $("#qaCount").textContent = qaIssues.length;
+  const severity = $("#qaSeverity");
+  severity.innerHTML = qaIssues.length
+    ? `${errors ? '<i class="dot error"></i>' + errors + " 错误 " : ""}${warnings ? '<i class="dot warn"></i>' + warnings + " 警告" : ""}`
+    : "无问题";
+  $("#qaList").innerHTML = qaIssues.length ? qaIssues.map((q, i) => `<div class="qa-item ${q.severity}" data-index="${i}" tabindex="0">
     <div class="qa-icon">!</div><div class="qa-line">${q.line + 1}</div>
-    <div><div class="qa-rule">${q.rule}</div><div class="qa-msg">${esc(q.msg)}</div></div></div>`).join("");
+    <div><div class="qa-rule">${q.rule}</div><div class="qa-msg">${esc(q.msg)}</div></div></div>`).join("") : '<div class="rail-empty">当前段没有质量问题</div>';
   $$("#qaList .qa-item").forEach((el) => {
     el.addEventListener("click", () => focusQA(Number(el.dataset.index)));
     el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusQA(Number(el.dataset.index)); } });
@@ -140,12 +196,12 @@ function visibleHits() { return state.hitFilter === "all" ? hits : hits.filter((
 function renderHits() {
   const list = visibleHits();
   $("#hitCount").textContent = list.length;
-  $("#hitList").innerHTML = list.map((h, i) => {
+  $("#hitList").innerHTML = list.length ? list.map((h, i) => {
     const idx = hits.indexOf(h);
     return `<div class="hit ${idx === state.selectedHit ? "selected" : ""}" data-index="${idx}" tabindex="0">
       <div class="hit-rate ${h.type === "TB" ? "tb" : ""}">${h.type === "TB" ? "TB" : h.rate}</div>
       <div><div class="hit-src">${esc(h.src)}</div><div class="hit-tgt">${esc(h.tgt)}</div></div></div>`;
-  }).join("");
+  }).join("") : '<div class="rail-empty">当前段没有记忆或术语命中</div>';
   $$("#hitList .hit").forEach((el) => {
     const choose = () => selectHit(Number(el.dataset.index));
     el.addEventListener("click", choose);

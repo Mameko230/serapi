@@ -62,9 +62,13 @@ Captures the workspace View, then exits.
 - `sidecar.py` is spawned on startup (JSON-lines RPC); `ping`, `version`,
   `config.*`, and `workspace.snapshot` are available. Workspace API:
   `serapiHost.sidecar.call(method, params)`.
-- The workspace boots from `workspace.snapshot`; the current provider is the
-  synthetic fixture `fixtures/workspace-demo.json`. Replacing that provider with
-  real Engine data is the next step.
+- The workspace boots from `workspace.snapshot`. It first tries the real path
+  (`Engine listRows` → sidecar `workspace.normalize`) and falls back to the
+  synthetic fixture `fixtures/workspace-demo.json` when the Engine is not ready.
+- Real-path E2E fixture: `fixtures/engine-rows-demo.json` +
+  `engine/fixture-api.html`; run with `SERAPI_ENGINE_FIXTURE_API=1` and
+  `SERAPI_WORKSPACE_ONLY=1` to see three synthetic rows rendered through the
+  Engine → sidecar → workspace chain.
 - Reverse Engine API: `serapiHost.invokeEngineApi(method, args)` → restricted
   `window.__md.api.<method>` call. The allowlist is `engine-api-allowlist.json`.
 - Tests: `npm test` runs host + sidecar contract guards.

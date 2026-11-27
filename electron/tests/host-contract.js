@@ -63,5 +63,7 @@ assert.match(workspaceJs, /serapiHost\.showEngine/, 'engine button calls host AP
 assert.match(workspaceJs, /config\.get/, 'welcome reads config from the sidecar');
 assert.match(workspaceJs, /config\.remember_server/, 'welcome saves the server through the sidecar');
 assert.match(workspaceJs, /workspace\.snapshot/, 'workspace boots from the sidecar snapshot');
+assert.match(workspaceJs, /loadEngineSnapshot/, 'workspace tries real Engine rows first');
+assert.match(workspaceJs, /workspace\.normalize/, 'workspace normalizes Engine rows in the sidecar');
 
 console.log('HOST_CONTRACT: PASS');

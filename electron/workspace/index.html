@@ -103,10 +103,10 @@
     </section>
 
     <aside class="panel rail" id="rail">
-      <div class="rail-head"><div><div class="eyebrow">当前段</div><h2>检查 <span class="count" id="qaCount">3</span></h2></div><span class="rail-id">#3</span></div>
+      <div class="rail-head"><div><div class="eyebrow">当前段</div><h2>检查 <span class="count" id="qaCount">3</span></h2></div><span class="rail-id" id="railId">#3</span></div>
 
       <section class="rail-section qa-section">
-        <div class="section-head"><span>质量检查</span><span class="severity-summary"><i class="dot error"></i>1 错误 <i class="dot warn"></i>2 警告</span></div>
+        <div class="section-head"><span>质量检查</span><span class="severity-summary" id="qaSeverity"><i class="dot error"></i>1 错误 <i class="dot warn"></i>2 警告</span></div>
         <div class="qa-list" id="qaList"></div>
       </section>
 
@@ -120,10 +120,10 @@
 
       <section class="rail-section info-section">
         <div class="section-head"><span>段信息</span><span class="section-note">只读</span></div>
-        <div class="info-grid"><div><span>角色</span><b id="infoSpeaker">アリス</b></div><div><span>上下文 ID</span><b>4471</b></div><div><span>注释</span><b>2</b></div><div><span>锁定</span><b>否</b></div></div>
+        <div class="info-grid"><div><span>角色</span><b id="infoSpeaker">アリス</b></div><div><span>上下文 ID</span><b id="infoContext">—</b></div><div><span>注释</span><b id="infoComments">—</b></div><div><span>锁定</span><b id="infoLocked">—</b></div></div>
       </section>
 
-      <section class="rail-section dict-section">
+      <section class="rail-section dict-section" id="dictSection">
         <div class="section-head"><span>词典</span><span class="section-note">个人库优先 · 不含 TB</span></div>
         <div class="dict-card" id="dictCard">
           <div class="dict-top"><span class="dict-term" id="dictTerm">攻撃力</span><span class="dict-reading" id="dictReading">こうげきりょく</span><span class="dict-source">个人库</span></div>
@@ -135,8 +135,8 @@
   </main>
 
   <footer class="statusbar">
-    <div class="status-group"><span>当前段</span><b class="mono">3 / 2,150</b></div>
-    <div class="status-group"><span>进度</span><b class="mono">12,480 / 26,560 · 47.0%</b></div>
+    <div class="status-group"><span>当前段</span><b class="mono" id="statusCurrent">3 / 2,150</b></div>
+    <div class="status-group"><span>进度</span><b class="mono" id="statusProgress">12,480 / 26,560 · 47.0%</b></div>
     <div class="status-group"><span>草稿</span><b>已保存 14:32</b></div>
     <span class="spacer"></span>
     <div class="status-note" id="statusNote">QA · 点击检查项定位</div>

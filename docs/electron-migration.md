@@ -92,14 +92,18 @@ Electron main
 - preload：`serapiHost.sidecar.call(method, params)`；
 - 实测 sidecar ping + version（Python 3.14.10，APP_VERSION 1.2.2）；
 - 反向 Engine API 已打通，fixture `ping` 返回 `pong`；
-- `workspace.snapshot` 已接入：Workspace 启动时从 sidecar 读取合成快照，左栏/编辑器/QA/TM/TB 不再依赖前端硬编码；
-- 快照 fixture：`electron/fixtures/workspace-demo.json`，`synthetic: true`；
-- Workspace 截图已改为 sidecar 数据渲染（`electron/preview-electron.png`）。
+- `workspace.snapshot` 已接入：Workspace 启动时优先走真实路径（Engine `listRows` → sidecar `workspace.normalize`），失败才回退合成快照；
+- 快照 schema：`project/current/currentLine/segments/contextLines/qa/hits/dictionary`；
+- 合成 fixture：`electron/fixtures/workspace-demo.json`（`synthetic: true`）；
+- 真实路径合成 fixture：`electron/fixtures/engine-rows-demo.json` + `engine/fixture-api.html`；
+- 真实数据路径截图：`electron/preview-realpath-fixture.png`（页面上是 3 行合成数据，用于证明 listRows→normalize→workspace 链路）；
+- Workspace 截图（完整合成快照）：`electron/preview-electron.png`。
 
 **Step 3 待办**
 
-- 把 `workspace.snapshot` 的 provider 从合成 fixture 换成真实只读数据：先 Engine `listRows`/`readSegment`，再 sidecar 归一化；
-- 定义稳定的 workspace ↔ sidecar schema（project/segments/qa/hits/context/dictionary）；
+- 在真实登录页/项目页验证 `listRows` 返回形状与当前 normalize 映射；
+- 补 `readSegment`/QA/TM/TB/segment info 到 snapshot；
+- 真实项目名/语言/进度从 Engine 状态读取，不沿用 frontend 默认；
 - 写路径保留在 Python sidecar，并补 WritePolicy 回归；
 - 真实数据接入前，任何真实 memoQ 正文不得写日志/截图。
 

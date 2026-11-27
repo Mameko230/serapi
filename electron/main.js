@@ -31,9 +31,11 @@ const PRELOAD = path.join(__dirname, 'preload.js');
 const WORKSPACE_ENTRY = path.join(__dirname, 'workspace', 'index.html');
 const ENGINE_ENTRY = path.join(__dirname, 'engine', 'placeholder.html');
 const ENGINE_FIXTURE = path.join(__dirname, 'engine', 'fixture.html');
+const ENGINE_FIXTURE_API = path.join(__dirname, 'engine', 'fixture-api.html');
 const APP_DIR = path.join(__dirname, '..', 'app');
 const ENGINE_URL = String(process.env.SERAPI_ENGINE_URL || '').trim();
 const ENGINE_FIXTURE_MODE = process.env.SERAPI_ENGINE_FIXTURE === '1';
+const ENGINE_FIXTURE_API_MODE = process.env.SERAPI_ENGINE_FIXTURE_API === '1';
 const ENGINE_SHOW_ON_START = process.env.SERAPI_ENGINE_SHOW === '1';
 const ENGINE_API_ALLOWED = new Set(ENGINE_API);
 
@@ -75,7 +77,7 @@ function createViews() {
   if (ENGINE_URL) {
     engine.webContents.loadURL(ENGINE_URL);
   } else {
-    engine.webContents.loadFile(ENGINE_FIXTURE_MODE ? ENGINE_FIXTURE : ENGINE_ENTRY);
+    engine.webContents.loadFile(ENGINE_FIXTURE_API_MODE ? ENGINE_FIXTURE_API : (ENGINE_FIXTURE_MODE ? ENGINE_FIXTURE : ENGINE_ENTRY));
   }
   engine.webContents.on('dom-ready', () => injectBridge());
   engine.webContents.on('before-input-event', (event, input) => {

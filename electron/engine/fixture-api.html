@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Serapi Engine listRows fixture</title>
+<style>
+  html,body{height:100%;margin:0;background:#eef2f5;font-family:"Segoe UI",sans-serif;color:#28313a}
+  .wrap{height:100%;display:grid;place-items:center}
+  .card{padding:22px 26px;background:#fff;border:1px solid #dfe5ea;border-radius:12px;max-width:540px}
+  h1{font-size:17px;margin:0 0 8px}
+  p{font-size:12px;line-height:1.6;color:#68737d;margin:0}
+  code{font-family:monospace;background:#f2f5f7;padding:1px 4px;border-radius:4px}
+</style>
+</head>
+<body>
+  <div class="wrap"><div class="card">
+    <h1>Engine listRows fixture</h1>
+    <p>Synthetic page for the real-data workspace path. It exposes
+       <code>window.__md.api.listRows()</code> only; no memoQ data or network.</p>
+  </div></div>
+  <script>
+    window.__md = {
+      ready: true,
+      api: {
+        listRows: function () {
+          return {
+            ok: true,
+            total: 3,
+            source: "new-api",
+            rows: [
+              { rowNo: 1, rowId: "fixture-row-1", src: "最初の行です。", tgt: "这是第一行。", status: "manuallyConfirmed", tmRate: 100, locked: false },
+              { rowNo: 2, rowId: "fixture-row-2", src: "二番目の行です。長い段落の折り返しを確認します。", tgt: "这是第二行。用于检查长段落换行。", status: "partiallyEdited", tmRate: 76, locked: false },
+              { rowNo: 3, rowId: "fixture-row-3", src: "三番目の行です。", tgt: "这是第三行。", status: "proofread", tmRate: 91, locked: false }
+            ]
+          };
+        }
+      }
+    };
+  </script>
+</body>
+</html>

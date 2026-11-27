@@ -167,6 +167,91 @@ def _workspace_snapshot(_params):
         raise ValueError("workspace fixture must be synthetic")
     return data
 
+
+_STATUS_MAP = {
+    "manuallyConfirmed": "confirmed",
+    "proofread": "reviewer1",
+    "confirmed": "confirmed",
+    "partiallyEdited": "edited",
+    "edited": "edited",
+    "translated": "draft",
+    "rejected": "rejected",
+    "untranslated": "untranslated",
+    "draft": "draft",
+}
+
+
+def _workspace_normalize(params):
+    """Normalize a raw Engine `listRows` result into the workspace snapshot.
+
+    Pure data mapping: no network, no PyQt, no logging of text or GUIDs.
+    """
+    raw_rows = (params or {}).get("rows") or []
+    if not isinstance(raw_rows, list):
+        return {"ok": False, "error": "rows-not-list"}
+    rows = []
+    for item in raw_rows:
+        if not isinstance(item, dict):
+            continue
+        try:
+            row_no = int(item.get("rowNo"))
+        except (TypeError, ValueError):
+            continue
+        src = str(item.get("src") or "")
+        tgt = str(item.get("tgt") or "")
+        src_lines = src.splitlines() or [""]
+        tgt_lines = tgt.splitlines() or [""]
+        raw_status = str(item.get("status") or "")
+        source = str(item.get("source") or "")
+        if source == "new-api" and raw_status == "translated":
+            status = "draft"
+        else:
+            status = _STATUS_MAP.get(raw_status, "draft")
+        rate = item.get("tmRate")
+        try:
+            rate = int(rate) if rate is not None and rate != "" else None
+        except (TypeError, ValueError):
+            rate = None
+        rows.append({
+            "no": row_no,
+            "key": str(item.get("rowId") or ("row-%s" % row_no)),
+            "speaker": "",
+            "status": status,
+            "rate": rate,
+            "qa": 0,
+            "src": " ".join(src_lines)[:240],
+            "tgt": " ".join(tgt_lines)[:240],
+            "srcLines": src_lines,
+            "tgtLines": tgt_lines,
+            "locked": bool(item.get("locked")),
+        })
+    if not rows:
+        return {"ok": False, "error": "no-rows"}
+    rows.sort(key=lambda r: r["no"])
+    current = 0
+    # Context is intentionally omitted for the real path until segment info is
+    # available; the UI handles an empty context list.
+    project = (params or {}).get("project") or {}
+    snapshot = {
+        "synthetic": False,
+        "source": "engine-listRows",
+        "project": {
+            "name": str(project.get("name") or "memoQ"),
+            "file": str(project.get("file") or ""),
+            "languages": str(project.get("languages") or ""),
+            "progress": project.get("progress") or {"done": 0, "total": len(rows), "percent": 0},
+            "current": current,
+        },
+        "current": current,
+        "currentLine": 0,
+        "segments": rows,
+        "contextLines": [],
+        "qa": [],
+        "hits": [],
+        "dictionary": None,
+    }
+    return snapshot
+
 METHODS = {
     "ping": _ping,
     "version": _version,
@@ -174,6 +259,7 @@ METHODS = {
     "config.remember_server": _config_remember,
     "config.forget_server": _config_forget,
     "workspace.snapshot": _workspace_snapshot,
+    "workspace.normalize": _workspace_normalize,
 }
 
 
