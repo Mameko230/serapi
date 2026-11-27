@@ -54,10 +54,12 @@
           // 保证写回 memoQ 的 tag name/attributes/tagType 与原文一致。
           // 优先用行 API 原始 symbol（PM attrs 不含 tagType 等字段）。
           var newlineSymbol = null;
+          var sourceTags = [];
           try {
             var stRows = deps.rowsState();
             var cached = stRows && stRows.rows ? stRows.rows[Number(rid) + 1] : null;
             var rawTags = (cached && cached.srcTags) || [];
+            sourceTags = rawTags;
             for (var ri = 0; ri < rawTags.length; ri++) {
               var rs = rawTags[ri] || {};
               if (String(rs.name || '') === 'mq:ch' ||
@@ -83,7 +85,8 @@
           }
           var row = deps.putRow(rid, { side: 'target',
                                          symbols: deps.tokenSymbols(tokens || [],
-                                                                    newlineSymbol) });
+                                                                    newlineSymbol,
+                                                                    sourceTags) });
           var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
           var rowNo = (typeof row.id === 'number') ? row.id + 1 : null;
           var mapped = '';

@@ -8,6 +8,7 @@
 - Shift+Enter 拒绝：批量 `/rows/reject` 返回 405；改为逐行 `POST /rows/<rowId>/reject`，并保留状态回执。
 - 原生确认后的状态同步：监听 `.translation-row` 状态 DOM 变化，按 rowId 刷新单行缓存后再同步列表；保留 5 秒兜底。
 - Tag 胶囊增强：高度 24px、8pt 粗体、同色边/更实底色；颜色与占位 tag 使用高对比样式。
+- 写回普通 tag 时优先复用原文原始 symbol，保留原文的 output/NumID 与属性值，避免导出编号或内容漂移。
 
 ## 1.2.0（2026-11-27）
 

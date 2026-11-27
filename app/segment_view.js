@@ -100,8 +100,21 @@
       return res;
     }
     // token → row API symbols（PUT /rows/<id> 的 body）：文本逐码点，tag 用原始符号。
-    function newTokenSymbols(tokens, newlineSymbol) {
+    function newTokenSymbols(tokens, newlineSymbol, sourceTags) {
       var out = [];
+      var sourceUsed = {};
+      function sourceTagFor(name) {
+        for (var si = 0; si < (sourceTags || []).length; si++) {
+          if (sourceUsed[si]) continue;
+          var st = sourceTags[si] || {};
+          if (String(st.name || '') === String(name || '') &&
+              String(st.type) === '2') {
+            sourceUsed[si] = true;
+            return st;
+          }
+        }
+        return null;
+      }
       for (var i = 0; i < (tokens || []).length; i++) {
         var tk = tokens[i] || {};
         if (tk.t === 'text') {
@@ -120,6 +133,13 @@
                        attributes: [{ type: 1, name: 'val', value: '\r\n' }] });
           }
         } else if (tk.t === 'tag') {
+          // 写回普通 tag 时优先复用原文原始 symbol：NumID/output 和属性值都
+          // 由原文决定，避免导出时编号/内容与原文不一致。
+          var srcTag = sourceTagFor(tk.name || (tk.attrs && tk.attrs.name) || '');
+          if (srcTag) {
+            out.push(JSON.parse(JSON.stringify(srcTag)));
+            continue;
+          }
           var raw = tk.raw;
           if (raw && typeof raw === 'object' && Number(raw.type) === 2) {
             out.push(raw);
