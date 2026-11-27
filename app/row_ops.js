@@ -43,6 +43,10 @@
               { status: status }, cached ? !!cached.tgt : true);
           } catch (e) {}
           try { deps.refreshRow(rowId); } catch (e) {}
+          if (action === 'reject' && deps.activateRow) {
+            // 原生页隐藏时可能不重绘外部 API 改出的状态；重新聚焦该行。
+            try { deps.activateRow(target); } catch (e) {}
+          }
           deps.push('row-action-result', {
             ok: true, action: action, rowNo: target, rowId: rowId, status: status,
             mappedStatus: mappedStatus,
