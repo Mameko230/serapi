@@ -19,6 +19,8 @@ assert.strictEqual(f({ status: 'trConfirmed' }, true), 'confirmed');
 assert.strictEqual(f({ status: 'manuallyConfirmed' }, true), 'confirmed');
 assert.strictEqual(f({ status: 'reviewer1Confirmed' }, true), 'reviewer1');
 assert.strictEqual(f({ status: 'reviewer2Confirmed' }, true), 'reviewer2');
+assert.strictEqual(f({ status: 'proofread' }, true), 'reviewer2');
+assert.strictEqual(f({ status: 'reviewed' }, true), 'reviewer1');
 assert.strictEqual(f({ status: 'rejected' }, true), 'rejected');
 assert.strictEqual(f({ status: 'pretranslated' }, false), 'untranslated');
 assert.strictEqual(f({ status: 'pretranslated' }, true), 'edited');
