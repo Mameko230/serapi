@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 cd /d "%~dp0"
 
@@ -47,7 +47,7 @@ if not exist ".venv\Scripts\python.exe" (
     )
 
     echo 首次运行：正在创建独立 Python 环境……
-    %BASE_PY% -m venv ".venv"
+    !BASE_PY! -m venv ".venv"
     if errorlevel 1 (
         echo [错误] 虚拟环境创建失败。
         goto :fail
