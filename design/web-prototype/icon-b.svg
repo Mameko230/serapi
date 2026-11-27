@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Serapi">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="18" x2="232" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#205f50"/>
+      <stop offset=".58" stop-color="#123f36"/>
+      <stop offset="1" stop-color="#0b2924"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(204 40) rotate(133) scale(190)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8bd4bf" stop-opacity=".36"/>
+      <stop offset="1" stop-color="#8bd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cream" x1="48" y1="50" x2="112" y2="206" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fffdf6"/>
+      <stop offset="1" stop-color="#e6ddcb"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="146" y1="52" x2="212" y2="206" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f1c783"/>
+      <stop offset="1" stop-color="#c7863d"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#glow)"/>
+  <rect x="9.5" y="9.5" width="237" height="237" rx="56.5" fill="none" stroke="#fff" stroke-opacity=".15"/>
+  <path d="M112 46H82c-19 0-28 10-28 29v36c0 16-8 22-22 25 14 3 22 9 22 25v36c0 19 9 29 28 29h30" fill="none" stroke="url(#cream)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M144 46h30c19 0 28 10 28 29v36c0 16 8 22 22 25-14 3-22 9-22 25v36c0 19-9 29-28 29h-30" fill="none" stroke="url(#gold)" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="128" cy="128" r="13" fill="#f6f0e3"/>
+  <circle cx="128" cy="128" r="5" fill="#1b5145"/>
+</svg>

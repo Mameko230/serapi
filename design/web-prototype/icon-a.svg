@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Serapi">
+  <defs>
+    <linearGradient id="bg" x1="30" y1="14" x2="228" y2="246" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1d5a4b"/>
+      <stop offset="0.55" stop-color="#123f36"/>
+      <stop offset="1" stop-color="#0c2c27"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(202 42) rotate(132) scale(202)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6ec6b0" stop-opacity=".44"/>
+      <stop offset="1" stop-color="#6ec6b0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="paper" x1="54" y1="50" x2="150" y2="122" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fffdf6"/>
+      <stop offset="1" stop-color="#e9e0cf"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="112" y1="138" x2="212" y2="212" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0c47c"/>
+      <stop offset="1" stop-color="#c98a42"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#glow)"/>
+  <rect x="9.5" y="9.5" width="237" height="237" rx="56.5" fill="none" stroke="#ffffff" stroke-opacity=".16"/>
+  <g>
+    <rect x="38" y="46" width="118" height="66" rx="17" fill="url(#paper)"/>
+    <rect x="38" y="46" width="118" height="66" rx="17" fill="none" stroke="#ffffff" stroke-opacity=".5"/>
+    <rect x="53" y="63" width="60" height="5" rx="2.5" fill="#2b6153" opacity=".72"/>
+    <rect x="53" y="77" width="82" height="5" rx="2.5" fill="#2b6153" opacity=".34"/>
+    <rect x="53" y="91" width="46" height="5" rx="2.5" fill="#2b6153" opacity=".20"/>
+  </g>
+  <g>
+    <rect x="100" y="142" width="118" height="66" rx="17" fill="url(#gold)"/>
+    <rect x="100" y="142" width="118" height="66" rx="17" fill="none" stroke="#fff5e2" stroke-opacity=".48"/>
+    <rect x="115" y="159" width="74" height="5" rx="2.5" fill="#3b2a18" opacity=".68"/>
+    <rect x="115" y="173" width="55" height="5" rx="2.5" fill="#3b2a18" opacity=".34"/>
+    <rect x="115" y="187" width="64" height="5" rx="2.5" fill="#3b2a18" opacity=".20"/>
+  </g>
+  <path d="M156 112c2 12-7 22-19 29" fill="none" stroke="#f6f0e3" stroke-width="7" stroke-linecap="round"/>
+  <path d="m133 136 5 8 9-5" fill="none" stroke="#f6f0e3" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M102 132c-2-12 7-22 19-29" fill="none" stroke="#f6f0e3" stroke-width="7" stroke-linecap="round" opacity=".55"/>
+  <path d="m125 108-5-8-9 5" fill="none" stroke="#f6f0e3" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>
+</svg>

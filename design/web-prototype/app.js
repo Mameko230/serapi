@@ -88,7 +88,7 @@ for (let i = 1; i <= 8; i++) {
   hits.push({ type: "TB", rate: "术语", src: ["封印", "紋章", "石扉", " Ancient Ruins", "青白い", "ロウ", "入口", "空気"][i - 1], tgt: ["封印", "纹章", "石门", "Ancient Ruins", "苍白", "罗", "入口", "空气"][i - 1], meta: `Game Terms · read-only · entry ${i}` });
 }
 
-const state = { current: 2, filter: "all", hitFilter: "all", selectedHit: 0, contextCollapsed: false };
+const state = { current: 2, currentLine: 3, filter: "all", hitFilter: "all", selectedHit: 0, contextCollapsed: false };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -123,19 +123,24 @@ function renderContext() {
     <div class="ctx-src">${esc(text)}</div></div>`).join("");
 }
 
-function codeLines(lines, editable) {
-  return lines.map((line, i) => `<div class="code-line ${editable ? "target" : "source"}">
-    <div class="line-no">${String(i + 1).padStart(2, "0")}</div>
-    <div class="line-text" ${editable ? 'contenteditable="true" spellcheck="false"' : ""}>${line}</div>
-  </div>`).join("");
+function codeLines(lines, editable, qaLine = -1) {
+  return lines.map((line, i) => {
+    const classes = ["code-line", editable ? "target" : "source"];
+    if (i === state.currentLine) classes.push("current");
+    if (i === qaLine) classes.push("qa-row");
+    return `<div class="${classes.join(" ")}" data-line="${i}">
+      <div class="line-no">${String(i + 1).padStart(2, "0")}</div>
+      <div class="line-text" ${editable ? 'contenteditable="true" spellcheck="false"' : ""}>${line}</div>
+    </div>`;
+  }).join("");
 }
 
 function renderEditor(seg) {
   $("#editorRow").textContent = "第 " + seg.no + " 段";
   $("#editorKey").textContent = seg.key;
   $("#editorStat").textContent = `${seg.srcLines.length} 行 · 28 / 42 字`;
-  $("#sourceScroll").innerHTML = codeLines(seg.srcLines, false);
-  $("#targetScroll").innerHTML = codeLines(seg.tgtLines, true);
+  $("#sourceScroll").innerHTML = codeLines(seg.srcLines, false, qaIssues[0].line);
+  $("#targetScroll").innerHTML = codeLines(seg.tgtLines, true, qaIssues[0].line);
   const qaLine = qaIssues.find((q) => q.severity === "error");
   if (qaLine) {
     const targetLine = $("#targetScroll").children[qaLine.line];
@@ -150,6 +155,20 @@ function renderEditor(seg) {
     $("#statusNote").textContent = "草稿 · 有未保存修改";
     $("#targetState").textContent = "草稿";
   }));
+  $$("#sourceScroll .code-line, #targetScroll .code-line").forEach((line) => {
+    const n = line.dataset.line;
+    line.addEventListener("mouseenter", () => {
+      $$(`.code-line[data-line="${n}"]`).forEach((row) => row.classList.add("hover"));
+    });
+    line.addEventListener("mouseleave", () => {
+      $$(`.code-line[data-line="${n}"]`).forEach((row) => row.classList.remove("hover"));
+    });
+    line.addEventListener("click", () => {
+      state.currentLine = Number(n);
+      $$(".code-line.current").forEach((row) => row.classList.remove("current"));
+      $$(`.code-line[data-line="${n}"]`).forEach((row) => row.classList.add("current"));
+    });
+  });
   $("#targetState").textContent = statusLabels[seg.status];
 }
 
