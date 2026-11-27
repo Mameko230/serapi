@@ -1,0 +1,20 @@
+{
+  "methods": [
+    "ping",
+    "capabilities",
+    "fingerprint",
+    "debugState",
+    "editorState",
+    "documentStats",
+    "listRows",
+    "readSource",
+    "readSegment",
+    "listTags",
+    "segmentInfo",
+    "tmHitsReq",
+    "tmHitsPoll",
+    "previewContextReq",
+    "concordanceReq",
+    "termDetailReq"
+  ]
+}

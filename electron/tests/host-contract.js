@@ -31,6 +31,18 @@ assert.match(main, /SERAPI_CAPTURE/, 'capture hook exists');
 assert.match(preload, /contextBridge\.exposeInMainWorld\('serapiHost'/, 'workspace host API is exposed');
 assert.match(preload, /showEngine/, 'host API can show the engine view');
 assert.match(preload, /loadEngine/, 'host API can load a memoQ URL');
+assert.match(preload, /invokeEngineApi/, 'host API can call the engine API');
+assert.match(preload, /sidecar/, 'host API exposes the sidecar');
+assert.ok(fs.existsSync(path.join(root, 'sidecar.py')), 'sidecar script exists');
+assert.ok(fs.existsSync(path.join(root, 'sidecar-client.js')), 'sidecar client exists');
+assert.ok(Array.isArray(require(path.join(root, 'engine-api-allowlist.json')).methods),
+  'engine API allowlist exists');
+assert.match(main, /sidecar:call/, 'main exposes sidecar:call IPC');
+assert.match(main, /engine:api/, 'main exposes engine:api IPC');
+assert.match(main, /invokeEngineApi/, 'engine API calls are guarded by one helper');
+assert.match(main, /startSidecar/, 'sidecar is started with the host');
+assert.match(main, /SERAPI_ENGINE_INVOKE/, 'engine API has a smoke hook');
+assert.match(main, /SERAPI_SIDECAR_SMOKE/, 'sidecar has a smoke hook');
 assert.match(enginePreload, /engine:bridge/, 'engine preload forwards bridge events');
 assert.match(main, /engine:bridge/, 'main receives bridge events');
 assert.match(main, /injectBridge/, 'main injects the bridge bundle');

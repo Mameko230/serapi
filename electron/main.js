@@ -5,6 +5,8 @@
 
 const { app, BrowserWindow, BrowserView, ipcMain, session } = require('electron');
 const { buildBundle } = require('./bridge-inject');
+const { SidecarClient } = require('./sidecar-client');
+const ENGINE_API = require('./engine-api-allowlist.json').methods;
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -22,6 +24,8 @@ let engineVisible = false;
 let engineInjected = false;
 let bridgeBundle = null;
 let lastEngineEvent = null;
+let sidecar = null;
+let sidecarReady = false;
 
 const PRELOAD = path.join(__dirname, 'preload.js');
 const WORKSPACE_ENTRY = path.join(__dirname, 'workspace', 'index.html');
@@ -31,6 +35,7 @@ const APP_DIR = path.join(__dirname, '..', 'app');
 const ENGINE_URL = String(process.env.SERAPI_ENGINE_URL || '').trim();
 const ENGINE_FIXTURE_MODE = process.env.SERAPI_ENGINE_FIXTURE === '1';
 const ENGINE_SHOW_ON_START = process.env.SERAPI_ENGINE_SHOW === '1';
+const ENGINE_API_ALLOWED = new Set(ENGINE_API);
 
 function viewBounds() {
   const [width, height] = win.getContentSize();
@@ -92,6 +97,11 @@ async function injectBridge() {
     if (!bridgeBundle) bridgeBundle = buildBundle(APP_DIR);
     await engine.webContents.executeJavaScript(bridgeBundle, true);
     console.log('[serapi] engine bridge injected:', url.replace(/\?.*$/, ''));
+    const smokeApi = process.env.SERAPI_ENGINE_INVOKE;
+    if (smokeApi) {
+      const result = await invokeEngineApi(smokeApi, []);
+      console.log('[serapi] engine invoke', smokeApi, JSON.stringify(result).slice(0, 300));
+    }
   } catch (err) {
     engineInjected = false;
     console.error('[serapi] engine bridge injection failed:', err);
@@ -131,6 +141,37 @@ async function captureAndQuit(target) {
   } finally {
     app.quit();
   }
+}
+
+
+function startSidecar() {
+  const python = process.env.SERAPI_PYTHON
+    || path.join(__dirname, '..', '.venv314', 'Scripts', 'python.exe');
+  if (!fs.existsSync(python)) {
+    console.error('[serapi] sidecar python not found:', python);
+    return;
+  }
+  sidecar = new SidecarClient({
+    python,
+    script: path.join(__dirname, 'sidecar.py'),
+    cwd: path.join(__dirname, '..'),
+    onLog: (line) => console.log(line),
+  });
+  sidecar.start();
+  sidecar.call('ping', {}, 5000)
+    .then((result) => {
+      sidecarReady = true;
+      console.log('[serapi] sidecar ping:', JSON.stringify(result));
+      if (process.env.SERAPI_SIDECAR_SMOKE === '1') {
+        sidecar.call('version', {}, 5000).then((v) => {
+          console.log('[serapi] sidecar version:', JSON.stringify(v));
+        }).catch((err) => console.error('[serapi] sidecar version failed:', err));
+      }
+    })
+    .catch((err) => {
+      sidecarReady = false;
+      console.error('[serapi] sidecar ping failed:', err.message);
+    });
 }
 
 function createWindow() {
@@ -183,12 +224,42 @@ ipcMain.handle('engine:load', (_event, rawUrl) => {
   setEngineVisible(true);
   return { ok: true, url };
 });
+async function invokeEngineApi(name, args) {
+  const method = String(name || '');
+  if (!ENGINE_API_ALLOWED.has(method)) return { ok: false, error: 'method-not-allowed' };
+  if (!engine) return { ok: false, error: 'engine-not-ready' };
+  let argv = Array.isArray(args) ? args : [];
+  try { argv = JSON.parse(JSON.stringify(argv)); } catch (_e) { return { ok: false, error: 'bad-args' }; }
+  const expr = `(async () => {
+    const api = window.__md && window.__md.api;
+    const fn = api && api[${JSON.stringify(method)}];
+    if (typeof fn !== 'function') return { ok: false, error: 'missing-api' };
+    try { return { ok: true, value: await fn(...${JSON.stringify(argv)}) }; }
+    catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  })()`;
+  try {
+    const result = await engine.webContents.executeJavaScript(expr, true);
+    return result || { ok: false, error: 'empty-result' };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+ipcMain.handle('engine:api', (_event, name, args) => invokeEngineApi(name, args));
+ipcMain.handle('sidecar:call', async (_event, method, params) => {
+  if (!sidecar) return { ok: false, error: 'sidecar-not-started' };
+  try {
+    return { ok: true, result: await sidecar.call(String(method || ''), params || {}) };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
+});
 ipcMain.handle('host:info', () => ({
   mode: 'electron-migration',
   version: app.getVersion(),
   engineVisible,
   engineUrl: engine ? engine.webContents.getURL() : '',
   lastEngineEvent,
+  sidecarReady,
 }));
 ipcMain.handle('host:capture', async (_event, target) => {
   if (!target) return false;
@@ -206,6 +277,7 @@ app.whenReady().then(() => {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
     + '(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
   );
+  startSidecar();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -214,4 +286,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+app.on('before-quit', () => {
+  if (sidecar) sidecar.close();
 });

@@ -67,16 +67,36 @@ Electron main
 
 - 真实 memoQ 登录页/项目页验证；
 - 页面刷新、软导航后的重新注入；
-- 反向通道：主进程/Python 调 `window.__md.api.*`（替代 Qt `runJavaScript` 回调）；
 - SSO 弹窗、下载、证书错误、代理；
 - cookie 持久化验证（当前 profile cache ACL 告警未消）。
 
-### Step 3 — Workspace 数据接线
+**Step 2 反向通道（已完成骨架）**
+
+- `engine:api` IPC：主进程 → Engine View `window.__md.api.<method>`，只允许 `engine-api-allowlist.json` 中的方法；
+- fixture 上实测 `ping` → `{"ok":true,"value":"pong"}`；
+- 尚未在真实 memoQ 页面验证返回值形态/Promise 超时。
+
+### Step 3 — Workspace 数据接线（进行中）
 - Python sidecar（JSON-RPC over stdio 或回环 HTTP）；
 - 段列表/编辑器/TM/TB/QA/段信息/词典接现有数据源；
 - 保留 WritePolicy：所有写操作仍在 Python 侧裁决；
 - 长段共享滚动条 + 可拖拽列宽；
 - Backlog §6（原文/译文滚动联调）在 Web 工作区由“单滚动容器”替代，补 SMOKE。
+
+**Step 3 已完成骨架（2026-11-28）**
+
+- `sidecar.py`：无 PyQt 的 JSON-lines JSON-RPC；`ping` / `version` 可用；
+- `sidecar-client.js`：spawn/超时/退出/日志；主进程启动并健康检查；
+- preload：`serapiHost.sidecar.call(method, params)`；
+- 实测 sidecar ping + version（Python 3.14.10，APP_VERSION 1.2.2）；
+- 反向 Engine API 已打通，fixture `ping` 返回 `pong`。
+
+**Step 3 待办**
+
+- sidecar 接入 `app/` 的真实读服务（先只读：行列表/段信息/QA/词典）；
+- 定义 workspace ↔ sidecar 的消息 schema，禁止把 memoQ GUID/正文写日志；
+- 写路径保留在 Python sidecar，并补 WritePolicy 回归；
+- Workspace 左栏/中栏/右栏替换 fixture 数据。
 
 ### Step 4 — 欢迎/账号/设置 Web 化
 - 服务器历史、连接、主题、快捷键、Tag 规则、编辑器字号；
