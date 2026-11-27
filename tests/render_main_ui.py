@@ -41,14 +41,36 @@ win.ed_label.setText("第 4 行 · 已编辑")
 win.doc_stats.setText("12,480 / 26,560（47.0%）")
 win.conn_label.setText("已连接 memoQ · DEMO")
 source_tokens = [
-    {"t": "tag", "id": "1", "tagKind": "open", "name": "mq:rxt", "display": "Color:Red"},
-    {"t": "text", "v": "注意"}, {"t": "tag", "id": "2", "tagKind": "close", "name": "mq:rxt"},
+    {"t": "tag", "id": "1", "tagKind": "open", "name": "mq:rxt", "display": "Color:Red",
+     "output": "1",
+     "attrs": {"name": "mq:rxt", "type": "inline-self-closed", "tagType": 1,
+               "inlineTagType": 2, "output": "1",
+               "display": {"isSpecial": True, "text": "Color:Red"},
+               "attributes": [{"name": "val", "type": 1, "value": "Color:Red"}]}},
+    {"t": "text", "v": "注意"},
+    {"t": "tag", "id": "2", "tagKind": "close", "name": "mq:rxt",
+     "output": "2",
+     "attrs": {"name": "mq:rxt", "type": "inline-self-closed", "tagType": 1,
+               "inlineTagType": 2, "output": "2",
+               "display": {"isSpecial": True, "text": "Color:Red"},
+               "attributes": [{"name": "val", "type": 1, "value": "Color:Red"}]}},
     {"t": "text", "v": "：タップで次へ"}, {"t": "newline"}, {"t": "text", "v": "進みます"},
 ]
 target_tokens = [
-    {"t": "tag", "id": "1", "tagKind": "open", "name": "mq:rxt", "display": "Color:Red"},
-    {"t": "text", "v": "注意"}, {"t": "tag", "id": "2", "tagKind": "close", "name": "mq:rxt"},
-    {"t": "text", "v": "：点击继续继续"}, {"t": "newline"}, {"t": "text", "v": ""},
+    {"t": "tag", "id": "1", "tagKind": "open", "name": "mq:rxt", "display": "Color:Red",
+     "output": "1",
+     "attrs": {"name": "mq:rxt", "type": "inline-self-closed", "tagType": 1,
+               "inlineTagType": 2, "output": "1",
+               "display": {"isSpecial": True, "text": "Color:Red"},
+               "attributes": [{"name": "val", "type": 1, "value": "Color:Red"}]}},
+    {"t": "text", "v": "注意"},
+    {"t": "tag", "id": "2", "tagKind": "close", "name": "mq:rxt",
+     "output": "2",
+     "attrs": {"name": "mq:rxt", "type": "inline-self-closed", "tagType": 1,
+               "inlineTagType": 2, "output": "2",
+               "display": {"isSpecial": True, "text": "Color:Red"},
+               "attributes": [{"name": "val", "type": 1, "value": "Color:Red"}]}},
+    {"t": "text", "v": "：点击继续"}, {"t": "newline"}, {"t": "text", "v": ""},
 ]
 win.src_view.setReadOnly(False)
 win.src_view.load_tokens(source_tokens)
@@ -73,6 +95,16 @@ if "--many-hits" in sys.argv:
                 "user": "UserA", "time": "2026-11-01"} for i in range(1, 7)]
     win.res_panel.load_hits(many_tm, many_tb, lambda value: str(value or ""))
 win._apply_tb_highlights(tb_rows, 4)
+# 演示用 QA 结果：让首屏示意图能直接看到“实时检查”的样子。
+try:
+    win.qa_panel.set_result({"warnings": [{
+        "label": "术语", "rule": "terms", "line": 0,
+        "message": "原文术语「タップ」在译文中未出现",
+    }]}, 4)
+    win.editor.set_qa_marks([{"line": 0, "rule": "terms",
+                              "message": "原文术语「タップ」在译文中未出现"}])
+except Exception:
+    pass
 app.processEvents()
 # 默认截取翻译工作区；--engine 截取引擎大浮层，--rules 截取图形化规则页。
 win._set_engine_visible("--engine" in sys.argv)
