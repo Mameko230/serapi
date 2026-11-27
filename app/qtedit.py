@@ -483,8 +483,23 @@ class MqEditor(QTextEdit):
         cur.select(QTextCursor.SelectionType.Document)
         cur.mergeBlockFormat(fmt)
 
+    def _can_paint_line_cards(self) -> bool:
+        """超长段禁用逐行透明卡片自绘。
+
+        QTextEdit 对超长单段会生成几千个视觉行；paintEvent 若每帧遍历所有行
+        再调用 cursorRect，会阻塞 UI，用户看到的就是整块白屏。卡片只是装饰，
+        超长段直接交回 QTextEdit 原生绘制，保证文字始终可见。
+        """
+        doc = self.document()
+        try:
+            return doc.characterCount() <= 20001 and doc.blockCount() <= 1000
+        except Exception:
+            return False
+
     def _line_cell_rects(self):
         """产出每个视觉行的视口矩形 + 是否当前行；用于自绘行背景卡片。"""
+        if not self._can_paint_line_cards():
+            return []
         doc = self.document()
         cur_pos = self.textCursor().position()
         editable = not self.isReadOnly()

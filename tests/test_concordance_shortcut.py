@@ -41,10 +41,12 @@ w._run_concordance = lambda text, direction: calls.append((text, direction))
 tgt.setFocus(); app.processEvents()
 assert QApplication.focusWidget() is tgt
 MainWindow._concordance_shortcut(w)
+app.processEvents()
 assert calls == [("译文检索", "target")], calls
 src.activateWindow(); src.setFocus(); app.processEvents()
 assert QApplication.focusWidget() is src
 MainWindow._concordance_shortcut(w)
+app.processEvents()
 assert calls[-1] == ("原文検索", "source"), calls
 assert all("mq:" not in text for text, _direction in calls)
 

@@ -51,10 +51,11 @@
           // 确认/拒绝用新版原生快捷键（Ctrl+Enter / Shift+Enter），跳转遵循 memoQ 设置。
           f.confirm = true;
           f.reject = true;
-          // TB 术语编辑复用旧 QTermService（GetEntryForTerm/UpdateEntry），
-          // 项目 GUID 从 URL 取；术语“添加”仍只支持旧版，所以 terms 保持 false。
+          // 新版文档已有 /terms/quick-add（Ctrl+Q/Ctrl+E 的主术语添加）；
+          // 术语编辑仍复用旧 QTermService 的条目读取/更新。
           f.termEdit = !!deps.projectGuid();
           f.termQuickAdd = !!deps.projectGuid();
+          f.terms = !!(deps.projectGuid() || deps.docBase());
           // 新版自带 concordance 文档接口：POST /concordance 建上下文，GET 取结果。
           f.concordance = !!deps.docBase();
           // 新版原生命令 findAndReplace 带热键；Serapi 打开引擎浮层后派发 Ctrl+F。

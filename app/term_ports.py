@@ -47,6 +47,16 @@ class TermPortsMixin:
         source = self._term_selection_text(self.src_view.selected_tokens())
         target = self._term_selection_text(self.editor.selected_tokens())
         overlay.open(source, target)
+        # 新版文档的 quick-add 自动选择主术语库；不需要（也不应）再走旧版
+        # QTermService/termContextReq，否则用户会看到“添加术语仅旧版支持”。
+        if getattr(self, "_cap_editor", None) == "new":
+            overlay.set_term_bases(
+                [{"guid": "__default__", "name": "主术语库（新版文档默认）"}],
+                selected="__default__")
+            overlay.status.setText(
+                "新版编辑器会把原文/译文主术语加入当前文档的主术语库；"
+                "如需定义/示例，请右键 TB 命中条目编辑。")
+            return
         self._term_call("termContextReq", {})
 
     def _submit_term(self, params):

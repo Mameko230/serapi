@@ -118,10 +118,10 @@ function primaryOf(gui, code) {
 
 (async () => {
   const api = context.__md.api;
-  // 0) 新版能力探测：术语编辑可用，术语“添加”仍为 false。
+  // 0) 新版能力探测：术语编辑/添加均可用。
   const caps = api.capabilities();
   assert.strictEqual(caps.features.termEdit, true, JSON.stringify(caps.features));
-  assert.strictEqual(caps.features.terms, false);
+  assert.strictEqual(caps.features.terms, true);
 
   // 1) 读条目：带命中语言码（jpn/zho-CN），条目语言顺序故意 target 在前；
   //    projectGuid 必须从 URL 取，不能依赖旧版 WebTrans.Core。

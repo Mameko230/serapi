@@ -6,6 +6,9 @@
 
 | bug | 根因类别 | 守卫 |
 |---|---|---|
+| 超长单段译文编辑器白屏/卡顿 | 集成崩溃 | `tests/test_long_segment_editor.py`（超长段禁用逐行卡片自绘） + `docs/SMOKE.md` N3 |
+| Ctrl+K 选中词语卡死/闪退 | 集成崩溃 | `tests/test_concordance_shortcut.py`（选区检索延迟到下一轮事件循环） |
+| Ctrl+E 新版术语添加不可用 | API 语义 | `tests/test_term_add_new_editor.py` + `tests/test_capabilities.js` |
 | 安装包缺 `preview_context.js`，启动 FileNotFoundError | 产物完整性 | `tests/test_packaging.py` 静态资源清单回归 |
 | R2 确认 `proofread` 被映射成“已编辑”黄色 | API 语义 | `tests/test_row_status.js` + `tests/test_incremental_sync.py` |
 | Ctrl+Enter 保存后卡死（缺 `QTimer`/`json` 导入） | 集成崩溃 | `tests/test_save_flow.py`（离线覆盖调用路径） |

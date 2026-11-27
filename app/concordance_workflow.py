@@ -3,6 +3,7 @@
 
 import json
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
 from .editor_backend import backend_for
@@ -23,15 +24,22 @@ class ConcordanceWorkflowMixin:
     def _concordance_shortcut(self):
         """Ctrl+K：按焦点编辑框的选区检索对应语言；无选区时聚焦常驻入口。"""
         focus = QApplication.focusWidget()
+        pending = None
         for direction, editor in (("source", self.src_view), ("target", self.editor)):
             if editor is None or not (focus is editor or editor.isAncestorOf(focus)):
                 continue
             if editor.textCursor().hasSelection():
                 text = self._concordance_selection_text(editor)
                 if text:
-                    self._run_concordance(text, direction)
-                    return
-        self.res_panel.cc_input.setFocus()
+                    pending = (text, direction)
+                    break
+        if pending is None:
+            self.res_panel.cc_input.setFocus()
+            return
+        # 不要在 QShortcut 的按键事件里同步创建浮层/发起 JS 调用：
+        # 嵌套事件循环 + QTextEdit 重排在本机 Qt6 上会 fail-fast。
+        # 先取好选区，下一轮事件循环再打开检索。
+        QTimer.singleShot(0, lambda: self._run_concordance(*pending))
 
     def _run_concordance(self, text: str, direction: str = "source"):
         caps = getattr(self, "_caps", {})
