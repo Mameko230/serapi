@@ -3,7 +3,9 @@
 
 from .editor_backend import backend_for
 from .row_navigation import next_unlocked_row
+from .rowref import RowRef
 from .save_coordinator import SaveSnapshot
+from .write_policy import WriteIntent, decide as decide_write, state_from_flags
 
 
 class EditorPortsMixin:
@@ -52,6 +54,24 @@ class EditorPortsMixin:
         max_limit = max(source_counts, default=0) if self.chk_src_max.isChecked() else 0
         self.editor.set_limits(line_limit=ll, max_lines=ml, src_counts=counts,
                                src_max_limit=max_limit)
+        apply_preview = getattr(self, "_apply_preview_row_limit", None)
+        if callable(apply_preview):
+            apply_preview()
+        update_placeholder = getattr(self, "_update_editor_placeholder", None)
+        if callable(update_placeholder):
+            update_placeholder()
+
+    def _apply_preview_row_limit(self):
+        """预览文件里的字数限制按当前行应用；没有预览数据时恢复不限。"""
+        getter = getattr(self, "_preview_item", None)
+        limit = 0.0
+        if callable(getter):
+            try:
+                item = getter(getattr(self, "_cur_row", 0)) or {}
+                limit = float(item.get("maxLen") or 0)
+            except (TypeError, ValueError):
+                limit = 0.0
+        self.editor.set_segment_limit(limit)
 
     def _refresh_tag_pool(self):
         """仅刷新当前行 tag 池；快速切行时丢弃上一行的迟到响应。"""

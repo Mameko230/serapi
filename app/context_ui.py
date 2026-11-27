@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from . import context
@@ -40,14 +40,18 @@ class ContextPanel(QFrame):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setMaximumHeight(118)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setMaximumHeight(160)
+        self._body.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                 QSizePolicy.Policy.Preferred)
         scroll.setWidget(self._body)
         lay.addWidget(scroll)
         self._speaker = QLabel("角色既往译法：—")
         self._speaker.setWordWrap(True)
         self._speaker.setStyleSheet("color:#475569; background:transparent;")
         lay.addWidget(self._speaker)
-        self.setMaximumHeight(185)
+        self.setMaximumHeight(225)
 
     def set_context_id(self, value: str):
         text = str(value or "").strip()
@@ -61,25 +65,45 @@ class ContextPanel(QFrame):
                 widget.deleteLater()
         for row_no, row, current in lines:
             widget = QWidget()
-            hl = QHBoxLayout(widget)
-            hl.setContentsMargins(4, 1, 4, 1)
-            hl.setSpacing(6)
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                 QSizePolicy.Policy.Preferred)
+            vl = QVBoxLayout(widget)
+            vl.setContentsMargins(4, 2, 4, 2)
+            vl.setSpacing(1)
+            top = QHBoxLayout(); top.setSpacing(6)
             no = QLabel(str(row_no))
             no.setFixedWidth(34)
             no.setStyleSheet("color:#64748b; background:transparent;")
-            src = QLabel(str(row.get("src") or "")[:120])
+            src_text = str(row.get("src") or "")
+            tgt_text = str(row.get("tgt") or "")
+            src = QLabel(src_text)
+            src.setWordWrap(True)
+            src.setMinimumWidth(0)
+            src.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            src.setToolTip(src_text)
             src.setStyleSheet("color:#64748b; background:transparent;")
-            tgt = QLabel(str(row.get("tgt") or "")[:120])
+            top.addWidget(no)
+            top.addWidget(src, 1)
+            bottom = QHBoxLayout(); bottom.setSpacing(6)
+            indent = QLabel("")
+            indent.setFixedWidth(34)
+            tgt = QLabel(tgt_text)
+            tgt.setWordWrap(True)
+            tgt.setMinimumWidth(0)
+            tgt.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            tgt.setToolTip(tgt_text)
             tgt.setStyleSheet("color:#1e293b; background:transparent;")
+            tgt.setContentsMargins(8, 0, 0, 0)
+            bottom.addWidget(indent)
+            bottom.addWidget(tgt, 1)
+            vl.addLayout(top)
+            vl.addLayout(bottom)
             if current:
                 widget.setStyleSheet("background: rgba(37,99,235,18); border-radius: 4px;")
                 no.setStyleSheet("color:#2563eb; font-weight:700; background:transparent;")
                 tgt.setStyleSheet("color:#1e293b; font-weight:600; background:transparent;")
             for lab in (no, src, tgt):
                 lab.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            hl.addWidget(no)
-            hl.addWidget(src, 1)
-            hl.addWidget(tgt, 1)
             self._body_lay.addWidget(widget)
         if not lines:
             empty = QLabel("未加载到相邻段（滚动段列表或跳行后更新）")
@@ -96,6 +120,44 @@ class ContextPanel(QFrame):
 
 
 class ContextUiMixin:
+    def _preview_rows(self) -> dict:
+        rows = getattr(self, "_preview_row_map", None)
+        if not isinstance(rows, dict):
+            rows = {}
+            self._preview_row_map = rows
+        return rows
+
+    def _preview_item(self, row_no) -> dict:
+        try:
+            return self._preview_rows().get(int(row_no), {}) or {}
+        except (TypeError, ValueError):
+            return {}
+
+    def _on_preview_context(self, data):
+        if not data.get("ok"):
+            err = str(data.get("err") or "")
+            if err and "404" not in err:
+                self.log(f"预览附加信息读取失败：{err}")
+            return
+        mapping = {}
+        for row in data.get("rows") or []:
+            try:
+                no = int(row.get("rowNo") or 0)
+            except (TypeError, ValueError):
+                continue
+            if no > 0:
+                mapping[no] = dict(row)
+        self._preview_row_map = mapping
+        self._refresh_context()
+        apply_limit = getattr(self, "_apply_preview_row_limit", None)
+        if callable(apply_limit):
+            apply_limit()
+        refresh_info = getattr(self, "_refresh_segment_info_preview", None)
+        if callable(refresh_info):
+            refresh_info()
+        if mapping:
+            self.log(f"已从预览读取 {len(mapping)} 行的附加信息")
+
     def _context_rows(self):
         model = getattr(self, "seg_model", None)
         if model is None:
@@ -123,7 +185,9 @@ class ContextUiMixin:
         lines = context.context_lines(rows, row_no, 2)
         current = next((row for _no, row, is_current in lines if is_current), {})
         key = context.context_key(current)
-        speaker = context.parse_speaker(key, str(current.get("src") or ""))
+        speaker = str(self._preview_item(row_no).get("speaker") or "").strip()
+        if not speaker:
+            speaker = context.parse_speaker(key, str(current.get("src") or ""))
         speaker_rows = context.aggregate_speaker_tm(rows, row_no, speaker)
         panel.set_rows(lines, speaker_rows)
         panel._title.setText(

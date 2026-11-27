@@ -8,6 +8,7 @@ class RuntimeSelftestMixin:
     def _engine_page(self):
         """定位承载 memoQ 编辑器的页面：优先推送事件追踪到的编辑器页（最可靠），
         退回 URL 启发，最后回退主引擎页。"""
+        from .engine_view import EngineView
         pid = self._editor_pid
         if pid is not None:
             page = self._pages.get(pid)
@@ -190,6 +191,7 @@ class RuntimeSelftestMixin:
 
     # ---------------- 自动往返测试（读 → 原样写回 → 复读比对） ----------------
     def _rt_start(self):
+        from PyQt6.QtCore import QTimer
         tokens_ref = [None]
         self._rt_tries = 0
         last_href = [""]

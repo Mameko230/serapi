@@ -253,13 +253,14 @@ assert w_info._seg_info_expanded is False  # 无内容不得篡改用户偏好
 MainWindow._on_seginfo_toggled(w_info, True)
 MainWindow._update_segment_info(w_info, {"ok": True, "rowNo": 4, "contextId": "CTX-4"})
 assert not w_info.seg_info_frame.isHidden()
-# 新版没有上下文/原始 ID：面板仍要能展开并明确写“新版不提供”。
+# 新版没有上下文/原始 ID：不再显示这两个空字段；无注释/预览时面板收起。
 MainWindow._update_segment_info(w_info, {"ok": True, "rowNo": 4, "newEditor": True,
                                           "contextId": "", "originalId": "",
                                           "comments": []})
-assert not w_info.seg_info_frame.isHidden()
+assert w_info.seg_info_frame.isHidden()
 info_text = w_info.seg_info.toPlainText()
-assert info_text.count("新版不提供") == 2, info_text
+assert "上下文 ID" not in info_text and "原始 ID" not in info_text
+assert "新版不提供" not in info_text
 
 # 8b) 确认后跳转不再走 Serapi 配置：旧的 _apply_confirm_jump 已删除。
 assert not hasattr(MainWindow, "_apply_confirm_jump")

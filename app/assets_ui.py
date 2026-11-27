@@ -29,7 +29,13 @@ class _AssetCard(QWidget):
         self.setStyleSheet(
             "QWidget { background: transparent; }"
             "QFrame#assetCard { background: #f8fafc; border: 1px solid rgba(255,255,255,235);"
-            " border-radius: 18px; }")
+            " border-radius: 18px; }"
+            "QComboBox { background: #ffffff; border: 1px solid #d9e4f2; border-radius: 6px;"
+            " padding: 4px 8px; color: #1e293b; }"
+            "QComboBox QAbstractItemView { background: #ffffff; color: #1e293b;"
+            " border: 1px solid #d9e4f2; outline: 0;"
+            " selection-background-color: #dbeafe; selection-color: #1e293b; }"
+            "QComboBox QAbstractItemView::item { min-height: 26px; padding: 2px 8px; }")
         self.card = QFrame(self)
         self.card.setObjectName("assetCard")
         lay = QVBoxLayout(self.card)

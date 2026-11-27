@@ -60,6 +60,9 @@ class BridgeEventsMixin:
                 self._schedule_seg_refresh(120, background=False)
                 QTimer.singleShot(900, lambda: self._schedule_seg_refresh(
                     0, background=True))
+                if getattr(self, "_editor_kind", None) == "new":
+                    QTimer.singleShot(
+                        1500, lambda: backend_for(self).preview_context())
         elif msg.get("type") == "bridge-ready" and page_id == self._editor_pid:
             # 原编辑器页导航走了（新页面会重新上报身份）
             self._editor_pid = None
@@ -156,6 +159,11 @@ class BridgeEventsMixin:
                 overlay.set_error(data.get("err") or "未知错误")
             else:
                 overlay.set_results(data.get("items") or [], int(data.get("total") or 0))
+            return
+        if msg.get("type") == "preview-context":
+            handler = getattr(self, "_on_preview_context", None)
+            if callable(handler):
+                handler(data)
             return
         if msg.get("type") == "tm-hits":
             # 页面 push 回来的 TM/TB 命中；只对应当前请求的行，过期丢弃

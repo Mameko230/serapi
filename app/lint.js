@@ -44,20 +44,50 @@
     return m;
   }
 
-  function tagKey(t) {
-    var kind = t.tagKind || t.kind || 'empty';
-    var id = t.id;
-    if (id === undefined || id === null || id === '') {
-      return 'name:' + String(t.name || t.display || '') + ':' + kind;
+  function attrSignature(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) {
+      return value.map(function (a) {
+        a = a || {};
+        return String(a.name || '') + '=' + String(a.value === undefined ? '' : a.value);
+      }).sort().join('&');
     }
-    return 'id:' + String(id) + ':' + kind;
+    if (typeof value === 'object') {
+      return Object.keys(value).sort().map(function (k) {
+        var v = value[k];
+        return k + '=' + String(v && typeof v === 'object'
+          ? (v.value === undefined ? '' : v.value) : v);
+      }).join('&');
+    }
+    return String(value);
+  }
+
+  function tagKey(t) {
+    // memoQ 新版 tag 的 NumID 是按段分配的，源/译可能不同；QA 只比较
+    // 标签名 + 类型 + 属性值，避免把“编号不同”误报成缺 tag。
+    if (t.t === 'newline') return 'name:mq:ch:newline';
+    var attrs = t.attrs || {};
+    var raw = t.raw || {};
+    var name = String(t.name || attrs.name || raw.name || t.display || '');
+    var tagType = (attrs.tagType !== undefined ? attrs.tagType
+                  : (raw.tagType !== undefined ? raw.tagType : (t.tagType || '')));
+    var inline = (attrs.inlineTagType !== undefined ? attrs.inlineTagType
+                 : (raw.inlineTagType !== undefined ? raw.inlineTagType : ''));
+    var attributes = attrs.attributes !== undefined ? attrs.attributes
+                   : (raw.attributes !== undefined ? raw.attributes : '');
+    var display = attrs.display !== undefined ? attrs.display : raw.display;
+    var dispText = display && typeof display === 'object'
+      ? String(display.text || '') : String(display || '');
+    var kind = String(t.tagKind || t.kind || attrs.tagKind || raw.tagKind || '');
+    return 'name:' + name + ':' + String(tagType) + ':' + String(inline)
+      + ':' + kind + ':' + attrSignature(attributes) + ':' + dispText;
   }
 
   function tagCounts(tokens) {
     var map = {}, order = [];
     for (var i = 0; i < (tokens || []).length; i++) {
       var t = tokens[i];
-      if (!t || t.t !== 'tag') continue;
+      if (!t || (t.t !== 'tag' && t.t !== 'newline')) continue;
       var k = tagKey(t);
       if (!map[k]) { map[k] = { key: k, count: 0, token: t }; order.push(k); }
       map[k].count++;
@@ -182,12 +212,23 @@
     if (enabled('lineLength')) {
       var lOpt = opts.lineLength || {};
       var lineLimit = Number(input.lineLimit || 0);
+      var rowLimit = Number(input.rowLimit || 0);
       var maxLines = parseInt(input.maxLines || 0, 10) || 0;
       var weighted = lOpt.weighted !== false;
       for (var lj = 0; lj < tgtLines.length; lj++) {
         var wLen = weighted ? weightedLength(tgtLines[lj]) : tgtLines[lj].length;
         if (lineLimit > 0 && wLen > lineLimit) {
           add('lineLength', lj, '第 ' + (lj + 1) + ' 行超长：' + fmt(wLen) + ' / ' + fmt(lineLimit), { length: wLen });
+        }
+      }
+      if (rowLimit > 0) {
+        var totalLen = 0;
+        for (var rj = 0; rj < tgtLines.length; rj++) {
+          totalLen += weighted ? weightedLength(tgtLines[rj]) : tgtLines[rj].length;
+        }
+        if (totalLen > rowLimit) {
+          add('lineLength', 0, '整段字数超限：' + fmt(totalLen) + ' / ' + fmt(rowLimit),
+              { length: totalLen });
         }
       }
       if (maxLines > 0 && tgtLines.length > maxLines) {

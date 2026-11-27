@@ -444,6 +444,7 @@ class MqEditor(QTextEdit):
         # 字数限制：手动每行上限 / 行数上限 / 原文逐行对比 / 原文最长行统一限制。
         # 后两种均读取原文，但判定互相独立，也可与手动上限同时启用。
         self._line_limit = 0
+        self._segment_limit = 0   # 预览“字数限制”的整段上限（每行独立）
         self._max_lines = 0
         self._line_style = "zebra"   # zebra=轻隔行；focus=当前行聚焦（兼容旧 bplus/cells）
         self._src_counts = None
@@ -551,6 +552,15 @@ class MqEditor(QTextEdit):
         self._max_lines = int(max_lines or 0)
         self._src_counts = list(src_counts) if src_counts else None
         self._src_max_limit = float(src_max_limit or 0)
+        self._update_counts()
+
+    def set_segment_limit(self, limit: float):
+        """预览文件里的“字数限制”：当前行整段译文上限，0=不限。"""
+        try:
+            value = float(limit or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        self._segment_limit = value if value > 0 else 0.0
         self._update_counts()
 
     # ---------- TB 术语高亮（纯视觉层，不写 QTextDocument 字符格式） ----------
@@ -1019,6 +1029,9 @@ class MqEditor(QTextEdit):
                 if w > self._src_max_limit:
                     exceed[i] = True
         total_exceed = bool(self._src_counts) and total > sum(self._src_counts)
+        if self._segment_limit > 0 and total > self._segment_limit:
+            total_exceed = True
+            exceed = [True] * len(weights)
         lines_exceed = self._max_lines > 0 and len(weights) > self._max_lines
 
         # 正常行清除块底色，超限行才涂淡红；不再给正常文字主动刷白。
@@ -1064,11 +1077,14 @@ class MqEditor(QTextEdit):
                 s = "!" + s
             parts.append(s)
         msg = f"共 {fmt_num(total)} 字"
+        if self._segment_limit > 0:
+            msg += f"/上限 {fmt_num(self._segment_limit)}"
         if self._src_counts:
             msg += f"/原文 {fmt_num(sum(self._src_counts))}"
         if self._src_max_limit > 0:
             msg += f"/原文最长 {fmt_num(self._src_max_limit)}"
-        if len(parts) > 1 or self._line_limit > 0 or self._src_counts or self._src_max_limit > 0:
+        if len(parts) > 1 or self._line_limit > 0 or self._src_counts or self._src_max_limit > 0 \
+                or self._segment_limit > 0:
             msg += f"（行: {' / '.join(parts)}）"
         if total_exceed:
             msg += " 总字数超"

@@ -20,6 +20,7 @@ class SegTableView(QTableView):
         Qt.Key.Key_PageDown, Qt.Key.Key_Home, Qt.Key.Key_End,
     )
     activateRequested = pyqtSignal(int)
+    scrolled = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -69,8 +70,7 @@ class SegTableView(QTableView):
         return None
 
     def keyPressEvent(self, event):
-        if event.key() in self.NAV_KEYS:
-            # 激活/保存期间忽略连按，避免多条 activateRow/readSegment 链互相取消。
+        if event.key() in self.NAV_KEYS:            # 激活/保存期间忽略连按，避免多条 activateRow/readSegment 链互相取消。
             if not self.can_activate():
                 return
             target = self._target_view_row(event.key())
@@ -82,11 +82,18 @@ class SegTableView(QTableView):
             return
         super().keyPressEvent(event)
 
+    def wheelEvent(self, event):
+        """滚轮结束后补一次到底检查：不能只依赖 valueChanged 的时序。"""
+        super().wheelEvent(event)
+        self.scrolled.emit()
+
 
 class SegModel(QAbstractTableModel):
     """段表：行号 / 原文 / 译文 / memoQ TM 最佳匹配率。
     行底色直接来自 memoQ 状态；TM 列绝不使用「译文÷原文」字数比冒充相似度。"""
 
+    # 这些是明确的工作流结果，不能被一次旧 edited 快照用“两次防抖”挡住。
+    AUTHORITATIVE_STATUS = {"confirmed", "reviewer1", "reviewer2", "rejected"}
     STATUS_META = {
         "untranslated": ("未编辑", "#f8fafc", "#64748b"),
         "edited": ("已编辑", "#fef3c7", "#a16207"),
@@ -317,7 +324,13 @@ class SegModel(QAbstractTableModel):
             new_status = row.get("status")
             old_status = old.get("status")
             if new_status != old_status:
-                if self._pending_status.get(row_no) == new_status:
+                if new_status in self.AUTHORITATIVE_STATUS:
+                    # R2/R1/已确认/已拒绝只出现一次也必须立即生效；
+                    # 下一步 edited 旧快照由 _authoritative_status 挡住。
+                    self._pending_status.pop(row_no, None)
+                    self._authoritative_status[row_no] = (
+                        new_status, time.monotonic())
+                elif self._pending_status.get(row_no) == new_status:
                     self._pending_status.pop(row_no, None)
                 else:
                     # 文本、锁定等其他变化照常即时更新，只暂存这一次状态候选。

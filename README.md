@@ -41,8 +41,9 @@ Serapi 不替代 memoQ，而是把"正在编辑的这一段"放大成一个干�
 - **本地草稿**：切行自动保存、Ctrl+S 只保存、Ctrl+Enter 保存并确认；版本冲突并列展示。
 - **主题**：界面风格（默认蓝 / 青绿 / 紫罗兰 / 暖橙 / 深色整体）× 编辑器配色（浅色 / 米色 / 深色 / 护眼绿），可独立选择并记忆。
 - **实时 QA**：真实编辑后对当前段跑数字 / Tag / 全半角 / TB 术语 / 行长规则；右栏汇总 + 行内标记，可逐条开关，只警告不自动改文。
-- **游戏语境**：常驻显示当前段前后各 2 段与 key/ID；从 speaker/key 解析角色，聚合本会话同角色既往译法（只读，不请求服务器）。
-- **个人资产**：Ctrl+D 本地词典查询（个人库 > ja-zh > ja-ja > 日英兜底，不含 TB），日语活用还原、繁简展示；Ctrl+Shift+D 把选区一键捕获到个人库，编译为 StarDict，零外发。
+- **游戏语境**：常驻显示当前段前后各 2 段；原文/译文上下两行显示，禁止横向滚动；优先使用预览里的 `話者・送信者` 等附加信息解析角色，聚合本会话同角色既往译法（只读）。
+- **预览附加信息**：从 memoQ 预览 HTML 解析每行注释、上下文、条件、字数限制等，在段信息面板只读展示；读到字数限制会自动应用到对应行，状态栏/QA 同步提示。
+- **个人资产**：Ctrl+D 本地词典查询（个人库 > ja-zh > ja-ja > zh-ja > 日英兜底，不含 TB），日语活用还原、繁简展示；Ctrl+Shift+D 把选区一键捕获到个人库，编译为 StarDict，零外发。安装器可选安装三本 Wiktionary StarDict 词典（约 42 MB），便携版不带词典。
 - **账号与服务器**：首次启动填写自己的 memoQ 服务器地址（可起名，如「公司服务器 / 测试环境」），之后可随时切换、改名、删除服务器或退出账号。
 - **检测更新**：每天首次启动静默检查一次 GitHub Release，也可在「账号」浮层手动检测；只提示版本与说明，不自动下载。
 
@@ -306,8 +307,10 @@ pyinstaller --noconfirm Serapi.spec
 安装包（可选）：安装 Inno Setup 6 后执行
 
 ```bat
-ISCC.exe "/DMyAppVersion=1.0.0" installer\Serapi.iss
+ISCC.exe "/DMyAppVersion=1.2.0" installer\Serapi.iss
 ```
+
+安装器提供“日语词典（StarDict，约 42 MB，可选）”组件；不勾选则只装程序。便携 zip 不带词典。词典声明见 [dictionaries/THIRD_PARTY_NOTICES.md](dictionaries/THIRD_PARTY_NOTICES.md)。
 
 推 tag（如 `v1.0.0`）会触发 `.github/workflows/release.yml`，自动构建「便携 zip + 安装包」并挂到 Release。tag 去掉 `v` 后必须与 `app/version.py` 的 `APP_VERSION` 一致，CI 会校验。
 

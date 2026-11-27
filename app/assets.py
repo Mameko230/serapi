@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import gzip
 import struct
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -14,11 +16,40 @@ PERSONAL_JSON = ASSET_DIR / "personal.json"
 PERSONAL_STARDICT = ASSET_DIR / "personal"
 CONFIG_PATH = ASSET_DIR / "config.json"
 
+
+def _bundled_dict_roots():
+    """安装器可选词典目录：PyInstaller onedir 的 exe 同级 / 源码仓库根。"""
+    roots = []
+    if getattr(sys, "frozen", False):
+        try:
+            roots.append(Path(sys.executable).resolve().parent / "dictionaries")
+        except Exception:
+            pass
+    try:
+        roots.append(Path(__file__).resolve().parent.parent / "dictionaries")
+    except Exception:
+        pass
+    return roots
+
+
+def bundled_dict_path(name):
+    """按目录名找内置 StarDict 基名（.../dictionaries/<name>/<name>）。"""
+    name = str(name or "").strip()
+    if not name:
+        return ""
+    for root in _bundled_dict_roots():
+        base = root / name / name
+        if Path(str(base) + ".ifo").exists() or Path(str(base) + ".dict.dz").exists():
+            return str(base)
+    return ""
+
+
 STATUSES = ("验证中", "已验证", "废弃")
 DEFAULT_DICTS = [
     {"name": "personal", "path": str(PERSONAL_STARDICT)},
     {"name": "ja-zh", "path": ""},
     {"name": "ja-ja", "path": ""},
+    {"name": "zh-ja", "path": ""},
     {"name": "jmdict", "path": ""},
 ]
 
@@ -92,7 +123,7 @@ class StarDict:
             self.base = self.base.with_suffix("")
         self.ifo = self._find(".ifo")
         self.idx = self._find(".idx")
-        self.dict = self._find(".dict")
+        self.dict = self._find(".dict") or self._find(".dict.dz")
         self.name = self.base.name
         self.entries = {}
         self.words = []
@@ -128,7 +159,9 @@ class StarDict:
             self.words.append(word)
             self.entries.setdefault(word, []).append((offset, size))
             i = end + 9
-        self._dict = self.dict.read_bytes()
+        self._dict = (gzip.decompress(self.dict.read_bytes())
+                      if self.dict.suffix.lower() == ".dz"
+                      else self.dict.read_bytes())
         self._seq = meta.get("sametypesequence") or ""
 
     def lookup(self, word: str) -> list[str]:
@@ -176,6 +209,8 @@ class DictionaryService:
                 continue
             name = str(item.get("name") or "").strip()
             path = str(item.get("path") or "").strip()
+            if not path and name and name != "personal":
+                path = bundled_dict_path(name)
             if name:
                 out.append({"name": name, "path": path})
         names = [x["name"] for x in out]

@@ -1,0 +1,12 @@
+StarDict's dict ifo file
+version=3.0.0
+bookname=維基詞典 日語-漢語
+wordcount=42609
+synwordcount=260897
+idxfilesize=799602
+idxoffsetbits=32
+author=xxyzz
+website=https://xxyzz.github.io/wiktionary_stardict/
+description=Snapshot 2026-11-01, Wiktionary license CC BY-SA 4.0
+date=2026-11-15
+sametypesequence=h

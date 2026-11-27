@@ -382,6 +382,20 @@
     window.__md.api.readSegment = function (rowId) { return newSegmentApi().readSegment(rowId); };
     window.__md.api.writeSegment = function (tokens, rowId) { return newSegmentApi().writeSegment(tokens, rowId); };
 
+    var __previewContext = null;
+    function newPreviewContext() {
+      if (!__previewContext) {
+        __previewContext = window.__mdPreviewContext.create({
+          fetch: newApiFetch, headers: newApiHeaders, docBase: newDocApiBase,
+          push: function (type, payload) { try { __md.push(type, payload); } catch (e) {} },
+        });
+      }
+      return __previewContext;
+    }
+    window.__md.api.previewContextReq = function () {
+      return newPreviewContext().previewContextReq();
+    };
+
     window.__md.api.parseEditorString = function (s) { return newTagsApi().parseEditorString(s); };
 
     /* ---- TM/TB 命中：TranslationService.GetTranslationResults（同域 fetch，异步，轮询取结果）

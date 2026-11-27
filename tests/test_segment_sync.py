@@ -178,6 +178,15 @@ assert p.kinds() == ["expand", "later"] and p.requests[1][1] == 900
 p.requests[1][2]()
 assert not s.auto_loading and p.kinds()[-1] == "rows"
 
+# 11b) 总数未知时滚到底也要尝试扩容（滚轮事件兜底，不能静默不加载）。
+p = FakePort()
+s = SegmentSync(p)
+s.total_rows = 0
+p.cached = 5
+p.maximum = 100
+s.on_scroll(100)
+assert p.kinds() == ["expand"] and s.auto_loading
+
 # 12) 没到底 / 过滤中 / 已全部缓存：都不扩容。
 p = FakePort()
 s = SegmentSync(p)

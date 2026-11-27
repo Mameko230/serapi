@@ -29,11 +29,22 @@ SetupIconFile=..\assets\app.ico
 UninstallDisplayIcon={app}\Serapi.exe
 ArchitecturesInstallIn64BitMode=x64compatible
 
+[Types]
+Name: "full"; Description: "完整安装（含可选词典）"
+Name: "custom"; Description: "自定义安装"; Flags: iscustom
+
+[Components]
+Name: "dicts"; Description: "日语词典（StarDict，约 42 MB，可选）"; Types: full
+
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"
 
 [Files]
 Source: "..\dist\Serapi\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "..\dictionaries\THIRD_PARTY_NOTICES.md"; DestDir: "{app}\dictionaries"; Components: dicts; Flags: ignoreversion
+Source: "..\dictionaries\ja-ja\*"; DestDir: "{app}\dictionaries\ja-ja"; Components: dicts; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\dictionaries\ja-zh\*"; DestDir: "{app}\dictionaries\ja-zh"; Components: dicts; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\dictionaries\zh-ja\*"; DestDir: "{app}\dictionaries\zh-ja"; Components: dicts; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Serapi"; Filename: "{app}\Serapi.exe"

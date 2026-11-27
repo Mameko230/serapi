@@ -155,6 +155,7 @@ class QaUiMixin:
             tb_hits=getattr(self, "_tb_hits", None),
             line_limit=getattr(self.editor, "_line_limit", 0) or 0,
             max_lines=getattr(self.editor, "_max_lines", 0) or 0,
+            row_limit=getattr(self.editor, "_segment_limit", 0) or 0,
         )
         self._qa_req = int(getattr(self, "_qa_req", 0)) + 1
         req = self._qa_req

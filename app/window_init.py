@@ -4,7 +4,8 @@ import json
 import time
 
 from PyQt6.QtCore import (
-    Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint, QSize, QModelIndex, QRectF,
+    Qt, QUrl, QTimer, QAbstractTableModel, pyqtSignal, QPoint, QSize, QModelIndex,
+    QRectF, QEvent,
 )
 from PyQt6.QtWidgets import (
     QMainWindow, QSplitter, QTabWidget, QPlainTextEdit,
@@ -453,8 +454,21 @@ class WindowInitMixin:
         self._last_tokens = []   # 当前段的编辑器规范化基准：只用于真实编辑判断/重渲染
         self._remote_tokens = []  # memoQ 最近一次返回的原始 token：只用于远端冲突预检
         self._last_tag_pool = []  # 当前行 tag 池（sourceTags+tags，TM 命中 tag 重映射用）
-        self.editor.setPlaceholderText(
-            "选择左侧段表的一行开始编辑\nEnter 换行 · Ctrl+Enter 保存并确认")
+        # 空编辑器提示用独立 overlay QLabel：QTextEdit 原生 placeholder 在
+        # 多行 + 行距设置下容易被裁切，改为两行完整显示、输入后自动隐藏。
+        self.editor.setPlaceholderText("")
+        self.editor_placeholder = QLabel(
+            "选择左侧段表的一行开始编辑\nEnter 换行 · Ctrl+Enter 保存并确认",
+            self.editor.viewport())
+        self.editor_placeholder.setWordWrap(True)
+        self.editor_placeholder.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.editor_placeholder.setStyleSheet(
+            f"color: {self._pal.get('placeholder', '#94a3b8')};"
+            " background: transparent; font-size: 14px; line-height: 1.5;")
+        self.editor.installEventFilter(self)
+        self.editor.textChanged.connect(self._update_editor_placeholder)
+        QTimer.singleShot(0, self._update_editor_placeholder)
         # 原文与译文均透明，直接共享外层亚克力卡片；不再各带一块白色底板。
         self.editor.setStyleSheet(
             f"QTextEdit {{ font-size: {self._editor_font_size}px; background: transparent;"
@@ -518,7 +532,7 @@ class WindowInitMixin:
         self.seg_info.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.seg_info.setStyleSheet(f"QTextBrowser {{ background: transparent; border: none;"
                                     f" color: {pal['meta']}; font-size: 12px; padding: 2px; }}")
-        self.seg_info.setHtml(f"<span style='color:{pal['placeholder']}'>选中段后可查看上下文 ID 与注释。</span>")
+        self.seg_info.setHtml(f"<span style='color:{pal['placeholder']}'>选中段后可查看注释与预览信息。</span>")
         si_lay.addWidget(self.seg_info)
         self.seg_info_frame.setVisible(False)
         self.btn_seginfo.toggled.connect(self._on_seginfo_toggled)
@@ -758,6 +772,7 @@ class WindowInitMixin:
         self._seg_sync_timer.timeout.connect(self._background_sync_tick)
         self._seg_sync_timer.start(5000)
         self.seg_table.verticalScrollBar().valueChanged.connect(self._on_seg_scroll)
+        self.seg_table.scrolled.connect(self._on_seg_wheel)
         self.limit_line.editingFinished.connect(lambda: self._after_load_apply_limits())
         self.limit_lines.editingFinished.connect(lambda: self._after_load_apply_limits())
         self.chk_vs_src.toggled.connect(lambda _on: self._after_load_apply_limits())
@@ -779,5 +794,32 @@ class WindowInitMixin:
             self.tabs.setCurrentWidget(self.web)  # 直接切到引擎页，登录/进度可见
             self._probe_js = probe_js
             QTimer.singleShot(3000, self._rt_start)
+
+    # ---------------- 空编辑器提示 overlay ----------------
+    def _place_editor_placeholder(self):
+        label = getattr(self, "editor_placeholder", None)
+        editor = getattr(self, "editor", None)
+        if label is None or editor is None:
+            return
+        vp = editor.viewport()
+        line = max(20, editor.fontMetrics().height())
+        label.setGeometry(18, 14, max(80, vp.width() - 36), line * 2 + 10)
+
+    def _update_editor_placeholder(self):
+        label = getattr(self, "editor_placeholder", None)
+        editor = getattr(self, "editor", None)
+        if label is None or editor is None:
+            return
+        empty = not editor.toPlainText().strip()
+        show = bool(empty and not getattr(self, "_has_loaded_segment", False))
+        if show:
+            self._place_editor_placeholder()
+        label.setVisible(show)
+
+    def eventFilter(self, watched, event):
+        if (watched is getattr(self, "editor", None)
+                and event.type() in (QEvent.Type.Resize, QEvent.Type.Show)):
+            QTimer.singleShot(0, self._place_editor_placeholder)
+        return super().eventFilter(watched, event)
 
     # ---------------- 亚克力背景（DWM 模糊；不可用自动降级纯色底） ----------------

@@ -449,6 +449,9 @@ class MainWindow(ReadWorkflowMixin, RowWorkflowMixin, StatsFilterWorkflowMixin,
                 selected = self.seg_table.selectionModel().selectedRows()
                 if not selected or selected[0].row() != idx:
                     self.seg_table.selectRow(idx)
+        refresh_context = getattr(self, "_refresh_context", None)
+        if callable(refresh_context):
+            refresh_context()
         return changed
 
     # ---------------- 行号列：宽度保持 + 行状态过滤 ----------------

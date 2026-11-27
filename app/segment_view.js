@@ -100,7 +100,7 @@
       return res;
     }
     // token → row API symbols（PUT /rows/<id> 的 body）：文本逐码点，tag 用原始符号。
-    function newTokenSymbols(tokens) {
+    function newTokenSymbols(tokens, newlineSymbol) {
       var out = [];
       for (var i = 0; i < (tokens || []).length; i++) {
         var tk = tokens[i] || {};
@@ -110,9 +110,15 @@
             out.push({ type: 1, value: chars[c].codePointAt(0) });
           }
         } else if (tk.t === 'newline') {
-          out.push({ type: 2, tagType: 2, inlineTagType: 2, name: 'mq:ch',
-                     display: { isSpecial: true, text: 'br' },
-                     attributes: [{ type: 1, name: 'val', value: '\r\n' }] });
+          // 换行 tag 的 name/attributes 必须与原文 tag 值一致；数字编号由 memoQ
+          // 按段分配，不强行写死。没有源 tag 时才用默认 mq:ch。
+          if (newlineSymbol && typeof newlineSymbol === 'object') {
+            out.push(JSON.parse(JSON.stringify(newlineSymbol)));
+          } else {
+            out.push({ type: 2, tagType: 2, inlineTagType: 2, name: 'mq:ch',
+                       display: { isSpecial: true, text: 'br' },
+                       attributes: [{ type: 1, name: 'val', value: '\r\n' }] });
+          }
         } else if (tk.t === 'tag') {
           var raw = tk.raw;
           if (raw && typeof raw === 'object' && Number(raw.type) === 2) {
@@ -126,7 +132,16 @@
           }
           var inline = Number(attrs.inlineTagType);
           if (!isFinite(inline)) inline = tagType;
-          var attrsArr = Array.isArray(attrs.attributes) ? attrs.attributes : [];
+          var attrsArr = [];
+          if (Array.isArray(attrs.attributes)) {
+            attrsArr = attrs.attributes;
+          } else if (attrs.attributes && typeof attrs.attributes === 'object') {
+            attrsArr = Object.keys(attrs.attributes).map(function (k) {
+              var v = attrs.attributes[k] || {};
+              return { name: k, type: (v.type === undefined ? 1 : v.type),
+                       value: (v.value === undefined ? String(v) : v.value) };
+            });
+          }
           var disp = attrs.display;
           if (!disp || typeof disp !== 'object') {
             disp = { isSpecial: !!attrs.isSpecial,

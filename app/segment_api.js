@@ -50,8 +50,24 @@
             deps.refreshRow(rid);
             return { ok: true, pending: true };
           }
+          // 找同段原文的 mq:ch tag，把它作为译文换行的定义来源：
+          // 保证写回 memoQ 的 tag name/attributes 与原文一致（数字编号不强制）。
+          var newlineSymbol = null;
+          try {
+            var srcTokens = deps.readView(view).srcTokens || [];
+            for (var si = 0; si < srcTokens.length; si++) {
+              var st = srcTokens[si] || {};
+              if (st.t === 'tag' &&
+                  (String(st.name || '') === 'mq:ch' ||
+                   String((st.attrs && st.attrs.name) || '') === 'mq:ch')) {
+                var syms = deps.tokenSymbols([st]);
+                if (syms && syms.length) { newlineSymbol = syms[0]; break; }
+              }
+            }
+          } catch (eNl) {}
           var row = deps.putRow(rid, { side: 'target',
-                                         symbols: deps.tokenSymbols(tokens || []) });
+                                         symbols: deps.tokenSymbols(tokens || [],
+                                                                    newlineSymbol) });
           var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
           var rowNo = (typeof row.id === 'number') ? row.id + 1 : null;
           var mapped = '';

@@ -36,6 +36,22 @@ ret = L.analyze({ source: [tag('2', 'open', 'i'), txt('x'), tag('2', 'close', 'i
 assert.strictEqual(ret.warnings.length, 2, ret.warnings);
 assert.ok(ret.warnings.every((w) => w.rule === 'tags'));
 
+// 3b) tag 数字编号不同但 name/kind/attrs 一致：不应误报
+ret = L.analyze({
+  source: [{ t: 'tag', id: '1', tagKind: 'open', name: 'mq:rxt' }, txt('x')],
+  target: [{ t: 'tag', id: '2', tagKind: 'open', name: 'mq:rxt' }, txt('x')],
+  rules: { tags: true },
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(ret.warnings)), [], ret.warnings);
+
+// 3c) 换行 token 也参与 Tag 数量比较（源/译各 1 个 → 不报）
+ret = L.analyze({
+  source: [txt('a'), { t: 'newline' }, txt('b')],
+  target: [txt('c'), { t: 'newline' }, txt('d')],
+  rules: { tags: true },
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(ret.warnings)), [], ret.warnings);
+
 // 4) 全半角数字混用
 ret = L.analyze({ source: [txt('12')], target: [txt('1２')], rules: { width: true } });
 assert.strictEqual(ret.warnings.length, 1, ret.warnings);
@@ -53,6 +69,12 @@ ret = L.analyze({ source: [txt('x')], target: [txt('123456')],
   rules: { digits: false, tags: false, width: false, terms: false, lineLength: true } });
 assert.strictEqual(ret.warnings.length, 1, ret.warnings);
 assert.strictEqual(ret.warnings[0].rule, 'lineLength');
+
+// 6b) 预览整段字数上限：rowLimit 超限应报
+ret = L.analyze({ source: [txt('x')], target: [txt('123456')],
+  rowLimit: 2,
+  rules: { digits: false, tags: false, width: false, terms: false, lineLength: true } });
+assert.ok(ret.warnings.some((w) => /整段字数超限/.test(w.message)), ret.warnings);
 
 // 7) 规则关闭后不报
 ret = L.analyze({ source: [txt('HP 100')], target: [txt('HP')],

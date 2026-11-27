@@ -37,6 +37,7 @@ class EditorBackend(Protocol):
     def term_call(self, api, req, params) -> None: ...
     def term_detail(self, req, key) -> None: ...
     def concordance(self, req, text, direction, callback) -> None: ...
+    def preview_context(self, callback=None) -> None: ...
 
 
 class JsBridgeBackend:
@@ -164,6 +165,13 @@ class JsBridgeBackend:
         self._call(
             f"JSON.stringify(__md.api.concordanceReq({int(req)}, {dumped}, {dumped_direction}))",
             callback)
+
+    def preview_context(self, callback=None):
+        expr = "JSON.stringify(__md.api.previewContextReq())"
+        if callback is None:
+            self._call(expr)
+        else:
+            self._call(expr, callback)
 
 
 def backend_for(host) -> JsBridgeBackend:

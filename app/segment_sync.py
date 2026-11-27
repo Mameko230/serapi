@@ -92,9 +92,13 @@ class SegmentSync:
         if self.port.filter_active():
             return
         maximum = self.port.scroll_max()
-        if (value >= maximum - 3 and maximum > 0
-                and self.total_rows > self.port.cached_rows()
-                and not self.auto_loading):
+        if maximum <= 0 or value < maximum - 3:
+            return
+        # 总数未知时也允许尝试一次加载更多（auto_loading 防重入）；
+        # 只在确认“总数 <= 已缓存”时才是真的到底。
+        if self.total_rows and self.total_rows <= self.port.cached_rows():
+            return
+        if not self.auto_loading:
             self.load_more()
 
     def load_more(self):

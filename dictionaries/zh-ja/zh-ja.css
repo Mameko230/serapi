@@ -1,0 +1,160 @@
+.IPA, .Jones {
+  font-family: 'Gentium',sans-serif;
+}
+.Jpan {
+  font-family: 'Source Han Sans JP',sans-serif;
+}
+pre, code, tt, kbd, samp, .mw-code {
+  font-family: "Noto Sans Mono", monospace;
+}
+.zh-simp, .Hans {
+  font-family:'Source Han Sans CN',sans-serif;
+}
+.zh-mt, .zh-trad, .Hani, .Hant {
+  font-family:'Source Han Sans TW',sans-serif;
+}
+.Kore {
+  font-family:'Source Han Sans KR',sans-serif;
+}
+.Thai {
+  font-family:Sarabun,sans-serif;
+}
+.Hebr {
+  font-family:'Noto Sans Hebrew',serif;
+  direction:rtl;
+}
+.Arab {
+  font-family:'Noto Naskh Arabic',sans-serif;
+  direction:rtl;
+}
+.SAMPA, .Webster {
+  font-family: "Noto Sans Mono", monospace;
+}
+
+h4 {
+  margin: 0.25em 0;
+  padding-bottom: 0;
+  font-weight: bold;
+}
+p {
+  margin: 0.5em 0;
+}
+ul {
+  list-style-type: disc !important;
+  margin: 0.3em 0 0 1.6em;
+  margin-inline-start: 1.6em;
+  margin-inline-end: 0;
+  padding: 0;
+}
+ol {
+  margin: 0.3em 0 0 1.6em;
+  margin-inline-start: 1.6em;
+  margin-inline-end: 0;
+  padding: 0;
+}
+p + ol {
+  margin-top: -0.5em;
+}
+li {
+  margin-bottom: 0.1em;
+}
+dt {
+  font-weight:bold;
+  margin-bottom:0.1em
+}
+dl {
+  margin-top: 0.2em;
+  margin-bottom: 0.5em;
+}
+dd {
+  margin-bottom: 0.1em;
+  margin-left: 1.6em;
+  margin-right: 0;
+  margin-inline-start: 1.6em;
+  margin-inline-end: 0;
+}
+section {
+  font-family: 'Source Han Sans JP', 'Noto Sans', sans-serif;
+}
+.Latn, i {
+  font-family: 'Noto Sans', sans-serif;
+}
+.mw-parser-output a {
+  word-wrap: break-word;
+  color: inherit;
+  border-radius: 2px;
+  text-decoration: none;
+}
+mjx-container[jax="SVG"] {
+  direction: ltr;
+  white-space: nowrap;
+}
+mjx-container[display] {
+  display: block;
+  text-align: center;
+  justify-content: center;
+  margin: .7em 0;
+  padding: .3em 2px;
+}
+
+@font-face {
+  font-family: "Gentium";
+  src: url("fonts/Gentium-Regular.ttf");
+}
+@font-face {
+  font-family: "Noto Sans Mono";
+  src: url("fonts/NotoSansMono-Regular.ttf");
+}
+@font-face {
+  font-family: "Source Han Sans TW";
+  src: url("fonts/SourceHanSansTW-Regular.otf");
+}
+@font-face {
+  font-family: "Source Han Sans TW";
+  font-weight: bold;
+  src: url("fonts/SourceHanSansTW-Bold.otf");
+}
+@font-face {
+  font-family: "Source Han Sans CN";
+  src: url("fonts/SourceHanSansCN-Regular.otf");
+}
+@font-face {
+  font-family: "Source Han Sans CN";
+  font-weight: bold;
+  src: url("fonts/SourceHanSansCN-Bold.otf");
+}
+@font-face {
+  font-family: "Source Han Sans JP";
+  src: url("fonts/SourceHanSansJP-Regular.otf");
+}
+@font-face {
+  font-family: "Source Han Sans JP";
+  font-weight: bold;
+  src: url("fonts/SourceHanSansJP-Bold.otf");
+}
+@font-face {
+  font-family: "Source Han Sans KR";
+  src: url("fonts/SourceHanSansKR-Regular.otf");
+}
+@font-face {
+  font-family: "Source Han Sans KR";
+  font-weight: bold;
+  src: url("fonts/SourceHanSansKR-Bold.otf");
+}
+@font-face {
+  font-family: "Noto Sans Hebrew";
+  src: url("fonts/NotoSansHebrew-Regular.otf");
+}
+@font-face {
+  font-family: "Noto Naskh Arabic";
+  src: url("fonts/NotoNaskhArabic-Regular.otf");
+}
+@font-face {
+  font-family: Sarabun;
+  src: url("fonts/Sarabun-Regular.ttf");
+}
+@font-face {
+  font-family: Sarabun;
+  font-weight: bold;
+  src: url("fonts/Sarabun-Bold.ttf");
+}

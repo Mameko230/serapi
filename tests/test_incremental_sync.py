@@ -27,15 +27,23 @@ model.modelReset.connect(lambda: resets.append(True))
 assert model.update_rows(rows) == 0
 assert changes == [] and resets == []
 
-# 文本变化即时落地；状态需两次一致才更新，避免单次快照造成跳色。
+# 文本变化即时落地；R1/R2/已确认这类权威状态首次出现立即生效，
+# 不能等两次一致（否则 R2 会被旧 edited 快照挡住）。
 updated = [dict(rows[0]), dict(rows[1], tgt="B2", status="reviewer1")]
 assert model.update_rows(updated) == 1
 assert changes == [(1, 1)] and resets == []
 assert model.index(1, 2).data() == "B2"
-assert "译者已确认" in model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
-assert model.update_rows(updated) == 1
 assert "审校者 1" in model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
-assert changes == [(1, 1), (1, 1)]
+assert model.update_rows(updated) == 0
+assert changes == [(1, 1)]
+
+# R2 只出现一次时也必须立即显示为 R2，不能被旧 edited 快照盖掉。
+r2 = SegModel()
+r2.set_rows([{"rowNo": 10, "src": "甲", "tgt": "A", "status": "edited"}])
+r2.update_rows([{"rowNo": 10, "src": "甲", "tgt": "A", "status": "reviewer2"}])
+assert r2.index(0, 0).data() == "10  R2", r2.index(0, 0).data()
+r2.update_rows([{"rowNo": 10, "src": "甲", "tgt": "A", "status": "edited"}])
+assert r2.index(0, 0).data() == "10  R2", r2.index(0, 0).data()
 
 # 缓存扩容属于结构变化，但新版走键控增量：不整表 reset，只插入新增行。
 expanded = updated + [{"rowNo": 3, "src": "丙", "tgt": "", "status": "untranslated"}]
@@ -118,7 +126,7 @@ assert not host._segments.busy
 host.refresh_seg_list(background=True)
 host.callbacks[1]({"ok": True, "total": 2, "rows": updated})
 assert host.seg_model.index(1, 2).data() == "B2"
-assert "译者已确认" in host.seg_model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
+assert "审校者 1" in host.seg_model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)
 host.refresh_seg_list(background=True)
 host.callbacks[2]({"ok": True, "total": 2, "rows": updated})
 assert "审校者 1" in host.seg_model.index(1, 0).data(Qt.ItemDataRole.ToolTipRole)

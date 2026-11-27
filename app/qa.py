@@ -87,7 +87,7 @@ def term_pairs(tb_hits) -> list[dict]:
 
 
 def build_payload(source_tokens, target_tokens, *, config: QaConfig,
-                  tb_hits=None, line_limit=0, max_lines=0) -> dict:
+                  tb_hits=None, line_limit=0, max_lines=0, row_limit=0) -> dict:
     payload = config.as_payload()
     payload.update({
         "source": list(source_tokens or []),
@@ -95,6 +95,7 @@ def build_payload(source_tokens, target_tokens, *, config: QaConfig,
         "terms": term_pairs(tb_hits),
         "lineLimit": float(line_limit or 0),
         "maxLines": int(max_lines or 0),
+        "rowLimit": float(row_limit or 0),
     })
     return payload
 

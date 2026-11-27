@@ -123,6 +123,8 @@ def install_bridge(page, win) -> int:
          QWebEngineScript.ScriptWorldId.MainWorld),
         ("serapi-terms-api", (APP_DIR / "terms_api.js").read_text(encoding="utf-8"),
          QWebEngineScript.ScriptWorldId.MainWorld),
+        ("serapi-preview-context", (APP_DIR / "preview_context.js").read_text(encoding="utf-8"),
+         QWebEngineScript.ScriptWorldId.MainWorld),
         ("serapi-bridge", (APP_DIR / "bridge.js").read_text(encoding="utf-8"),
          QWebEngineScript.ScriptWorldId.MainWorld),
     ):

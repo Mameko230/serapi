@@ -2,6 +2,8 @@
 """个人资产纯本地核心：StarDict 往返、活用、优先级、个人库多译法。"""
 import sys
 import tempfile
+import gzip
+import shutil
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -33,5 +35,22 @@ with tempfile.TemporaryDirectory() as tmp:
     assert any(h["name"] == "个人库" for h in got["hits"]), got
     # 无 TB 命中来源
     assert all(h["name"] != "TB" for h in got["hits"])
+
+    # 压缩 StarDict（.dict.dz）读取：内置词典使用该格式。
+    gzroot = root / "gz"
+    gzroot.mkdir()
+    shutil.copy(root / "personal.ifo", gzroot / "personal.ifo")
+    shutil.copy(root / "personal.idx", gzroot / "personal.idx")
+    (gzroot / "personal.dict.dz").write_bytes(
+        gzip.compress((root / "personal.dict").read_bytes()))
+    gz = assets.StarDict(gzroot / "personal")
+    assert gz.ok and gz.lookup("攻撃力"), "压缩 StarDict 应可读"
+
+# 内置词典目录（有则检查路径解析；CI/安装包包含）
+repo_dicts = Path(__file__).resolve().parent.parent / "dictionaries"
+if (repo_dicts / "ja-zh" / "ja-zh.ifo").exists():
+    assert assets.bundled_dict_path("ja-zh"), "应能发现内置 ja-zh"
+    assert assets.bundled_dict_path("ja-ja"), "应能发现内置 ja-ja"
+    assert assets.bundled_dict_path("zh-ja"), "应能发现内置 zh-ja"
 
 print("ASSETS_TEST: PASS")

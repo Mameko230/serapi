@@ -59,6 +59,10 @@ class StatsFilterWorkflowMixin:
     def _on_seg_scroll(self, value: int):
         self._segments.on_scroll(value)
 
+    def _on_seg_wheel(self):
+        bar = self.seg_table.verticalScrollBar()
+        self._segments.on_scroll(bar.value())
+
     def _load_more_rows(self):
         """左栏接近底部时自动让 memoQ 扩展缓存，再后台同步到段列表。"""
         self._segments.load_more()

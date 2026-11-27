@@ -59,6 +59,52 @@ class SegmentInfoPortsMixin:
     def forget_tb_detail(self, key):
         self.res_panel.forget_tb_detail(key)
 
+    def _preview_extras_html(self, row_no) -> str:
+        import html
+        getter = getattr(self, "_preview_item", None)
+        if not callable(getter):
+            return ""
+        try:
+            item = getter(row_no) or {}
+        except Exception:
+            return ""
+        extras = item.get("extras") or []
+        if not extras:
+            return ""
+        labels = {"speaker": "角色", "maxLen": "字数上限",
+                  "context": "上下文", "comment": "注释"}
+        rows = []
+        for extra in extras:
+            label = str(extra.get("label") or "").strip()
+            value = str(extra.get("value") or "").strip()
+            if not label and not value:
+                continue
+            kind = str(extra.get("kind") or "other")
+            shown = labels.get(kind) or label or "其他"
+            detail = ("（" + html.escape(label) + "）"
+                      if label and label != shown else "")
+            rows.append(
+                "<div style='margin:2px 0'><span style='color:#94a3b8'>"
+                + html.escape(shown) + "</span>" + detail
+                + "　<span style='color:#334155; white-space:pre-wrap'>"
+                + (html.escape(value) if value else
+                   "<span style='color:#94a3b8'>无</span>") + "</span></div>")
+        if not rows:
+            return ""
+        return ("<div style='margin:5px 0 1px'><span style='color:#64748b;"
+                " font-weight:600'>预览信息（只读）</span></div>" + "".join(rows))
+
+    def _refresh_segment_info_preview(self):
+        info = getattr(self, "_seg_info_last", None)
+        if not isinstance(info, dict):
+            return
+        try:
+            if int(info.get("rowNo") or -1) != int(self._cur_row):
+                return
+        except (TypeError, ValueError):
+            return
+        self._update_segment_info(info)
+
     def _fetch_segment_info(self, row_no: int):
         """读取当前段上下文/注释；同一行 2 秒内只发一次。"""
         now = time.monotonic()
@@ -75,6 +121,7 @@ class SegmentInfoPortsMixin:
                 return
         except (TypeError, ValueError):
             return
+        self._seg_info_last = dict(info)
         if not info.get("ok"):
             self._seg_info_has_content = False
             self.seg_info_frame.setVisible(False)
@@ -94,32 +141,39 @@ class SegmentInfoPortsMixin:
         def id_cell(value):
             if value:
                 return html.escape(value)
-            if new_editor:
-                return "<span style='color:#94a3b8'>新版不提供</span>"
             return "<span style='color:#94a3b8'>无</span>"
 
-        parts = [
-            "<div style='margin:2px 0'><span style='color:#94a3b8'>上下文 ID</span>　"
-            + id_cell(context_id) + "</div>",
-            "<div style='margin:2px 0'><span style='color:#94a3b8'>原始 ID</span>　"
-            + id_cell(original_id) + "</div>",
-        ]
+        # 新版不再显示无意义的“上下文 ID/原始 ID 新版不提供”，把空间让给
+        # 预览附加信息和真实注释；旧版保持原字段。
+        parts = []
+        if not new_editor:
+            parts.extend([
+                "<div style='margin:2px 0'><span style='color:#94a3b8'>上下文 ID</span>　"
+                + id_cell(context_id) + "</div>",
+                "<div style='margin:2px 0'><span style='color:#94a3b8'>原始 ID</span>　"
+                + id_cell(original_id) + "</div>",
+            ])
         if comments:
             parts.append("<div style='margin:3px 0 1px'><span style='color:#94a3b8'>注释</span></div>")
             parts.extend("<div style='color:#334155; margin:2px 0'>" + html.escape(c) + "</div>"
                          for c in comments)
-        else:
+        elif not new_editor:
             parts.append("<div style='margin:2px 0'><span style='color:#94a3b8'>注释</span>　"
                          "<span style='color:#94a3b8'>无</span></div>")
         if info.get("commentsLoading"):
             parts.append("<div style='color:#94a3b8; margin-top:3px'>文档注释加载中…</div>")
+        preview_fn = getattr(self, "_preview_extras_html", None)
+        preview = preview_fn(int(info.get("rowNo") or 0)) if callable(preview_fn) else ""
+        if preview:
+            parts.append(preview)
         self.seg_info.setHtml("".join(parts))
         hint = getattr(self, "_set_seginfo_hint", None)
         if callable(hint):
-            hint(comments=bool(comments))
-        # 新版没有上下文/原始 ID 接口，但面板仍要能展开看到“新版不提供”和注释状态，
-        # 不能因为两个 ID 为空就永远收起、让用户以为段信息坏了。
-        self._seg_info_has_content = bool(new_editor or context_id or original_id or comments)
+            hint(comments=bool(comments) or bool(preview))
+        # 新版无 ID 字段时，只有真实注释/预览信息才占用段信息空间。
+        self._seg_info_has_content = bool(
+            (not new_editor and (context_id or original_id))
+            or comments or preview)
         expanded = bool(getattr(self, "_seg_info_expanded", True))
         self.seg_info_frame.setVisible(self._seg_info_has_content and expanded)
         _upd = getattr(self, "_update_seg_info_height", None)
