@@ -18,14 +18,20 @@
 - 修复 R2/已确认状态在“旧 edited 快照”下显示为黄色已编辑：权威状态首次出现立即落地并加保护。
 - 修复左栏滚轮到底不触发加载更多：增加滚轮/到底兜底检查，未知总数时也尝试扩容。
 - 修复 Ctrl+Enter/切行闪退：补齐 `editor_ports.py` 缺失的 `RowRef` / 写策略导入。
-- 修复按 Enter 写回的新换行 tag 与原文 tag 值不一致：写回时复用同段原文 `mq:ch` 的 name/attributes（数字编号由 memoQ 按段分配，不强制）。
+- 修复 Ctrl+Enter 保存后卡死：补齐 `editor_ports.py` 缺失的 `QTimer`/`json` 导入（拆分遗留），并补 `runtime_selftest`/`stats_filter_workflow`/`term_ports` 同类缺失导入。
+- 修复按 Enter 写回的新换行 tag 与原文 tag 值不一致：写回优先复用行 API 原始 `mq:ch` symbol（保留 tagType/attributes），不再从 ProseMirror attrs 重建；数字编号由 memoQ 按段分配，不强制。
 - 修复捕获个人资产浮层状态下拉黑框：补 QComboBox 弹层样式。
 - 修复快速自检模式的 QTimer/EngineView 缺失导入。
+- 修复安装包缺少 `preview_context.js` 导致启动 FileNotFoundError：补齐 PyInstaller datas 并新增打包清单回归测试。
+
+### 优化
+
+- 个人资产查询结果重构为命中卡片：词典名 + 释义条数 + 纯文本换行释义，长释义默认折叠（展开全部/收起），结果区禁止横向滚动，整体对齐桌面端 UI 规范。
 
 ### 工程化
 
 - 新增 `app/preview_context.js` 及离线测试；新增 `dictionaries/` 与 `THIRD_PARTY_NOTICES.md`。
-- 全量测试：**68/68 passed**。
+- 全量测试：**70/70 passed**。
 
 ## 1.1.0（2026-11-27）
 
