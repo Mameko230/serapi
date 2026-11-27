@@ -511,7 +511,7 @@
     function newTermsApi() {
       if (!__termsApi) {
         __termsApi = window.__mdTermsApi.create({
-          post: apiPost, fetch: newApiFetch, headers: newApiHeaders, docBase: newDocApiBase,
+          post: apiPost, fetch: newApiFetch, headers: newApiHeaders, docBase: newDocApiBase, newTermRest: true,
           model: window.__mdTermsModel,
           detectEditor: detectEditor,
           termCore: termCore,
@@ -562,7 +562,7 @@
           detect: detectEditor, termCore: termCore, termProjectGuid: termProjectGuid,
           fail: termFail, projectGuid: newProjectGuidFromUrl, langCodes: newTermLangCodes,
           language: termLanguage, primaryTerm: termPrimaryTerm, metaValue: termMetaValue,
-          setMeta: termSetMeta, apiPost: apiPost, fetch: newApiFetch, headers: newApiHeaders, docBase: newDocApiBase,
+          setMeta: termSetMeta, apiPost: apiPost, fetch: newApiFetch, headers: newApiHeaders, docBase: newDocApiBase, newTermRest: true,
           push: function (type, payload) { try { __md.push(type, payload); } catch (e) {} },
         });
       }

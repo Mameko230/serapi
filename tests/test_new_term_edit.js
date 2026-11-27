@@ -98,6 +98,7 @@ const context = {
 context.window = context;
 vm.createContext(context);
 vm.runInContext(SRC, context, { filename: 'bridge.js' });
+context.__md.__legacyTermEdit = true;  // 本文件覆盖旧 QTermService 路径契约
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 async function waitPush(type, count = 1) {

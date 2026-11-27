@@ -232,6 +232,74 @@
       return { ok: true };
     }
 
+    function termEditNew(req, params, tbGuid, entryId) {
+      var doc = String((deps.docBase && deps.docBase()) || '');
+      var trans = doc.replace('/api/editor/', '/api/translation/');
+      var h = deps.headers ? deps.headers() : {};
+      var source = String(params.source || '').trim();
+      var target = String(params.target || '').trim();
+      Promise.all([
+        deps.fetch(doc + '/resources/termbases/' + encodeURIComponent(tbGuid)
+          + '/entries/' + encodeURIComponent(String(entryId)), { headers: h })
+          .then(function (r) { return r.json(); }),
+        deps.fetch(trans + '/info', { headers: h }).then(function (r) { return r.json(); }),
+      ]).then(function (out) {
+        var entry = out[0] || {};
+        var info = out[1] || {};
+        var srcCode = String((info.project && info.project.sourceLang &&
+                              info.project.sourceLang.code) || params.sourceLang || '');
+        var tgtCode = String((info.document && info.document.targetLang &&
+                              info.document.targetLang.code) || params.targetLang || '');
+        var langs = entry.languages || {};
+        var src = langs[srcCode] || { terms: [], definition: '' };
+        var tgt = langs[tgtCode] || { terms: [], definition: '' };
+        langs[srcCode] = src;
+        langs[tgtCode] = tgt;
+        src.terms = src.terms || [];
+        tgt.terms = tgt.terms || [];
+        src.terms[0] = src.terms[0] || { id: 1, isForbidden: false,
+                                         matching: 'half', caseSensitivity: 'permissive',
+                                         context: '' };
+        tgt.terms[0] = tgt.terms[0] || { id: 1, isForbidden: false,
+                                         matching: 'half', caseSensitivity: 'permissive',
+                                         context: '' };
+        src.terms[0].term = source;
+        tgt.terms[0].term = target;
+        src.definition = String(params.sourceDefinition || '');
+        tgt.definition = String(params.targetDefinition || '');
+        var fd = new FormData();
+        fd.append('EntryId', String(entry.entryId === undefined ? entryId : entry.entryId));
+        Object.keys(langs).forEach(function (code) {
+          var lang = langs[code] || {};
+          fd.append('Languages[' + code + '][Definition]', String(lang.definition || ''));
+          (lang.terms || []).forEach(function (term, i) {
+            ['Id', 'Term', 'IsForbidden', 'Matching', 'CaseSensitivity', 'Context']
+              .forEach(function (key) {
+                var srcKey = key.charAt(0).toLowerCase() + key.slice(1);
+                var val = key === 'Id' ? term.id : term[srcKey];
+                if (val !== undefined && val !== null) {
+                  fd.append('Languages[' + code + '][Terms][' + i + '][' + key + ']', String(val));
+                }
+              });
+          });
+        });
+        Object.keys(entry.builtInMetas || {}).forEach(function (key) {
+          fd.append('BuiltInMetas[' + key + ']', String(entry.builtInMetas[key]));
+        });
+        return deps.fetch(doc + '/resources/termbases/' + encodeURIComponent(tbGuid)
+          + '/entries/' + encodeURIComponent(String(entryId)), {
+          method: 'POST', credentials: 'same-origin', headers: h, body: fd,
+        }).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          deps.push('term-edit-result', {
+            req: req, ok: true, entryId: entry.entryId === undefined ? entryId : entry.entryId,
+            tbGuid: tbGuid, source: source, target: target,
+          });
+        });
+      }).catch(function (e) { deps.fail('term-edit-result', req, e.message || e); });
+      return { ok: true };
+    }
+
     function termEdit(req, params) {
       params = params || {};
       var tbGuid = String(params.tbGuid || '');
@@ -250,6 +318,7 @@
           return deps.fail('term-edit-result', req, '编辑术语仅新版/旧版支持');
         }
         var isNew = kind === 'new';
+        if (isNew && deps.newTermRest && !window.__md.__legacyTermEdit) return termEditNew(req, params, tbGuid, entryId);
         var core = null;
         var prj = String(params.projectGuid || '');
         if (isNew) {

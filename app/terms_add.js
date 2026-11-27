@@ -146,6 +146,44 @@
         var kind = deps.detect();
         if (kind !== 'old' && kind !== 'new') return deps.fail('term-entry', req, '编辑术语仅新版/旧版支持');
         var isNew = kind === 'new';
+        var prjReg = String(params.projectGuid || (deps.projectGuid && deps.projectGuid()) || '');
+        if (isNew && deps.newTermRest && !window.__md.__legacyTermEdit) {
+          // 新版：GET resources/termbases/<tb>/entries/<id>，条目结构是 languages 映射。
+          var doc = String((deps.docBase && deps.docBase()) || '');
+          var hdr = deps.headers ? deps.headers() : {};
+          var trans = doc.replace('/api/editor/', '/api/translation/');
+          Promise.all([
+            deps.fetch(doc + '/resources/termbases/' + encodeURIComponent(tbGuid)
+              + '/entries/' + encodeURIComponent(String(entryId)), { headers: hdr })
+              .then(function (r) { return r.json(); }),
+            deps.fetch(trans + '/info', { headers: hdr }).then(function (r) { return r.json(); }),
+          ]).then(function (out) {
+            var entry = out[0] || {};
+            var info = out[1] || {};
+            var srcCode = String((info.project && info.project.sourceLang &&
+                                  info.project.sourceLang.code) || '');
+            var tgtCode = String((info.document && info.document.targetLang &&
+                                  info.document.targetLang.code) || '');
+            var langs = entry.languages || {};
+            var srcLang = langs[srcCode] || {};
+            var tgtLang = langs[tgtCode] || {};
+            var srcTerms = srcLang.terms || [];
+            var tgtTerms = tgtLang.terms || [];
+            deps.push('term-entry', {
+              req: req, tbGuid: tbGuid,
+              entryId: entry.entryId === undefined ? entryId : entry.entryId,
+              projectGuid: prjReg, readOnly: false,
+              source: String((srcTerms[0] || {}).term || ''),
+              target: String((tgtTerms[0] || {}).term || ''),
+              sourceDefinition: String(srcLang.definition || ''),
+              targetDefinition: String(tgtLang.definition || ''),
+              sourceExample: '', targetExample: '',
+              sourceLang: srcCode, targetLang: tgtCode,
+              languages: Object.keys(langs),
+            });
+          }).catch(function (e) { deps.fail('term-entry', req, e.message || e); });
+          return { ok: true };
+        }
         var core = null;
         var prj = String(params.projectGuid || '');
         if (isNew) {
@@ -158,8 +196,7 @@
           prj = prj || deps.termProjectGuid(core);
         }
         if (!prj) throw new Error('项目 GUID 未找到');
-        termGetEntry(tbGuid, entryId, prj).then(function (entry) {
-          var codes = isNew
+        termGetEntry(tbGuid, entryId, prj).then(function (entry) {          var codes = isNew
             ? deps.langCodes(entry, params)
             : { src: core.sourceLangCode, tgt: core.targetLangCode };
           var src = deps.language(entry, codes.src);
