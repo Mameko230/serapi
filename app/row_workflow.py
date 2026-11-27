@@ -204,6 +204,9 @@ class RowWorkflowMixin:
             row_no = int(data.get("rowNo") or self._cur_row)
         except (TypeError, ValueError):
             return
+        if data.get("ok"):
+            # 结果已回来就立即解除确认/拒绝互斥，不再等 3.5 秒兜底计时器。
+            self._confirm_busy = False
         status = str(data.get("status") or "")
         mapped_status = str(data.get("mappedStatus") or "")
         self._segments.invalidate()

@@ -134,8 +134,9 @@ class HitPortsMixin:
 
     def _res_insert(self, payload: dict):
         """双击 TM/术语行 → 插入编辑器；选中内容先覆盖再插入（核心约定，勿改顺序）"""
-        if payload.get("readOnly"):
-            # 新版 TB 条目等只读命中；TM 命中只要没有 readOnly 就允许插入（缺 tag 略过）。
+        if payload.get("readOnly") and payload.get("kind") != "tb":
+            # 新版 TB 命中历史数据曾把“只读术语库”误写成“不可插入”；
+            # 术语插入只读译文是允许的，只有编辑术语库才受 readOnly 限制。
             self.log("该命中为只读，未插入；内容仍保留在结果列表")
             panel = getattr(self, "res_panel", None)
             if panel is not None and hasattr(panel, "set_status"):

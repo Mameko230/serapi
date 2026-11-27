@@ -61,7 +61,7 @@
           }).then(function (r2) { return r2.json(); }).then(function (rows) {
             var row = (rows && rows[0]) || {};
             var st = (row.meta && row.meta.status) ? String(row.meta.status) : '';
-            if (!st && tries < 5) { setTimeout(poll, 250); return; }
+            if (!st && tries < 12) { setTimeout(poll, 400); return; }
             var mapped = '';
             try {
               mapped = deps.rowStatus({ status: st }, !!(row.target && row.target.symbols
@@ -73,7 +73,7 @@
               status: st, mappedStatus: mapped,
             });
           }).catch(function (e) {
-            if (tries < 5) { setTimeout(poll, 250); return; }
+            if (tries < 12) { setTimeout(poll, 400); return; }
             deps.push('row-action-result', {
               ok: false, action: action, rowNo: target, rowId: rowId,
               err: String(e.message || e).slice(0, 200),

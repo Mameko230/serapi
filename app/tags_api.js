@@ -5,7 +5,31 @@
     function listTags(rowNo) {
       try {
         var kind = deps.detect();
-        if (kind !== 'old') return { ok: false, err: 'listTags 仅旧版支持' };
+        if (kind === 'new') {
+          var seg = deps.readCurrent ? deps.readCurrent() : null;
+          if (!seg || !seg.ok) return { ok: false, err: '当前段尚未读取' };
+          function tagToken(tk) {
+            if (!tk || tk.t !== 'tag') return null;
+            return {
+              t: 'tag', id: tk.id == null ? '' : String(tk.id),
+              kind: tk.tagKind || tk.kind || (tk.attrs && tk.attrs.tagKind) || 'empty',
+              name: String(tk.name || (tk.attrs && tk.attrs.name) || ''),
+              display: String(tk.display || (tk.attrs && tk.attrs.displayText) || ''),
+              tagType: String(tk.tagType || (tk.attrs && tk.attrs.type) || ''),
+              attrs: tk.attrs || null,
+            };
+          }
+          function tagsOf(tokens) {
+            var out = [];
+            for (var i = 0; i < (tokens || []).length; i++) {
+              var one = tagToken(tokens[i]);
+              if (one) out.push(one);
+            }
+            return out;
+          }
+          return { ok: true, tags: tagsOf(seg.tokens), sourceTags: tagsOf(seg.srcTokens) };
+        }
+        if (kind !== 'old') return { ok: false, err: 'listTags 仅新版/旧版支持' };
         var ctrl = deps.oldGridCtrl();
         if (!ctrl) return { ok: false, err: 'gridCtrl 未找到' };
         var row = deps.findRowByNo(ctrl, rowNo);

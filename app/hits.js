@@ -103,8 +103,9 @@
             modifiedTime: String(h.lastModified || '').slice(0, 19),
             entryId: String(h.entryId || h.id || ''),
             tbGuid: String(h.resourceId || ''),
-            newTerm: true, readOnly: true,
-            detail: { readOnly: true, languages: detailLangs },
+            // 插入是读操作：术语库是否只读只影响“编辑条目”，不能阻止插入译文。
+            newTerm: true, readOnly: false,
+            detail: { readOnly: false, languages: detailLangs },
           });
         }
       }

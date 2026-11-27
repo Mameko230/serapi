@@ -17,5 +17,31 @@
     return hasTarget ? 'edited' : 'untranslated';
   }
 
-  window.__mdRowStatus = { fromMeta: fromMeta };
+  function observe(onChange) {
+    if (!window.MutationObserver || !document.body) return;
+    var timer = null;
+    var observer = new MutationObserver(function (mutations) {
+      var relevant = false;
+      for (var i = 0; i < mutations.length; i++) {
+        var node = mutations[i].target;
+        try {
+          if (node && node.closest && node.closest('.translation-row')) {
+            relevant = true;
+            break;
+          }
+        } catch (e) {}
+      }
+      if (!relevant || timer) return;
+      timer = setTimeout(function () {
+        timer = null;
+        try { onChange(); } catch (e) {}
+      }, 160);
+    });
+    observer.observe(document.body, {
+      subtree: true, attributes: true,
+      attributeFilter: ['class', 'aria-label', 'data-status', 'style'],
+    });
+  }
+
+  window.__mdRowStatus = { fromMeta: fromMeta, observe: observe };
 })();

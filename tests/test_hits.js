@@ -40,6 +40,6 @@ assert.strictEqual(mapped.tm[0].tagPlanOk, false);
 assert.strictEqual(mapped.tb.length, 1);
 assert.strictEqual(mapped.tb[0].s, '你');
 assert.strictEqual(mapped.tb[0].t, 'you');
-assert.strictEqual(mapped.tb[0].readOnly, true);
+assert.strictEqual(mapped.tb[0].readOnly, false);
 
 console.log('HITS_TEST: PASS');

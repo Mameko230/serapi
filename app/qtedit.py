@@ -223,10 +223,11 @@ class TagObject(QTextObjectInterface, QObject):
             payload = json.loads(fmt.property(PAYLOAD) or '{}')
             text = self._label(payload)
         except Exception:
-            return QSizeF(20, 15)
-        f = QFont("Microsoft YaHei", 7)
-        w = QFontMetricsF(f).horizontalAdvance(text) + 8
-        return QSizeF(min(w, 180), 15)
+            return QSizeF(20, 24)
+        f = QFont("Microsoft YaHei", 8)
+        f.setBold(True)
+        w = QFontMetricsF(f).horizontalAdvance(text) + 16
+        return QSizeF(min(w, 210), 24)
 
     @staticmethod
     def _attrs_text(attrs) -> str:
@@ -293,7 +294,7 @@ class TagObject(QTextObjectInterface, QObject):
                 core = core + "}"
             if max_px and core:
                 try:
-                    fm = QFontMetricsF(QFont("Microsoft YaHei", 7))
+                    fm = QFontMetricsF(QFont("Microsoft YaHei", 8))
                     core = fm.elidedText(core, Qt.TextElideMode.ElideRight, max_px)
                 except Exception:
                     pass
@@ -303,33 +304,34 @@ class TagObject(QTextObjectInterface, QObject):
             return str(p.get('name') or p.get('display') or 'tag')[:24]
 
     def _colors(self, p: dict):
-        """返回 (文字/边框色, 底色)"""
+        """返回 (文字/边框色, 底色)；日常轻量强化，颜色/占位用实心高对比。"""
         if p.get('ph'):
-            return QColor("#b45309"), QColor("#fef3c7")
+            return QColor("#7c2d12"), QColor("#fde68a")
         if p.get('hidden'):
-            return QColor("#94a3b8"), QColor("#f1f5f9")
+            return QColor("#64748b"), QColor("#e2e8f0")
         if p.get('color'):
             c = QColor(p['color'])
-            bg = QColor(p['color']); bg.setAlpha(32)
-            return c, bg
+            return QColor("#ffffff"), c
         hue = _name_hue(p.get('name') or p.get('display') or '?')
-        fg = QColor.fromHsv(hue, 160, 130)
-        bg = QColor.fromHsv(hue, 120, 255); bg.setAlpha(42)
+        fg = QColor.fromHsv(hue, 190, 112)
+        bg = QColor.fromHsv(hue, 135, 255)
+        bg.setAlpha(82)
         return fg, bg
 
     def drawObject(self, painter: QPainter, rect: QRectF, doc, posInDocument, fmt):
         try:
             payload = json.loads(fmt.property(PAYLOAD) or '{}')
-            label = self._label(payload, max(20, int(rect.width()) - 8))
+            label = self._label(payload, max(20, int(rect.width()) - 12))
             color, bg = self._colors(payload)
-            r = QRectF(rect.x() + 1, rect.y() + 2, rect.width() - 2, min(rect.height() - 4, 13))
-            painter.setPen(Qt.PenStyle.NoPen)
+            r = QRectF(rect.x() + 1, rect.y() + 1,
+                       max(1.0, rect.width() - 2), min(rect.height() - 2, 22))
+            painter.setPen(QPen(color, 1))
             painter.setBrush(bg)
-            painter.drawRoundedRect(r, 3, 3)
-            painter.setPen(QPen(color))
-            f = QFont("Microsoft YaHei", 7)
+            painter.drawRoundedRect(r, 5, 5)
+            f = QFont("Microsoft YaHei", 8)
             f.setBold(True)
             painter.setFont(f)
+            painter.setPen(QPen(color))
             painter.drawText(r, Qt.AlignmentFlag.AlignCenter, label)
         except Exception:
             # Qt 绘制回调里抛异常会直接导致进程 fail-fast：吞掉并退化绘制。

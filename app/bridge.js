@@ -321,6 +321,7 @@
         __tagsApi = window.__mdTagsApi.create({
           detect: detectEditor, oldGridCtrl: oldGridCtrl,
           findRowByNo: findRowByNo, segTags: segTags,
+          readCurrent: function () { var v = newActiveView() || newAnyView(); return v ? newReadSegment(v) : null; },
         });
       }
       return __tagsApi;
@@ -814,9 +815,9 @@
         window.__md.push('row-changed', { editor: kind, key: key });
       }
     }, 300);
-
     window.__md.ready = true;
     window.__md.push('bridge-ready', { url: location.href, t: Date.now() });
+    try { window.__mdRowStatus.observe(function () { window.__md.push('rows-updated', { source: 'dom-status' }); }); } catch (e) {}
     log('bridge ready');
 
     // 会话保活：memoQ 服务器会话闲置会过期，而桌面端可能长时间挂后台不碰网络。

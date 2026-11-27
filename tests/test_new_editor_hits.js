@@ -216,10 +216,10 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   assert.strictEqual(pushed.data.tm[0].tagPlanOk, true);
   assert.ok(pushed.data.tm[0].tgtTokens.some((t) => t.t === 'text' && t.v === 'tgt-text'),
             pushed.data.tm[0].tgtTokens);
-  assert.strictEqual(pushed.data.tb[0].readOnly, true);
+  assert.strictEqual(pushed.data.tb[0].readOnly, false);
   assert.strictEqual(pushed.data.tb[0].s, 'term');
   assert.strictEqual(pushed.data.tb[0].t, '术语');
-  assert.strictEqual(pushed.data.tb[0].readOnly, true);
+  assert.strictEqual(pushed.data.tb[0].readOnly, false);
   assert.strictEqual(pushed.data.tb[0].newTerm, true);
   assert.strictEqual(pushed.data.tb[0].entryId, 'entry-1');
   assert.strictEqual(pushed.data.tb[0].tbGuid, 'tb-guid-1');
