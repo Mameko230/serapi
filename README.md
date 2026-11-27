@@ -116,6 +116,7 @@ Serapi is an unofficial third-party tool, not affiliated with or endorsed by mem
 - 普通用户：直接下载安装包，不需要安装 Python。
 - 开发者与贡献者：先看 [AGENTS.md](AGENTS.md) 与 [docs/AGENT_CHECKLIST.md](docs/AGENT_CHECKLIST.md)。
 - 项目边界、开发计划和测试说明：[ROADMAP.md](ROADMAP.md)、[CONTRIBUTING.md](CONTRIBUTING.md)、[TESTING.md](TESTING.md)、[docs/SMOKE.md](docs/SMOKE.md)。
+- 待做需求清单：[docs/BACKLOG.md](docs/BACKLOG.md)。
 - 桥接与页面结构：[docs/BRIDGE_CONTRACT.md](docs/BRIDGE_CONTRACT.md)。
 
 ## 从源码运行

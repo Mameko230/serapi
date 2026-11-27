@@ -1,5 +1,7 @@
 # ROADMAP
 
+> 待做需求池见 [docs/BACKLOG.md](docs/BACKLOG.md)：换行 tag 编号、QA 与 Tag 长短显联动、性能跟手、TB 详情排版、游戏语境栏。
+
 ## P0：发布前必须
 
 - [ ] 按 [docs/SMOKE.md](docs/SMOKE.md) 完成真机冒烟（用户自己的服务器即可，不共享访问）。
