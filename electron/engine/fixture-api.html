@@ -33,6 +33,22 @@
               { rowNo: 3, rowId: "fixture-row-3", src: "三番目の行です。", tgt: "这是第三行。", status: "proofread", tmRate: 91, locked: false }
             ]
           };
+        },
+        readSegment: function (rowId) {
+          var text = String(rowId);
+          var rowNo = Number(text.slice(-1)) || 1;
+          if (rowNo === 2) {
+            return {
+              ok: true, rowId: rowId, rowNo: 2, locked: false,
+              srcTokens: [{ t: 'text', v: '二番目の行です。長い段落の' }, { t: 'newline' }, { t: 'text', v: '折り返しを確認します。' }],
+              tokens: [{ t: 'text', v: '这是第二行。用于检查' }, { t: 'newline' }, { t: 'text', v: '长段落换行。' }]
+            };
+          }
+          return {
+            ok: true, rowId: rowId, rowNo: 1, locked: false,
+            srcTokens: [{ t: 'text', v: '最初の行です。' }],
+            tokens: [{ t: 'text', v: '这是第一行。' }]
+          };
         }
       }
     };

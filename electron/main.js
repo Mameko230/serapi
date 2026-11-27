@@ -61,6 +61,11 @@ function createViews() {
       partition: 'persist:serapi',
     },
   });
+  if (process.env.SERAPI_DEBUG === '1') {
+    workspace.webContents.on('console-message', (_event, level, message, line, source) => {
+      console.log('[workspace console]', level, String(message).slice(0, 300), line || '', source || '');
+    });
+  }
   workspace.webContents.loadFile(WORKSPACE_ENTRY,
     process.env.SERAPI_WORKSPACE_ONLY === '1' ? { query: { workspace: '1' } } : undefined);
   win.addBrowserView(workspace);
@@ -106,7 +111,9 @@ async function injectBridge() {
   try {
     if (!bridgeBundle) bridgeBundle = buildBundle(APP_DIR);
     await engine.webContents.executeJavaScript(bridgeBundle, true);
-    console.log('[serapi] engine bridge injected:', url.replace(/\?.*$/, ''));
+    let safeOrigin = '';
+    try { safeOrigin = new URL(url).origin; } catch (_e) { safeOrigin = 'unknown-origin'; }
+    console.log('[serapi] engine bridge injected:', safeOrigin);
     const smokeApi = process.env.SERAPI_ENGINE_INVOKE;
     if (smokeApi) {
       const result = await invokeEngineApi(smokeApi, []);
@@ -254,12 +261,23 @@ async function invokeEngineApi(name, args) {
     return { ok: false, error: String(err) };
   }
 }
-ipcMain.handle('engine:api', (_event, name, args) => invokeEngineApi(name, args));
+ipcMain.handle('engine:api', async (_event, name, args) => {
+  const result = await invokeEngineApi(name, args);
+  if (process.env.SERAPI_DEBUG === '1') {
+    console.log('[serapi] engine api', String(name || ''), result && result.ok ? 'ok' : 'fail',
+      result && result.error ? result.error : '');
+  }
+  return result;
+});
 ipcMain.handle('sidecar:call', async (_event, method, params) => {
+  const name = String(method || '');
   if (!sidecar) return { ok: false, error: 'sidecar-not-started' };
   try {
-    return { ok: true, result: await sidecar.call(String(method || ''), params || {}) };
+    const result = await sidecar.call(name, params || {});
+    if (process.env.SERAPI_DEBUG === '1') console.log('[serapi] sidecar call', name, result && result.ok === false ? 'fail' : 'ok');
+    return { ok: true, result };
   } catch (err) {
+    if (process.env.SERAPI_DEBUG === '1') console.log('[serapi] sidecar call', name, 'error', String(err.message || err));
     return { ok: false, error: String(err.message || err) };
   }
 });

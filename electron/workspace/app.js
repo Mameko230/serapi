@@ -4,6 +4,7 @@ let contextLines = [];
 let qaIssues = [];
 let hits = [];
 let projectInfo = {};
+let workspaceSource = "synthetic";
 
 const statusLabels = {
   confirmed: "已确认", edited: "编辑", reviewer1: "R1", reviewer2: "R2",
@@ -18,6 +19,7 @@ function applySnapshot(snapshot) {
   qaIssues = Array.isArray(snapshot.qa) ? snapshot.qa : [];
   hits = Array.isArray(snapshot.hits) ? snapshot.hits : [];
   projectInfo = snapshot.project || {};
+  workspaceSource = snapshot.source || (snapshot.synthetic ? "synthetic" : "engine-listRows");
   state.current = Math.max(0, Math.min(segments.length - 1, Number(snapshot.current) || 0));
   state.currentLine = Math.max(0, Number(snapshot.currentLine) || 0);
   state.selectedHit = 0;
@@ -49,21 +51,27 @@ function applySnapshot(snapshot) {
 async function loadEngineSnapshot() {
   const host = window.serapiHost;
   if (!host || !host.invokeEngineApi || !host.sidecar) return false;
-  try {
-    // The real path: ask memoQ for the row list, then normalize in Python.
-    const listed = await host.invokeEngineApi("listRows", []);
-    if (!listed || !listed.ok || !listed.value || !listed.value.ok) return false;
-    const rows = listed.value.rows;
-    if (!Array.isArray(rows) || !rows.length) return false;
-    const normalized = await host.sidecar.call("workspace.normalize", {
-      rows,
-      project: { name: "memoQ", file: "", languages: "", progress: null },
-    });
-    if (!normalized || !normalized.ok || !normalized.result) return false;
-    return applySnapshot(normalized.result);
-  } catch (_) {
-    return false;
+  // The engine page may still be loading when the workspace boots. Retry
+  // briefly before falling back to the synthetic snapshot.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const listed = await host.invokeEngineApi("listRows", []);
+      if (listed && listed.ok && listed.value && listed.value.ok) {
+        const rows = listed.value.rows;
+        if (Array.isArray(rows) && rows.length) {
+          const normalized = await host.sidecar.call("workspace.normalize", {
+            rows,
+            project: { name: "memoQ", file: "", languages: "", progress: null },
+          });
+          if (normalized && normalized.ok && normalized.result) {
+            return applySnapshot(normalized.result);
+          }
+        }
+      }
+    } catch (_) {}
+    await new Promise((resolve) => setTimeout(resolve, 180));
   }
+  return false;
 }
 
 async function loadSyntheticSnapshot() {
@@ -129,10 +137,10 @@ function codeRows(seg, qaLine = -1) {
     const tgt = seg.tgtLines[i] === undefined ? "" : seg.tgtLines[i];
     rows.push(`<div class="${classes.join(" ")}" data-line="${i}">
       <div class="line-no">${String(i + 1).padStart(2, "0")}</div>
-      <div class="line-text source-text">${src}</div>
+      <div class="line-text source-text">${esc(src)}</div>
       <div class="row-divider"></div>
       <div class="line-no">${String(i + 1).padStart(2, "0")}</div>
-      <div class="line-text target-text" contenteditable="true" spellcheck="false">${tgt}</div>
+      <div class="line-text target-text" contenteditable="true" spellcheck="false">${esc(tgt)}</div>
     </div>`);
   }
   return rows.join("");
@@ -237,12 +245,34 @@ function focusQA(index) {
   $("#statusNote").textContent = `QA · ${q.rule} · 第 ${segments[state.current].no} 段`;
 }
 
+async function loadSegmentDetail(index) {
+  if (workspaceSource !== "engine-listRows") return;
+  const host = window.serapiHost;
+  const seg = segments[index];
+  if (!host || !host.invokeEngineApi || !host.sidecar || !seg || seg._detailLoaded) return;
+  seg._detailLoaded = true;
+  try {
+    const raw = await host.invokeEngineApi("readSegment", [seg.key]);
+    if (!raw || !raw.ok || !raw.value) return;
+    const normalized = await host.sidecar.call("workspace.normalize_segment", { segment: raw.value });
+    if (!normalized || !normalized.ok || !normalized.result || !normalized.result.ok) return;
+    Object.assign(seg, normalized.result.segment);
+    if (segments[state.current] !== seg) return;
+    renderSegmentList();
+    renderEditor(seg);
+    $("#statusNote").textContent = `第 ${seg.no} 段 · 已载入译文`;
+  } catch (_) {
+    seg._detailLoaded = false;
+  }
+}
+
 function selectSegment(no) {
   const idx = segments.findIndex((s) => s.no === no); if (idx < 0) return;
   state.current = idx;
   renderSegmentList(); renderContext(); renderEditor(segments[idx]);
   $("#statusNote").textContent = `第 ${segments[idx].no} 段 · ${statusLabels[segments[idx].status]}`;
   document.querySelector(`#segList .seg[data-no="${no}"]`)?.scrollIntoView({ block: "nearest" });
+  loadSegmentDetail(idx);
 }
 
 $$("#filters .filter").forEach((btn) => btn.addEventListener("click", () => {
@@ -449,5 +479,6 @@ async function bootWorkspace() {
   renderHits();
   initSplitter();
   initWelcome();
+  loadSegmentDetail(state.current);
 }
 bootWorkspace();

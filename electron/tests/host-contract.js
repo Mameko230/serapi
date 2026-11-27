@@ -65,5 +65,7 @@ assert.match(workspaceJs, /config\.remember_server/, 'welcome saves the server t
 assert.match(workspaceJs, /workspace\.snapshot/, 'workspace boots from the sidecar snapshot');
 assert.match(workspaceJs, /loadEngineSnapshot/, 'workspace tries real Engine rows first');
 assert.match(workspaceJs, /workspace\.normalize/, 'workspace normalizes Engine rows in the sidecar');
+assert.match(workspaceJs, /loadSegmentDetail/, 'workspace loads per-segment detail from the Engine');
+assert.match(workspaceJs, /workspace\.normalize_segment/, 'workspace normalizes segment tokens in the sidecar');
 
 console.log('HOST_CONTRACT: PASS');

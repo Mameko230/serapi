@@ -67,8 +67,9 @@ Captures the workspace View, then exits.
   synthetic fixture `fixtures/workspace-demo.json` when the Engine is not ready.
 - Real-path E2E fixture: `fixtures/engine-rows-demo.json` +
   `engine/fixture-api.html`; run with `SERAPI_ENGINE_FIXTURE_API=1` and
-  `SERAPI_WORKSPACE_ONLY=1` to see three synthetic rows rendered through the
-  Engine → sidecar → workspace chain.
+  `SERAPI_WORKSPACE_ONLY=1` to see synthetic rows rendered through the
+  Engine → sidecar → workspace chain. Selecting a row also loads its
+  `readSegment` detail and merges the normalized tokens.
 - Reverse Engine API: `serapiHost.invokeEngineApi(method, args)` → restricted
   `window.__md.api.<method>` call. The allowlist is `engine-api-allowlist.json`.
 - Tests: `npm test` runs host + sidecar contract guards.

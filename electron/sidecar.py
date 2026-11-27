@@ -252,6 +252,58 @@ def _workspace_normalize(params):
     }
     return snapshot
 
+
+def _tokens_to_lines(tokens):
+    """Convert memoQ token stream to display lines.
+
+    Tags are shown as [name] for now; the real token editor will use structured
+    tag cells later. Text is never logged.
+    """
+    lines = [""]
+    for token in tokens or []:
+        if not isinstance(token, dict):
+            continue
+        kind = token.get("t")
+        if kind == "text":
+            lines[-1] += str(token.get("v") or "")
+        elif kind == "newline":
+            lines.append("")
+        elif kind == "tag":
+            display = token.get("display") or {}
+            label = ""
+            if isinstance(display, dict):
+                label = str(display.get("text") or "")
+            label = label or str(token.get("name") or "tag")
+            lines[-1] += "[" + label + "]"
+    return lines or [""]
+
+
+def _workspace_normalize_segment(params):
+    """Merge a raw Engine readSegment result into one workspace segment."""
+    raw = (params or {}).get("segment") or {}
+    if not isinstance(raw, dict) or not raw.get("ok", True):
+        return {"ok": False, "error": "read-segment-failed"}
+    out = {}
+    src_tokens = raw.get("srcTokens")
+    tgt_tokens = raw.get("tokens")
+    if isinstance(src_tokens, list):
+        out["srcLines"] = _tokens_to_lines(src_tokens)
+        out["src"] = " ".join(out["srcLines"])[:240]
+    if isinstance(tgt_tokens, list):
+        out["tgtLines"] = _tokens_to_lines(tgt_tokens)
+        out["tgt"] = " ".join(out["tgtLines"])[:240]
+    if raw.get("rowId") is not None:
+        out["key"] = str(raw.get("rowId"))
+    if raw.get("rowNo") is not None:
+        try:
+            out["no"] = int(raw.get("rowNo"))
+        except (TypeError, ValueError):
+            pass
+    out["locked"] = bool(raw.get("locked"))
+    if "srcLines" not in out and "tgtLines" not in out:
+        return {"ok": False, "error": "no-tokens"}
+    return {"ok": True, "segment": out}
+
 METHODS = {
     "ping": _ping,
     "version": _version,
@@ -260,6 +312,7 @@ METHODS = {
     "config.forget_server": _config_forget,
     "workspace.snapshot": _workspace_snapshot,
     "workspace.normalize": _workspace_normalize,
+    "workspace.normalize_segment": _workspace_normalize_segment,
 }
 
 
