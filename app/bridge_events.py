@@ -82,7 +82,17 @@ class BridgeEventsMixin:
             # activate_row 自己已经负责读取；忽略它引起的推送，避免两条异步链互相取消。
             if (self._activating_row is None
                     and not getattr(self, "_filter_busy", False)):
-                self.read_segment(auto=True)
+                # activateRow 完成后紧跟的 row-changed 会再读一遍同一行，
+                # 日志里表现为同一行连续两次“已读取段”。刚读过 0.8s 内直接忽略。
+                try:
+                    key = str((data or {}).get("key") or "")
+                    changed_row = int(key.split("|", 1)[1]) + 1 if key.startswith("new|") else 0
+                except Exception:
+                    changed_row = 0
+                recent = (changed_row and changed_row == getattr(self, "_last_read_row", None)
+                          and time.monotonic() - getattr(self, "_last_read_at", 0.0) < 0.8)
+                if not recent:
+                    self.read_segment(auto=True)
         if msg.get("type") == "term-detail":
             self._on_term_detail(data)
             return

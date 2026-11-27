@@ -55,6 +55,8 @@ class ReadWorkflowMixin:
                 self.log(f"已保留并恢复第 {row_no} 行的本地未保存草稿")
             else:
                 self.log(f"已读取段 第{row_no}行，{len(self._last_tokens)} 个 token")
+            self._last_read_row = row_no
+            self._last_read_at = time.monotonic()
             if auto and had_local_edits:
                 self.log("memoQ 页面直接切行：原行编辑已保留为本地草稿")
             self._refresh_tag_pool()
@@ -143,6 +145,8 @@ class ReadWorkflowMixin:
                     self.log((f"已恢复第 {row_no} 行的本地未保存草稿" if draft
                               else (f"已读取段 第{row_no}行，{len(self._last_tokens)} 个 token"
                                     f"（{int((time.perf_counter() - read_t0) * 1000)} ms）")))
+                    self._last_read_row = row_no
+                    self._last_read_at = time.monotonic()
                     self._refresh_tag_pool()
                     self._after_load_apply_limits()
                     self._fetch_segment_info(row_no)
