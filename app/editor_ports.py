@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """编辑区装载/保存/写回端口。"""
 
+from PyQt6.QtCore import QTimer
+
+import json
+
 from .editor_backend import backend_for
 from .row_navigation import next_unlocked_row
 from .rowref import RowRef

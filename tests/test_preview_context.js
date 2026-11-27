@@ -7,6 +7,8 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const previewSrc = fs.readFileSync(path.join(ROOT, 'app', 'preview_context.js'), 'utf8');
 const segmentSrc = fs.readFileSync(path.join(ROOT, 'app', 'segment_view.js'), 'utf8');
+const segmentApiSrc = fs.readFileSync(path.join(ROOT, 'app', 'segment_api.js'), 'utf8');
+const rowsStoreSrc = fs.readFileSync(path.join(ROOT, 'app', 'rows_store.js'), 'utf8');
 
 function el(tag, options) {
   const o = options || {};
@@ -63,6 +65,8 @@ context.__md = {};
 vm.createContext(context);
 vm.runInContext(previewSrc, context, { filename: 'preview_context.js' });
 vm.runInContext(segmentSrc, context, { filename: 'segment_view.js' });
+vm.runInContext(rowsStoreSrc, context, { filename: 'rows_store.js' });
+vm.runInContext(segmentApiSrc, context, { filename: 'segment_api.js' });
 
 const pushes = [];
 const fetchMock = async (url) => {
@@ -112,6 +116,51 @@ const api = context.window.__mdPreviewContext.create({
   assert.deepStrictEqual(out[0].attributes, srcNl.attributes);
   const fallback = view.newTokenSymbols([{ t: 'newline' }]);
   assert.strictEqual(fallback[0].attributes[0].value, '\r\n');
+
+  // 行缓存保留原始 source tag；写回优先用它，避免 ProseMirror attrs 丢 tagType。
+  const rawTag = { type: 2, tagType: 1, inlineTagType: 2, name: 'mq:ch',
+                   display: { isSpecial: true, text: 'br' },
+                   attributes: [{ type: 1, name: 'val', value: '\n' }] };
+  const entry = context.window.__mdRowsStore.entry(
+    { id: 0, source: { symbols: [{ type: 1, value: 65 }, rawTag] },
+      target: {}, meta: {} }, (s) => '', () => 'edited');
+  assert.strictEqual(entry.srcTags.length, 1);
+  assert.strictEqual(entry.srcTags[0].tagType, 1);
+
+  context.XMLHttpRequest = function () {};
+  let put = null;
+  const viewObj = { state: { doc: {
+    attrs: { locked: false, rowId: 0, segmentType: 'target' },
+    content: { size: 1 },
+  } } };
+  const segApi = context.window.__mdSegmentApi.create({
+    detect: () => 'new',
+    tryFocus: () => {},
+    findViewByRow: () => viewObj,
+    activeView: () => viewObj,
+    anyView: () => viewObj,
+    readView: () => ({ srcTokens: [] }),
+    oldRead: () => ({}),
+    editFlags: () => ({ tracking: false, readOnly: false }),
+    writeView: () => ({ ok: true }),
+    refreshRow: () => {},
+    putRow: (rid, body) => {
+      put = body;
+      return { id: 0, target: {}, meta: { status: 'edited' } };
+    },
+    tokenSymbols: view.newTokenSymbols,
+    rowStatus: () => 'edited',
+    symbolsText: () => '',
+    symbolsPlain: () => '',
+    rowsState: () => ({ rows: { 1: entry } }),
+    oldWrite: () => ({}),
+    push: () => {},
+  });
+  const wrote = segApi.writeSegment([{ t: 'newline' }], 0);
+  assert.strictEqual(wrote.ok, true, wrote);
+  assert.ok(put && put.symbols && put.symbols.length === 1, put);
+  assert.strictEqual(put.symbols[0].tagType, 1);
+  assert.deepStrictEqual(put.symbols[0].attributes, rawTag.attributes);
 
   console.log('PREVIEW_CONTEXT_TEST: PASS (offline only)');
 })().catch((e) => { console.error(e.stack || e); process.exit(1); });

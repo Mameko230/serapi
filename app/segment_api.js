@@ -51,20 +51,36 @@
             return { ok: true, pending: true };
           }
           // 找同段原文的 mq:ch tag，把它作为译文换行的定义来源：
-          // 保证写回 memoQ 的 tag name/attributes 与原文一致（数字编号不强制）。
+          // 保证写回 memoQ 的 tag name/attributes/tagType 与原文一致。
+          // 优先用行 API 原始 symbol（PM attrs 不含 tagType 等字段）。
           var newlineSymbol = null;
           try {
-            var srcTokens = deps.readView(view).srcTokens || [];
-            for (var si = 0; si < srcTokens.length; si++) {
-              var st = srcTokens[si] || {};
-              if (st.t === 'tag' &&
-                  (String(st.name || '') === 'mq:ch' ||
-                   String((st.attrs && st.attrs.name) || '') === 'mq:ch')) {
-                var syms = deps.tokenSymbols([st]);
-                if (syms && syms.length) { newlineSymbol = syms[0]; break; }
+            var stRows = deps.rowsState();
+            var cached = stRows && stRows.rows ? stRows.rows[Number(rid) + 1] : null;
+            var rawTags = (cached && cached.srcTags) || [];
+            for (var ri = 0; ri < rawTags.length; ri++) {
+              var rs = rawTags[ri] || {};
+              if (String(rs.name || '') === 'mq:ch' ||
+                  String((rs.display && rs.display.text) || '') === 'br') {
+                newlineSymbol = JSON.parse(JSON.stringify(rs));
+                break;
               }
             }
-          } catch (eNl) {}
+          } catch (eRaw) {}
+          if (!newlineSymbol) {
+            try {
+              var srcTokens = deps.readView(view).srcTokens || [];
+              for (var si = 0; si < srcTokens.length; si++) {
+                var st = srcTokens[si] || {};
+                if (st.t === 'tag' &&
+                    (String(st.name || '') === 'mq:ch' ||
+                     String((st.attrs && st.attrs.name) || '') === 'mq:ch')) {
+                  var syms = deps.tokenSymbols([st]);
+                  if (syms && syms.length) { newlineSymbol = syms[0]; break; }
+                }
+              }
+            } catch (eNl) {}
+          }
           var row = deps.putRow(rid, { side: 'target',
                                          symbols: deps.tokenSymbols(tokens || [],
                                                                     newlineSymbol) });

@@ -19,6 +19,25 @@
     window.__md._rowsApi = null;
   }
 
+  function segmentSymbols(seg) {
+    if (!seg) return [];
+    if (seg.symbols) return seg.symbols;
+    if (seg.segment && seg.segment.symbols) return seg.segment.symbols;
+    return [];
+  }
+
+  function tagSymbols(seg) {
+    var out = [];
+    var symbols = segmentSymbols(seg);
+    for (var i = 0; i < symbols.length; i++) {
+      var s = symbols[i] || {};
+      if (String(s.type) === '2' || String(s.type) === 'tag' || String(s.type) === 'Tag') {
+        out.push(s);
+      }
+    }
+    return out;
+  }
+
   function entry(raw, plainText, rowStatus) {
     var id = Number(raw && raw.id);
     if (!isFinite(id) || id < 0) return null;
@@ -30,6 +49,9 @@
       locked: !!meta.isLocked, maxLen: 0,
       status: rowStatus(meta, !!tgt),
       tmRate: Number(meta.matchRate || 0) || 0,
+      // 原始 source tag symbols：写回换行 tag 时直接复用原文值/类型，
+      // 不从 ProseMirror attrs 重建（PM 会丢失 tagType 等字段）。
+      srcTags: tagSymbols(raw && raw.source),
     };
   }
 

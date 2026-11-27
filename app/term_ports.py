@@ -56,6 +56,7 @@ class TermPortsMixin:
     # ---------------- Ctrl+Q 快速添加术语 ----------------
     def _ensure_quick_picker(self):
         if self._quick_picker is None:
+            from .overlays import TermBasePickerOverlay
             self._quick_picker = TermBasePickerOverlay(self)
             self._quick_picker.picked.connect(self._on_quick_tb_picked)
             self._quick_picker.resize(self.size())

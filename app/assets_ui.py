@@ -5,19 +5,44 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QTextBrowser, QVBoxLayout, QWidget,
+    QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 from PyQt6.QtCore import QUrl
 
 from . import assets
 
 HISTORY_PATH = assets.ASSET_DIR / "history.json"
+
+_BUTTON_QSS = (
+    "QPushButton { background: #eef4ff; color: #1d4ed8; border: 1px solid #d6e2f7;"
+    " border-radius: 13px; padding: 5px 14px; }"
+    "QPushButton:hover { background: #e0ecff; }"
+    "QPushButton:pressed { background: #d3e3ff; }"
+)
+
+_DICT_PREVIEW_CHARS = 900
+
+
+def _dict_plain_text(value: str) -> str:
+    """StarDict 释义是 HTML：转成有段落层次的可读纯文本，绝不直接把标签当正文。"""
+    text = str(value or "")
+    text = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", text)
+    text = re.sub(r"(?i)</\s*(p|div|li|tr|h[1-6])\s*>", "\n", text)
+    text = re.sub(r"(?i)<\s*/\s*(td|th)\s*>", "　", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[ \t\u3000]+", " ", text)
+    text = re.sub(r"\n[ \t]+", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 class _AssetCard(QWidget):
@@ -35,7 +60,10 @@ class _AssetCard(QWidget):
             "QComboBox QAbstractItemView { background: #ffffff; color: #1e293b;"
             " border: 1px solid #d9e4f2; outline: 0;"
             " selection-background-color: #dbeafe; selection-color: #1e293b; }"
-            "QComboBox QAbstractItemView::item { min-height: 26px; padding: 2px 8px; }")
+            "QComboBox QAbstractItemView::item { min-height: 26px; padding: 2px 8px; }"
+            "QLineEdit { background: #ffffff; border: 1px solid #d9e4f2; border-radius: 6px;"
+            " padding: 5px 8px; color: #1e293b; }"
+            "QLineEdit:focus { border-color: #93b4ea; }")
         self.card = QFrame(self)
         self.card.setObjectName("assetCard")
         lay = QVBoxLayout(self.card)
@@ -44,7 +72,9 @@ class _AssetCard(QWidget):
         head = QHBoxLayout()
         title = QLabel("个人资产")
         title.setStyleSheet("font-size:18px; font-weight:700; color:#1e293b;")
+        self.title = title
         close = QPushButton("关闭")
+        close.setStyleSheet(_BUTTON_QSS)
         close.clicked.connect(self.closeRequested)
         head.addWidget(title)
         head.addStretch(1)
@@ -66,6 +96,75 @@ class _AssetCard(QWidget):
         super().keyPressEvent(event)
 
 
+class _DictHitCard(QFrame):
+    """单个词典命中卡片：词典名 + 可换行释义；长释义默认折叠。"""
+
+    def __init__(self, hit: dict, parent=None):
+        super().__init__(parent)
+        self.setObjectName("dictHit")
+        self.setStyleSheet(
+            "QFrame#dictHit { background: rgba(255,255,255,210);"
+            " border: 1px solid rgba(219,228,242,220); border-radius: 10px; }")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(5)
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        name = str(hit.get("name") or "词典")
+        name_lab = QLabel(name)
+        name_lab.setWordWrap(True)
+        name_lab.setStyleSheet("color:#1d4ed8; font-weight:700; font-size:14px;"
+                               " background: transparent;")
+        entries = [str(x) for x in (hit.get("entries") or []) if str(x).strip()]
+        count = QLabel(f"{len(entries)} 条释义" if entries else "无释义")
+        count.setStyleSheet("color:#64748b; font-size:12px; background: transparent;")
+        head.addWidget(name_lab)
+        head.addStretch(1)
+        head.addWidget(count)
+        lay.addLayout(head)
+
+        if not entries:
+            empty = QLabel("这条词典记录没有可显示的释义。")
+            empty.setWordWrap(True)
+            empty.setStyleSheet("color:#94a3b8; background: transparent;")
+            lay.addWidget(empty)
+            return
+
+        text = "\n\n".join(_dict_plain_text(x) for x in entries)
+        self._full_text = text
+        self._collapsed = len(text) > _DICT_PREVIEW_CHARS
+        self.text_label = QLabel()
+        self.text_label.setWordWrap(True)
+        self.text_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.text_label.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                      QSizePolicy.Policy.Preferred)
+        self.text_label.setStyleSheet(
+            "color:#334155; font-size:13px; background: transparent;"
+            " line-height: 1.45;")
+        lay.addWidget(self.text_label)
+
+        self.toggle = None
+        if self._collapsed:
+            self.toggle = QPushButton("展开全部")
+            self.toggle.setStyleSheet(_BUTTON_QSS)
+            self.toggle.clicked.connect(self._toggle)
+            lay.addWidget(self.toggle, 0, Qt.AlignmentFlag.AlignLeft)
+        self._apply_text()
+
+    def _apply_text(self):
+        text = self._full_text
+        if self._collapsed:
+            text = text[:_DICT_PREVIEW_CHARS].rstrip() + "…"
+        self.text_label.setText(text)
+        if self.toggle is not None:
+            self.toggle.setText("展开全部" if self._collapsed else "收起")
+
+    def _toggle(self):
+        self._collapsed = not self._collapsed
+        self._apply_text()
+
+
 class AssetQueryOverlay(_AssetCard):
     queryRequested = pyqtSignal(str)
     captureRequested = pyqtSignal()
@@ -74,27 +173,39 @@ class AssetQueryOverlay(_AssetCard):
     def __init__(self, parent=None):
         super().__init__(parent)
         row = QHBoxLayout()
+        row.setSpacing(8)
         self.query = QComboBox()
         self.query.setEditable(True)
         self.query.setMinimumWidth(280)
         self.query.lineEdit().setPlaceholderText("输入日语词/短语，或选中文字后按 Ctrl+D")
         self.query.lineEdit().returnPressed.connect(self._emit)
         btn = QPushButton("查询")
+        btn.setStyleSheet(_BUTTON_QSS)
         btn.clicked.connect(self._emit)
         cap = QPushButton("捕获选区")
+        cap.setStyleSheet(_BUTTON_QSS)
         cap.clicked.connect(self.captureRequested)
         cfg = QPushButton("词典路径")
+        cfg.setStyleSheet(_BUTTON_QSS)
         cfg.clicked.connect(self.configRequested)
         row.addWidget(self.query, 1)
         row.addWidget(btn)
         row.addWidget(cap)
         row.addWidget(cfg)
         self.body.addLayout(row)
-        self.result = QTextBrowser()
-        self.result.setOpenExternalLinks(False)
-        self.result.setStyleSheet(
-            "QTextBrowser { background: transparent; border: none; color: #334155;"
-            " font-size: 13px; }")
+        self.result = QScrollArea()
+        self.result.setWidgetResizable(True)
+        self.result.setFrameShape(QFrame.Shape.NoFrame)
+        self.result.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.result.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self._result_body = QWidget()
+        self._result_body.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                        QSizePolicy.Policy.Preferred)
+        self._result_lay = QVBoxLayout(self._result_body)
+        self._result_lay.setContentsMargins(0, 2, 4, 2)
+        self._result_lay.setSpacing(8)
+        self.result.setWidget(self._result_body)
         self.body.addWidget(self.result, 1)
 
     def _emit(self):
@@ -114,8 +225,46 @@ class AssetQueryOverlay(_AssetCard):
         if text:
             self.query.setCurrentText(text)
 
-    def set_html(self, content):
-        self.result.setHtml(content)
+    def _clear_results(self):
+        while self._result_lay.count():
+            item = self._result_lay.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def set_result(self, result: dict):
+        self._clear_results()
+        word = str(result.get("word") or "")
+        candidates = [str(x) for x in (result.get("candidates") or []) if str(x)]
+        header = QFrame()
+        header.setStyleSheet("QFrame { background: transparent; border: none; }")
+        hl = QVBoxLayout(header)
+        hl.setContentsMargins(2, 2, 2, 4)
+        hl.setSpacing(3)
+        word_lab = QLabel(word or "查询结果")
+        word_lab.setWordWrap(True)
+        word_lab.setStyleSheet("font-size:16px; font-weight:700; color:#1f2329;"
+                               " background: transparent;")
+        meta = QLabel("活用候选：" + ("、".join(candidates) if candidates else "—")
+                      + "　·　个人库 > ja-zh > ja-ja > zh-ja > 日英兜底（不含 TB）")
+        meta.setWordWrap(True)
+        meta.setTextFormat(Qt.TextFormat.PlainText)
+        meta.setStyleSheet("color:#64748b; font-size:12px; background: transparent;")
+        hl.addWidget(word_lab)
+        hl.addWidget(meta)
+        self._result_lay.addWidget(header)
+
+        hits = result.get("hits") or []
+        if not hits:
+            empty = QLabel("本地词典未命中。可在“词典路径”配置 StarDict 目录，"
+                           "或按 Ctrl+Shift+D 捕获当前选区。")
+            empty.setWordWrap(True)
+            empty.setStyleSheet("color:#94a3b8; background: transparent;"
+                                " padding: 12px 4px;")
+            self._result_lay.addWidget(empty)
+        for hit in hits:
+            self._result_lay.addWidget(_DictHitCard(hit))
+        self._result_lay.addStretch(1)
 
 
 class AssetCaptureOverlay(_AssetCard):
@@ -123,27 +272,39 @@ class AssetCaptureOverlay(_AssetCard):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.title.setText("捕获到个人库") if hasattr(self, "title") else None
+        self.title.setText("捕获到个人库")
         grid = QVBoxLayout()
+        grid.setSpacing(10)
         self.term = QLineEdit(); self.term.setPlaceholderText("词条 / 短语（必填）")
         self.reading = QLineEdit(); self.reading.setPlaceholderText("读音（可选）")
         self.translation = QLineEdit(); self.translation.setPlaceholderText("译法（必填）")
         self.tags = QLineEdit(); self.tags.setPlaceholderText("适用标签，用逗号分隔：IP, UI, 战斗")
         self.note = QLineEdit(); self.note.setPlaceholderText("一句话备注：为什么好（可选）")
         self.example = QLineEdit(); self.example.setPlaceholderText("出处例句（可选，短句）")
+        for widget in (self.term, self.reading, self.translation, self.tags,
+                       self.note, self.example):
+            widget.setStyleSheet(
+                "QLineEdit { background:#ffffff; border:1px solid #d9e4f2;"
+                " border-radius:6px; padding:6px 9px; color:#1e293b; }"
+                "QLineEdit:focus { border-color:#93b4ea; }")
         row = QHBoxLayout()
         status = QLabel("状态")
         self.status = QComboBox(); self.status.addItems(list(assets.STATUSES))
         row.addWidget(status); row.addWidget(self.status); row.addStretch(1)
-        for widget in (self.term, self.reading, self.translation, self.tags,
-                       self.note, self.example):
-            grid.addWidget(widget)
+        grid.addWidget(self.term)
+        grid.addWidget(self.reading)
+        grid.addWidget(self.translation)
+        grid.addWidget(self.tags)
+        grid.addWidget(self.note)
+        grid.addWidget(self.example)
         grid.addLayout(row)
         actions = QHBoxLayout()
         save = QPushButton("入库")
+        save.setStyleSheet(_BUTTON_QSS)
         save.setDefault(True)
         save.clicked.connect(self._save)
         cancel = QPushButton("取消")
+        cancel.setStyleSheet(_BUTTON_QSS)
         cancel.clicked.connect(self.closeRequested)
         actions.addStretch(1)
         actions.addWidget(cancel)
@@ -244,6 +405,7 @@ class AssetsUiMixin:
         overlay.resize(self.size())
         overlay.show()
         overlay.raise_()
+        overlay.query.setFocus()
         if text:
             self._run_asset_query(text)
         return overlay
@@ -263,7 +425,7 @@ class AssetsUiMixin:
         overlay = getattr(self, "_asset_query_overlay", None)
         if overlay is not None:
             overlay.set_history(self._asset_history)
-            overlay.set_html(self._render_asset_result(result))
+            overlay.set_result(result)
 
     def _render_asset_result(self, result):
         word = html.escape(str(result.get("word") or ""))

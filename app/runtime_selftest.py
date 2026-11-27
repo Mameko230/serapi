@@ -3,6 +3,8 @@
 
 import json
 
+from PyQt6.QtCore import QTimer
+
 
 class RuntimeSelftestMixin:
     def _engine_page(self):
