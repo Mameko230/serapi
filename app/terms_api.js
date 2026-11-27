@@ -298,6 +298,47 @@
       return { ok: true };
     }
 
+    function termQuickAddNew(req, source, target) {
+      var docBase = String((deps.docBase && deps.docBase()) || '');
+      var transBase = docBase.replace('/api/editor/', '/api/translation/');
+      if (!docBase || transBase === docBase) {
+        deps.fail('term-quick-err', req, '文档 API 路径未找到');
+        return { ok: false };
+      }
+      var hdr = deps.headers ? deps.headers() : {};
+      hdr['Content-Type'] = 'application/json';
+      deps.fetch(transBase + '/info', { headers: hdr }).then(function (r) {
+        return r.json();
+      }).then(function (info) {
+        var srcCode = String((info && info.project && info.project.sourceLang &&
+                              info.project.sourceLang.code) || '');
+        var tgtCode = String((info && info.document && info.document.targetLang &&
+                              info.document.targetLang.code) || '');
+        if (!srcCode || !tgtCode) throw new Error('未能识别文档语言');
+        return deps.fetch(docBase + '/terms/quick-add', {
+          method: 'POST', headers: hdr,
+          body: JSON.stringify({
+            sourceTerm: { langCode: srcCode, termText: source },
+            targetTerm: { langCode: tgtCode, termText: target },
+          }),
+        }).then(function (r2) {
+          return r2.text().then(function (txt) {
+            if (!r2.ok) throw new Error('HTTP ' + r2.status + ' ' + txt.slice(0, 120));
+            try { var body = JSON.parse(txt || '{}'); if (body.Success === false) {
+              throw new Error(body.ErrorMessage || body.ErrorDetails || '术语添加失败');
+            } } catch (e) {
+              if (e && String(e.message || '').indexOf('HTTP ') === 0) throw e;
+            }
+            deps.push('term-quick-result', {
+              req: req, ok: true, tbGuid: '', tbName: '主术语库',
+              source: source, target: target,
+            });
+          });
+        });
+      }).catch(function (e) { deps.fail('term-quick-err', req, e.message || e); });
+      return { ok: true };
+    }
+
     function termQuickAdd(req, params) {
       params = params || {};
       var source = String(params.source || '').trim();
@@ -309,6 +350,10 @@
         var kind = deps.detectEditor();
         if (kind !== 'old' && kind !== 'new') {
           return deps.fail('term-quick-err', req, '快速添加术语仅新版/旧版支持');
+        }
+        if (kind === 'new' && !window.__md.__legacyTermQuickAdd && deps.docBase) {
+          // 新版编辑器有自己的快捷添加端点：自动选主术语库并用文档真实语言码。
+          return termQuickAddNew(req, source, target);
         }
         var core = null, prj = '', srcLang = '', tgtLang = '';
         if (kind === 'old') {
@@ -373,7 +418,7 @@
     }
 
     return { termTbList, termTemplateEntryGui, termAlignQuickLayers, termQuickAddEntry,
-             termContext, termDetail, termEdit, termQuickAdd };
+             termContext, termDetail, termEdit, termQuickAdd, termQuickAddNew };
   }
 
   window.__mdTermsApi = { create: create };

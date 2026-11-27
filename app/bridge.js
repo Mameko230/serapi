@@ -511,7 +511,7 @@
     function newTermsApi() {
       if (!__termsApi) {
         __termsApi = window.__mdTermsApi.create({
-          post: apiPost,
+          post: apiPost, fetch: newApiFetch, headers: newApiHeaders, docBase: newDocApiBase,
           model: window.__mdTermsModel,
           detectEditor: detectEditor,
           termCore: termCore,
