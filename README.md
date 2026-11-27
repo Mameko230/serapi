@@ -6,7 +6,7 @@ Serapi 是一个 Windows 桌面工具，配合 memoQ WebTrans 使用。它把段
 
 [下载 Windows 版](https://github.com/Mameko230/serapi/releases/latest) · [三步开始](#三步开始)
 
-免费 · 开源（MIT） · v1.2.1 · Windows 10/11 · 独立程序，不是浏览器插件 · 需要你自己的 memoQ WebTrans 账号
+免费 · 开源（MIT） · v1.2.2 · Windows 10/11 · 独立程序，不是浏览器插件 · 需要你自己的 memoQ WebTrans 账号
 
 ![Serapi 工作区示意（演示数据）](assets/serapi-demo.png)
 
