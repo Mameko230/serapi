@@ -175,6 +175,7 @@ Electron main
 **宿主壳能力（2026-11-28）**
 
 - 单实例锁：`requestSingleInstanceLock`；第二个实例聚焦并回到工作区；
+- 单实例锁在 ACL 受限的 Windows profile 上会失败；现在会尝试 PID 锁，仍失败时**降级为无锁启动**并打印警告（`SERAPI_STRICT_SINGLE_INSTANCE=1` 可强制严格退出）；
 - 系统托盘：显示工作区 / 显示引擎 / 设置 / 退出；
 - 关闭窗口默认隐藏到托盘，显式“退出 Serapi”才结束；
 - 全局快捷键 `Ctrl+Shift+W` 切换工作区/引擎；

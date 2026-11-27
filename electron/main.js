@@ -31,7 +31,47 @@ let sidecarReady = false;
 let tray = null;
 let isQuitting = false;
 const SINGLE_INSTANCE_DISABLED = process.env.SERAPI_DISABLE_SINGLE_INSTANCE === '1';
-const gotSingleInstanceLock = SINGLE_INSTANCE_DISABLED ? true : app.requestSingleInstanceLock();
+const FALLBACK_LOCK = path.join(process.env.LOCALAPPDATA || path.join(__dirname, '.profile'), 'Serapi', 'instance.lock');
+let fallbackLocked = false;
+
+function acquireFallbackLock() {
+  try {
+    fs.mkdirSync(path.dirname(FALLBACK_LOCK), { recursive: true });
+    fs.writeFileSync(FALLBACK_LOCK, String(process.pid), { encoding: 'utf8', flag: 'wx' });
+    fallbackLocked = true;
+    return true;
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      try {
+        const pid = Number(String(fs.readFileSync(FALLBACK_LOCK, 'utf8')).trim());
+        if (pid && pid !== process.pid) {
+          process.kill(pid, 0);
+          return false;
+        }
+      } catch (_) {}
+      try { fs.unlinkSync(FALLBACK_LOCK); } catch (_) {}
+      try {
+        fs.writeFileSync(FALLBACK_LOCK, String(process.pid), { encoding: 'utf8', flag: 'wx' });
+        fallbackLocked = true;
+        return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+}
+
+let gotSingleInstanceLock = SINGLE_INSTANCE_DISABLED ? true : app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock && !SINGLE_INSTANCE_DISABLED) {
+  // Some Windows profiles deny Chromium's singleton lock file. Fall back to a
+  // plain PID lock so startup still works; second-instance focus is degraded.
+  gotSingleInstanceLock = acquireFallbackLock();
+  if (gotSingleInstanceLock) {
+    console.log('[serapi] single-instance: fallback PID lock');
+  } else {
+    console.error('[serapi] single-instance lock unavailable; continuing without it');
+    gotSingleInstanceLock = process.env.SERAPI_STRICT_SINGLE_INSTANCE !== '1';
+  }
+}
 if (!gotSingleInstanceLock) app.quit();
 
 const PRELOAD = path.join(__dirname, 'preload.js');
@@ -503,6 +543,10 @@ app.on('second-instance', () => {
   showWorkspace();
 });
 app.on('will-quit', () => {
+  if (fallbackLocked) {
+    try { fs.unlinkSync(FALLBACK_LOCK); } catch (_) {}
+    fallbackLocked = false;
+  }
   try { globalShortcut.unregisterAll(); } catch (_) {}
   if (tray) { try { tray.destroy(); } catch (_) {} tray = null; }
 });

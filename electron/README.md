@@ -134,6 +134,9 @@ failure; use the zip target for now.
 ## Host shell
 
 - Single-instance lock; the second instance focuses the existing window.
+  If Chromium/PID lock creation is denied (ACL-limited profile), startup falls
+  back to running without a lock and logs a warning; `SERAPI_STRICT_SINGLE_INSTANCE=1`
+  forces strict refusal instead.
 - System tray: workspace / memoQ engine / settings / quit.
 - Closing the window hides it to the tray; “退出 Serapi” is the explicit exit.
 - Global `Ctrl+Shift+W` toggles workspace ↔ engine.
