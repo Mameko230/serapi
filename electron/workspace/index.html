@@ -164,6 +164,31 @@
     <div class="welcome-foot"><span class="welcome-dot"></span>本机运行 · 不保存凭证 · Web UI 原型</div>
   </div>
 </div>
+<div class="settings" id="settings" hidden>
+  <div class="settings-card">
+    <div class="settings-head"><div><div class="eyebrow">Serapi</div><h1>设置</h1></div><button class="text-btn" id="settingsClose">关闭</button></div>
+    <div class="setting-row">
+      <div><div class="setting-title">界面主题</div><div class="setting-note">工作区表面与文字明暗</div></div>
+      <div class="segmented" id="outerTheme">
+        <button data-outer="teal">暖青</button><button data-outer="dark">深色</button>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div><div class="setting-title">编辑器字号</div><div class="setting-note">只影响原文/译文</div></div>
+      <div class="stepper"><button id="fontMinus">−</button><span id="fontValue">16</span><button id="fontPlus">＋</button></div>
+    </div>
+    <div class="setting-row">
+      <div><div class="setting-title">行视觉</div><div class="setting-note">斑马行 / 仅当前行</div></div>
+      <div class="segmented" id="lineStyle">
+        <button data-line="zebra">斑马</button><button data-line="focus">当前行</button>
+      </div>
+    </div>
+    <div class="setting-row read-only">
+      <div><div class="setting-title">快捷键</div><div class="setting-note">Ctrl K 搜索 · Ctrl S 保存 · Ctrl ↵ 确认 · Ctrl ⇧ W 返回工作区</div></div>
+    </div>
+    <div class="settings-foot">设置写入本地 app.json；不会保存密码或项目正文。</div>
+  </div>
+</div>
 <div class="toast" id="toast" role="status"></div>
 <script src="app.js"></script>
 </body>

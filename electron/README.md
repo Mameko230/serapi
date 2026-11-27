@@ -84,6 +84,9 @@ Captures the workspace View, then exits.
   `write.decide` first, then calls Engine `writeSegment` / `confirmSegment`.
   Segments containing tags are currently blocked. Real memoQ write-back is
   **待真机验证**.
+- Settings surface: theme (warm jade/dark), editor font size 12–28, line style
+  (zebra/focus), shortcut hints. Persisted via sidecar `config.update`; unknown
+  legacy app.json keys are preserved.
 - Reverse Engine API: `serapiHost.invokeEngineApi(method, args)` → restricted
   `window.__md.api.<method>` call. The allowlist is `engine-api-allowlist.json`.
 - Tests: `npm test` runs host + sidecar contract guards.

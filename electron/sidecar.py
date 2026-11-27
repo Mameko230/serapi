@@ -53,16 +53,20 @@ def _default_config():
 
 
 def _load_config():
-    cfg = _default_config()
+    defaults = _default_config()
+    saved = {}
     path = _config_path()
     try:
-        saved = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(saved, dict):
-            for key in cfg:
-                if key in saved:
-                    cfg[key] = saved[key]
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            saved = loaded
     except Exception:
         pass
+    # Preserve unknown keys written by the legacy PyQt app (update state,
+    # quick-term preferences, etc.). Only normalize the keys we own.
+    cfg = dict(saved)
+    for key, value in defaults.items():
+        cfg.setdefault(key, value)
     history = [str(url) for url in cfg.get("server_history") or [] if str(url)]
     url = str(cfg.get("memoq_url") or "").strip()
     if url and url not in history:
@@ -96,6 +100,8 @@ def _public_config(cfg):
         "server_names": cfg.get("server_names") or {},
         "outer_theme": cfg.get("outer_theme") or "teal",
         "editor_theme": cfg.get("editor_theme") or "green",
+        "editor_font_size": cfg.get("editor_font_size") or 16,
+        "editor_line_style": cfg.get("editor_line_style") or "zebra",
     }
 
 
@@ -478,12 +484,48 @@ def _write_decide(params):
         "needsConfirmation": bool(decision.needs_confirmation),
     }
 
+
+_UI_THEMES = {"teal", "blue", "violet", "warm", "dark"}
+_EDITOR_THEMES = {"light", "sepia", "dark", "green"}
+_LINE_STYLES = {"zebra", "focus"}
+
+
+def _config_update(params):
+    cfg = _load_config()
+    data = params or {}
+    if "outer_theme" in data:
+        value = str(data.get("outer_theme") or "")
+        if value not in _UI_THEMES:
+            return {"ok": False, "error": "bad-outer-theme"}
+        cfg["outer_theme"] = value
+    if "editor_theme" in data:
+        value = str(data.get("editor_theme") or "")
+        if value not in _EDITOR_THEMES:
+            return {"ok": False, "error": "bad-editor-theme"}
+        cfg["editor_theme"] = value
+    if "editor_line_style" in data:
+        value = str(data.get("editor_line_style") or "")
+        if value not in _LINE_STYLES:
+            return {"ok": False, "error": "bad-line-style"}
+        cfg["editor_line_style"] = value
+    if "editor_font_size" in data:
+        try:
+            size = int(data.get("editor_font_size"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "bad-font-size"}
+        cfg["editor_font_size"] = max(12, min(28, size))
+    err = _save_config(cfg)
+    if err:
+        return {"ok": False, "error": "save-failed", "detail": err[:200]}
+    return {"ok": True, "config": _public_config(cfg)}
+
 METHODS = {
     "ping": _ping,
     "version": _version,
     "config.get": _config_get,
     "config.remember_server": _config_remember,
     "config.forget_server": _config_forget,
+    "config.update": _config_update,
     "workspace.snapshot": _workspace_snapshot,
     "workspace.normalize": _workspace_normalize,
     "workspace.normalize_segment": _workspace_normalize_segment,

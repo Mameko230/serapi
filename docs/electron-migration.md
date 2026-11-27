@@ -128,16 +128,20 @@ Electron main
 
 - Web 欢迎页：服务器地址、历史服务器 chip、连接、先看工作区；
 - 欢迎页通过 `sidecar.config.get` 读取地址/历史，通过 `config.remember_server` 保存；
+- Web 设置页：界面主题（暖青/深色）、编辑器字号 12–28、行视觉（斑马/当前行）、快捷键说明；
+- 设置通过 `config.update` 持久化到 `~/.memodesk/app.json`；
+- **配置兼容**：`config` 读取/保存保留 PyQt 写入的未知字段（更新状态等），避免迁移后首次修改设置就清空旧配置；
 - 连接后调用 `serapiHost.loadEngine(url)` 打开 Engine WebView；
 - Engine View 下 `Ctrl+Shift+W` 返回工作区；
-- 顶部账号按钮重新打开欢迎页；
-- 截图 `electron/preview-welcome.png`（使用 `fixtures/app-config.empty.json` 合成配置，不含真实服务器）。
+- 顶部账号按钮重新打开欢迎页，设置齿轮打开设置页；
+- 截图：`electron/preview-welcome.png`、`electron/preview-settings.png`（合成配置，不含真实服务器）。
 
 **Step 4 待办**
 
-- 登录完成后的自动切回/状态反馈；
 - 服务器改名/删除 UI；
-- 主题、快捷键、Tag 规则、编辑器字号迁移；
+- 真实登录完成后的自动切回/状态反馈；
+- 更多主题/编辑器配色；
+- Tag 规则、快捷键编辑；
 - 真实登录冒烟与 cookie 持久化。
 
 ### Step 5 — PyQt 退场（未开始）

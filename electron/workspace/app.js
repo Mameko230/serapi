@@ -6,6 +6,7 @@ let hits = [];
 let projectInfo = {};
 let workspaceSource = "synthetic";
 let qaConfig = null;
+let uiConfig = { outer_theme: "teal", editor_font_size: 16, editor_line_style: "zebra" };
 
 const statusLabels = {
   confirmed: "已确认", edited: "编辑", reviewer1: "R1", reviewer2: "R2",
@@ -520,7 +521,10 @@ $("#ctxToggle").addEventListener("click", () => {
   $("#contextPanel").classList.toggle("collapsed", state.contextCollapsed);
   $("#ctxToggle").textContent = state.contextCollapsed ? "展开" : "收起";
 });
-$("#themeToggle").addEventListener("click", () => document.body.classList.toggle("dark"));
+$("#themeToggle").addEventListener("click", () => {
+  const next = document.body.classList.contains("dark") ? "teal" : "dark";
+  saveUiConfig({ outer_theme: next });
+});
 $("#moreBtn").addEventListener("click", (e) => {
   e.stopPropagation();
   const open = $("#moreMenu").classList.toggle("open");
@@ -536,6 +540,8 @@ $$("[data-action]").forEach((el) => el.addEventListener("click", () => {
   } else if (el.dataset.action === "账号" && window.serapiHost) {
     const welcome = document.querySelector("#welcome");
     if (welcome) welcome.hidden = false;
+  } else if (el.dataset.action === "设置") {
+    openSettings();
   } else {
     toast(`${el.dataset.action} · 原型入口`);
   }
@@ -626,6 +632,70 @@ function initSplitter() {
 }
 
 /* Web welcome / account surface (step 4 skeleton). */
+function applyUiConfig(config) {
+  if (!config) return;
+  uiConfig = {
+    outer_theme: config.outer_theme || uiConfig.outer_theme,
+    editor_font_size: Number(config.editor_font_size) || uiConfig.editor_font_size,
+    editor_line_style: config.editor_line_style || uiConfig.editor_line_style,
+  };
+  document.body.classList.toggle("dark", uiConfig.outer_theme === "dark");
+  document.documentElement.style.setProperty("--editor-fs", uiConfig.editor_font_size + "px");
+  const body = document.querySelector(".editor-body");
+  if (body) body.classList.toggle("focus-lines", uiConfig.editor_line_style === "focus");
+  renderSettingsState();
+}
+
+function renderSettingsState() {
+  const font = document.querySelector("#fontValue");
+  if (font) font.textContent = String(uiConfig.editor_font_size);
+  document.querySelectorAll("#outerTheme button").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.outer === (uiConfig.outer_theme === "dark" ? "dark" : "teal"));
+  });
+  document.querySelectorAll("#lineStyle button").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.line === uiConfig.editor_line_style);
+  });
+}
+
+async function saveUiConfig(patch) {
+  applyUiConfig({ ...uiConfig, ...patch });
+  const host = window.serapiHost;
+  if (!host || !host.sidecar) return;
+  try {
+    const reply = await host.sidecar.call("config.update", patch);
+    if (reply && reply.ok && reply.result && reply.result.ok) {
+      applyUiConfig(reply.result.config || { ...uiConfig, ...patch });
+    }
+  } catch (_) {}
+}
+
+function initSettings() {
+  const overlay = document.querySelector("#settings");
+  if (!overlay) return;
+  document.querySelector("#settingsClose").addEventListener("click", () => { overlay.hidden = true; });
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.hidden = true; });
+  document.querySelectorAll("#outerTheme button").forEach((btn) => {
+    btn.addEventListener("click", () => saveUiConfig({ outer_theme: btn.dataset.outer }));
+  });
+  document.querySelectorAll("#lineStyle button").forEach((btn) => {
+    btn.addEventListener("click", () => saveUiConfig({ editor_line_style: btn.dataset.line }));
+  });
+  document.querySelector("#fontMinus").addEventListener("click", () => {
+    saveUiConfig({ editor_font_size: Math.max(12, uiConfig.editor_font_size - 1) });
+  });
+  document.querySelector("#fontPlus").addEventListener("click", () => {
+    saveUiConfig({ editor_font_size: Math.min(28, uiConfig.editor_font_size + 1) });
+  });
+  renderSettingsState();
+}
+
+function openSettings() {
+  const overlay = document.querySelector("#settings");
+  if (!overlay) return;
+  overlay.hidden = false;
+  renderSettingsState();
+}
+
 async function initWelcome() {
   const el = document.querySelector("#welcome");
   const host = window.serapiHost;
@@ -636,6 +706,7 @@ async function initWelcome() {
     const reply = await host.sidecar.call("config.get", {});
     config = reply && reply.ok ? reply.result : null;
   } catch (_) {}
+  applyUiConfig(config);
   const query = new URLSearchParams(location.search);
   if (query.has("workspace")) return;
   const force = query.has("welcome") || location.hash === "#welcome";
@@ -723,6 +794,7 @@ async function bootWorkspace() {
   renderHits();
   initSplitter();
   initWelcome();
+  initSettings();
   initEngineEvents();
   initDictionarySelection();
   loadSegmentDetail(state.current);

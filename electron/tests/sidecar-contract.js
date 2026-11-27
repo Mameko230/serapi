@@ -22,6 +22,8 @@ fs.writeFileSync(configPath, JSON.stringify({
   server_names: { 'https://demo.example.invalid/memoqweb': '演示服务器' },
   outer_theme: 'teal',
   editor_theme: 'green',
+  update_last_checked: '2026-11-27',
+  custom_keep: 'ok',
 }));
 
 const rawEngine = JSON.parse(fs.readFileSync(path.join(root, 'fixtures', 'engine-rows-demo.json'), 'utf8'));
@@ -63,6 +65,7 @@ const requests = [
   { id: 11, method: 'dictionary.query', params: { word: '攻撃力' } },
   { id: 12, method: 'write.decide', params: { intent: 'save', state: { locked: false, has_row_id: true } } },
   { id: 13, method: 'write.decide', params: { intent: 'save', state: { tracking: true } } },
+  { id: 14, method: 'config.update', params: { editor_font_size: 18, outer_theme: 'dark' } },
 ];
 const result = spawnSync(python, ['-u', sidecar], {
   cwd: path.join(root, '..'),
@@ -74,7 +77,7 @@ const result = spawnSync(python, ['-u', sidecar], {
 });
 assert.equal(result.status, 0, result.stderr || 'sidecar exited non-zero');
 const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
-assert.equal(lines.length, 13, 'expected thirteen sidecar responses');
+assert.equal(lines.length, 14, 'expected fourteen sidecar responses');
 const ping = JSON.parse(lines[0]);
 const version = JSON.parse(lines[1]);
 const config = JSON.parse(lines[2]);
@@ -88,6 +91,7 @@ const context = JSON.parse(lines[9]);
 const dictionary = JSON.parse(lines[10]);
 const allowed = JSON.parse(lines[11]);
 const blocked = JSON.parse(lines[12]);
+const updated = JSON.parse(lines[13]);
 assert.equal(ping.ok, true);
 assert.equal(ping.result.ok, true);
 assert.equal(version.ok, true);
@@ -130,6 +134,12 @@ assert.equal(allowed.result.allowed, true);
 assert.equal(blocked.ok, true);
 assert.equal(blocked.result.allowed, false);
 assert.ok(blocked.result.reason.includes('跟踪修改'));
+assert.equal(updated.ok, true);
+assert.equal(updated.result.config.editor_font_size, 18);
+assert.equal(updated.result.config.outer_theme, 'dark');
+const savedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+assert.equal(savedConfig.custom_keep, 'ok');
+assert.equal(savedConfig.update_last_checked, '2026-11-27');
 assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf8')).memoq_url,
   'https://demo.example.invalid/memoqweb');
 fs.rmSync(tmpDir, { recursive: true, force: true });

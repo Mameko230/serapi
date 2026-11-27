@@ -178,6 +178,15 @@ async function captureAndQuit(target) {
         console.error('[serapi] capture write failed:', err);
       }
     }
+    if (!captureEngine && process.env.SERAPI_CAPTURE_SETTINGS === '1') {
+      try {
+        await workspace.webContents.executeJavaScript(
+          "document.querySelector('[data-action=\"设置\"]')?.click(); true", true);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      } catch (err) {
+        console.error('[serapi] capture settings failed:', err);
+      }
+    }
     if (!captureEngine && process.env.SERAPI_CAPTURE_SELECT === '1') {
       try {
         await workspace.webContents.executeJavaScript(`(() => {
