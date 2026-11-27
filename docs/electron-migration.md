@@ -98,14 +98,16 @@ Electron main
 - QA 已接入：Engine `window.__mdLint.analyze` 通过 `engine:lint` 调用，规则由 sidecar `qa.config` 读取 `app/qa_rules.json`；
 - 段信息已接入：Engine `segmentInfo(rowNo)` → contextId/comments/speaker（有则用）；
 - TM/TB 已接入：Engine `tmHitsReq` + `tmHitsPoll` → sidecar `workspace.normalize_hits` → 右栏列表/固定详情；
-- 真实路径 fixture：`engine/fixture-api.html`（listRows + readSegment + segmentInfo + tmHits + QA lint）；
-- 真实数据路径截图：`electron/preview-realpath-fixture.png`（3 行合成数据，含 QA、段信息、TM/TB）；
+- 语境已接入：Engine `previewContextReq` / `preview-context` 事件 → 主进程转发 `engine:event` → sidecar `workspace.normalize_context` → 语境带；
+- Engine 事件转发通道：`engine:bridge` → `workspace.webContents.send('engine:event')` → preload `onEngineEvent`；
+- 真实路径 fixture：`engine/fixture-api.html`（listRows + readSegment + segmentInfo + tmHits + previewContext + QA lint）；
+- 真实数据路径截图：`electron/preview-realpath-fixture.png`（3 行合成数据，含 QA、段信息、TM/TB、语境）；
 - Workspace 截图（完整合成快照）：`electron/preview-electron.png`。
 
 **Step 3 待办**
 
-- 真实登录页/项目页验证 `listRows`/`readSegment`/`segmentInfo`/`tmHits` 返回形状；
-- 语境、词典接入真实路径；
+- 真实登录页/项目页验证各 Engine API 返回形状与事件时序；
+- 词典接入真实路径（先做选中词查询）；
 - 真实项目名/语言/进度从 Engine 状态读取；
 - 写路径保留在 Python sidecar，并补 WritePolicy 回归；
 - 真实数据接入前，任何真实 memoQ 正文不得写日志/截图。

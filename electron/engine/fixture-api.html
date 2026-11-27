@@ -34,6 +34,18 @@
             ]
           };
         },
+        previewContextReq: function () {
+          return {
+            ok: true,
+            rows: [
+              { rowNo: 1, sourcecell: '最初の行です。', speaker: '', maxLen: 0, extras: [] },
+              { rowNo: 2, sourcecell: '二番目の行です。', speaker: 'アリス', maxLen: 42, extras: [] },
+              { rowNo: 3, sourcecell: '三番目の行です。', speaker: '', maxLen: 0, extras: [] },
+              { rowNo: 4, sourcecell: '四番目の行です。', speaker: '', maxLen: 0, extras: [] },
+              { rowNo: 5, sourcecell: '五番目の行です。', speaker: '', maxLen: 0, extras: [] }
+            ]
+          };
+        },
         tmHitsReq: function (rowNo) {
           window.__fixtureTm = {
             status: 'done',

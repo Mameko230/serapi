@@ -285,6 +285,44 @@ async function loadHitsForSegment(seg, index) {
   } catch (_) {}
 }
 
+async function applyContextRows(rows, currentNo, currentText) {
+  const host = window.serapiHost;
+  if (!host || !host.sidecar) return;
+  try {
+    const normalized = await host.sidecar.call("workspace.normalize_context", {
+      rows: rows || [], currentNo, currentText: currentText || "",
+    });
+    if (!normalized || !normalized.ok || !normalized.result || !normalized.result.ok) return;
+    contextLines = normalized.result.contextLines || [];
+    renderContext();
+    document.querySelector("#contextPanel").hidden = !contextLines.some((line) => line[1]);
+  } catch (_) {}
+}
+
+async function loadContextForSegment(seg, index) {
+  if (workspaceSource !== "engine-listRows") return;
+  const host = window.serapiHost;
+  if (!host || !host.invokeEngineApi) return;
+  try {
+    const started = await host.invokeEngineApi("previewContextReq", []);
+    if (segments[index] !== seg) return;
+    if (started && started.ok && started.value && Array.isArray(started.value.rows)) {
+      await applyContextRows(started.value.rows, seg.no, seg.src);
+    }
+  } catch (_) {}
+}
+
+function initEngineEvents() {
+  const host = window.serapiHost;
+  if (!host || !host.onEngineEvent) return;
+  host.onEngineEvent((event) => {
+    if (!event || event.type !== "preview-context") return;
+    const data = event.data || {};
+    if (!data.ok || !Array.isArray(data.rows) || !segments[state.current]) return;
+    applyContextRows(data.rows, segments[state.current].no, segments[state.current].src);
+  });
+}
+
 async function loadSegmentDetail(index) {
   if (workspaceSource !== "engine-listRows") return;
   const host = window.serapiHost;
@@ -337,6 +375,7 @@ async function loadSegmentDetail(index) {
     renderQA();
     renderEditor(seg);
     loadHitsForSegment(seg, index);
+    loadContextForSegment(seg, index);
     $("#statusNote").textContent = `第 ${seg.no} 段 · 已载入译文`;
   } catch (_) {
     seg._detailLoaded = false;
@@ -556,6 +595,7 @@ async function bootWorkspace() {
   renderHits();
   initSplitter();
   initWelcome();
+  initEngineEvents();
   loadSegmentDetail(state.current);
 }
 bootWorkspace();

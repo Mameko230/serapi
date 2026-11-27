@@ -71,6 +71,10 @@ assert.match(workspaceJs, /lintEngine/, 'workspace runs QA through the Engine li
 assert.match(workspaceJs, /qa\.config/, 'workspace reads QA rules from the sidecar');
 assert.match(workspaceJs, /loadHitsForSegment/, 'workspace loads TM/TB hits');
 assert.match(workspaceJs, /workspace\.normalize_hits/, 'workspace normalizes hits in the sidecar');
+assert.match(workspaceJs, /initEngineEvents/, 'workspace listens to forwarded Engine events');
+assert.match(workspaceJs, /workspace\.normalize_context/, 'workspace normalizes context in the sidecar');
+assert.match(preload, /onEngineEvent/, 'preload exposes Engine event forwarding');
+assert.match(main, /engine:event/, 'main forwards Engine events to the workspace');
 assert.match(workspaceJs, /tmHitsPoll/, 'TM/TB polling is wired through engine API');
 assert.match(main, /engine:lint/, 'main exposes engine:lint IPC');
 

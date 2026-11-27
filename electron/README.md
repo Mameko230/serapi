@@ -74,6 +74,9 @@ Captures the workspace View, then exits.
   execution stays in the Engine page via `engine:lint`.
 - TM/TB hits: Engine `tmHitsReq` + `tmHitsPoll` → sidecar
   `workspace.normalize_hits` → right-rail list and pinned detail.
+- Context: `previewContextReq` + `preview-context` events are forwarded from the
+  Engine through `engine:event`; sidecar `workspace.normalize_context` builds the
+  five-line ribbon.
 - Reverse Engine API: `serapiHost.invokeEngineApi(method, args)` → restricted
   `window.__md.api.<method>` call. The allowlist is `engine-api-allowlist.json`.
 - Tests: `npm test` runs host + sidecar contract guards.

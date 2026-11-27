@@ -362,6 +362,42 @@ def _workspace_normalize_hits(params):
         })
     return {"ok": True, "hits": out[:60]}
 
+
+def _workspace_normalize_context(params):
+    """Normalize memoQ preview-context rows into the five-line ribbon."""
+    raw_rows = (params or {}).get("rows") or []
+    if not isinstance(raw_rows, list):
+        return {"ok": False, "error": "context-rows-not-list"}
+    try:
+        current = int((params or {}).get("currentNo") or 0)
+    except (TypeError, ValueError):
+        current = 0
+    by_no = {}
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            no = int(row.get("rowNo"))
+        except (TypeError, ValueError):
+            continue
+        by_no[no] = row
+    slots = [("前 · 2", -2), ("前 · 1", -1), ("当前", 0), ("后 · 1", 1), ("后 · 2", 2)]
+    lines = []
+    for label, offset in slots:
+        row = by_no.get(current + offset) or {}
+        text = str(row.get("sourcecell") or "").strip()
+        if not text and offset == 0:
+            text = str((params or {}).get("currentText") or "").strip()
+        if not text:
+            speaker = str(row.get("speaker") or "").strip()
+            max_len = row.get("maxLen")
+            if speaker:
+                text = speaker
+            elif max_len:
+                text = "%s 字上限" % max_len
+        lines.append([label, text[:160]])
+    return {"ok": True, "contextLines": lines}
+
 METHODS = {
     "ping": _ping,
     "version": _version,
@@ -373,6 +409,7 @@ METHODS = {
     "workspace.normalize_segment": _workspace_normalize_segment,
     "qa.config": _qa_config,
     "workspace.normalize_hits": _workspace_normalize_hits,
+    "workspace.normalize_context": _workspace_normalize_context,
 }
 
 

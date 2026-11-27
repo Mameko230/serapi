@@ -10,5 +10,11 @@ contextBridge.exposeInMainWorld('serapiHost', {
   sidecar: {
     call: (method, params) => ipcRenderer.invoke('sidecar:call', String(method), params || {}),
   },
+  onEngineEvent: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('engine:event', listener);
+    return () => ipcRenderer.removeListener('engine:event', listener);
+  },
   info: () => ipcRenderer.invoke('host:info'),
 });

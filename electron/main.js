@@ -231,6 +231,9 @@ ipcMain.on('engine:bridge', (_event, payload) => {
     const parsed = JSON.parse(String(payload));
     lastEngineEvent = { type: parsed.type || '', time: Date.now() };
     console.log('[serapi] engine event:', lastEngineEvent.type);
+    if (workspace && !workspace.webContents.isDestroyed()) {
+      workspace.webContents.send('engine:event', parsed);
+    }
   } catch (_err) {
     console.error('[serapi] invalid engine bridge payload');
   }
