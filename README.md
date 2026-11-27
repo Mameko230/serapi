@@ -11,6 +11,7 @@
 ## 从哪开始
 
 - 普通用户：下载安装包（推荐），不需要安装 Python。
+- 开发 agent / 贡献者：先从 [AGENTS.md](AGENTS.md) 与 [docs/AGENT_CHECKLIST.md](docs/AGENT_CHECKLIST.md) 开始；本仓库的质量门禁、提交纪律和真机冒烟要求以该清单为准。
 - 想了解边界与风险： [ROADMAP.md](ROADMAP.md)、[CONTRIBUTING.md](CONTRIBUTING.md)、[docs/SMOKE.md](docs/SMOKE.md)。
 - 桥接/页面改版： [docs/BRIDGE_CONTRACT.md](docs/BRIDGE_CONTRACT.md)。
 

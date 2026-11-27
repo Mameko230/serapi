@@ -1,5 +1,7 @@
 # 贡献指南与红线
 
+> 开发 agent 必须遵守 [AGENTS.md](AGENTS.md) 与 [docs/AGENT_CHECKLIST.md](docs/AGENT_CHECKLIST.md)；以下为面向人的补充说明。
+
 ## 红线（PR 必须遵守）
 
 1. **只通过 memoQ 页面公开 API / 页面状态交互**。
