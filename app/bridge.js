@@ -346,7 +346,7 @@
           rowStatus: newRowStatusFromMeta, refreshRow: newRefreshRowCache,
           rowsJump: newRowsApiJump, editFlags: newEditFlags,
           activeView: newActiveView, anyView: newAnyView, detect: detectEditor,
-          pageConfirmInput: pageConfirmInput,
+          pageConfirmInput: pageConfirmInput, batchRowActions: true,
           push: function (type, payload) { try { __md.push(type, payload); } catch (e) {} },
         });
       }

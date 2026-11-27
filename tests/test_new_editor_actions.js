@@ -89,6 +89,7 @@ function load() {
       source: { symbols: [] }, target: { symbols: [{ type: 1, value: 65 }] },
     });
   };
+  let lastBatchAction = '';
   const context = {
     console, URL, JSON, Date, Promise, Object, Array, String, Number, Boolean, Math,
     parseInt, isFinite, encodeURIComponent, decodeURIComponent,
@@ -113,10 +114,25 @@ function load() {
       fetches.push({ url, options, body });
       const action = /\/rows\/(\d+)\/(confirm|reject)$/.exec(url);
       if (action) {
-        const status = action[2] === 'confirm' ? 'reviewer1Confirmed' : 'rejected';
         return Promise.resolve({
           ok: true, status: 200,
-          json: () => Promise.resolve({ row: { meta: { status: status } } }),
+          json: () => Promise.resolve({ jobId: 'job-1' }),
+        });
+      }
+      if (url.endsWith('/rows/confirm') || url.endsWith('/rows/reject')) {
+        lastBatchAction = url.endsWith('/rows/confirm') ? 'confirm' : 'reject';
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ jobId: 'job-2' }),
+        });
+      }
+      if (url.endsWith('/rows')) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve([{
+            id: 4, meta: { status: lastBatchAction === 'reject' ? 'rejected' : 'reviewer1Confirmed' },
+            target: { symbols: [{ type: 1, value: 65 }] },
+          }]),
         });
       }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
@@ -142,9 +158,10 @@ assert.strictEqual(cap.features.confirm, true);
 assert.strictEqual(cap.features.reject, true);
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 (async () => {
-  // 1) 确认第 5 行：rowNo=5 → rowId=4，POST /rows/4/confirm，body 带 AutoOptions。
+  // 1) 确认第 5 行：rowNo=5 → rowId=4，走原生批量 rows/confirm，再轮询行状态。
   ctx.__fetches.length = 0;
   ctx.__pushes.length = 0;
   let ret = api.confirmSegment(5);
@@ -152,11 +169,12 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
   assert.strictEqual(ret.pending, true);
   assert.strictEqual(ret.rowNo, 5);
   assert.strictEqual(String(ret.rowId), '4');
-  await tick();
+  await delay(450);
   const confirmReq = ctx.__fetches.find(
-    (f) => f.url.endsWith('/rows/4/confirm'));
+    (f) => f.url.endsWith('/rows/confirm'));
   assert.ok(confirmReq, ctx.__fetches.map((f) => f.url));
-  assert.deepStrictEqual(confirmReq.body, { AutoOptions: {} });
+  assert.deepStrictEqual(confirmReq.body,
+    { rowIds: [4], saveToTranslationMemory: true, autoOptions: {} });
   const confirmPush = ctx.__pushes.map((p) => JSON.parse(p))
     .find((p) => p.type === 'row-action-result');
   assert.ok(confirmPush, ctx.__pushes);
@@ -166,14 +184,14 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
   assert.strictEqual(confirmPush.data.status, 'reviewer1Confirmed');
   assert.strictEqual(confirmPush.data.mappedStatus, 'reviewer1');
 
-  // 2) 拒绝第 3 行：rowNo=3 → rowId=2，POST /rows/2/reject。
+  // 2) 拒绝第 3 行：rowNo=3 → rowId=2，走原生批量 rows/reject。
   ctx.__fetches.length = 0;
   ctx.__pushes.length = 0;
   ret = api.rejectSegment(3);
   assert.strictEqual(ret.ok, true);
   assert.strictEqual(String(ret.rowId), '2');
-  await tick();
-  const rejectReq = ctx.__fetches.find((f) => f.url.endsWith('/rows/2/reject'));
+  await delay(450);
+  const rejectReq = ctx.__fetches.find((f) => f.url.endsWith('/rows/reject'));
   assert.ok(rejectReq, ctx.__fetches.map((f) => f.url));
   const rejectPush = ctx.__pushes.map((p) => JSON.parse(p))
     .find((p) => p.type === 'row-action-result');
@@ -202,8 +220,8 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
   pm.events.length = 0;
   ctx.__fetches.length = 0;
   api.confirmSegment(1);
-  await tick();
-  assert.ok(ctx.__fetches.some((f) => f.url.endsWith('/rows/0/confirm')),
+  await delay(450);
+  assert.ok(ctx.__fetches.some((f) => f.url.endsWith('/rows/confirm')),
     ctx.__fetches.map((f) => f.url));
   assert.strictEqual(pm.events.length, 0, pm.events);
 

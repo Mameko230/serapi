@@ -14,9 +14,16 @@
       }
       var headers = deps.headers();
       headers['Content-Type'] = 'application/json';
-      deps.fetch(base + '/rows/' + rowId + '/' + action, {
+      var batch = !!(deps.batchRowActions && (action === 'confirm' || action === 'reject'));
+      var url = batch ? (base + '/rows/' + action)
+                      : (base + '/rows/' + rowId + '/' + action);
+      var body = batch ? { rowIds: [Number(rowId)],
+                           saveToTranslationMemory: action === 'confirm',
+                           autoOptions: {} }
+                       : { AutoOptions: {} };
+      deps.fetch(url, {
         method: 'POST', credentials: 'same-origin', headers: headers,
-        body: JSON.stringify({ AutoOptions: {} }),
+        body: JSON.stringify(body),
       }).then(function (r) {
         return r.json().then(function (body) { return { status: r.status, body: body }; })
           .catch(function () { return { status: r.status, body: null }; });
@@ -25,20 +32,55 @@
           var b = res.body || {};
           throw new Error(b.detail || b.title || b.ErrorMessage || ('HTTP ' + res.status));
         }
-        var row = (res.body && (res.body.row || res.body)) || {};
-        var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
-        var mappedStatus = '';
-        try {
-          var cached = null;
-          try { cached = deps.rowsState().rows[target] || null; } catch (e) {}
-          mappedStatus = deps.rowStatus(
-            { status: status }, cached ? !!cached.tgt : true);
-        } catch (e) {}
-        try { deps.refreshRow(rowId); } catch (e) {}
-        deps.push('row-action-result', {
-          ok: true, action: action, rowNo: target, rowId: rowId, status: status,
-          mappedStatus: mappedStatus,
-        });
+        if (!batch) {
+          var row = (res.body && (res.body.row || res.body)) || {};
+          var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
+          var mappedStatus = '';
+          try {
+            var cached = null;
+            try { cached = deps.rowsState().rows[target] || null; } catch (e) {}
+            mappedStatus = deps.rowStatus(
+              { status: status }, cached ? !!cached.tgt : true);
+          } catch (e) {}
+          try { deps.refreshRow(rowId); } catch (e) {}
+          deps.push('row-action-result', {
+            ok: true, action: action, rowNo: target, rowId: rowId, status: status,
+            mappedStatus: mappedStatus,
+          });
+          return;
+        }
+        // 原生批量 job 返回 jobId；轮询目标行拿到真实 meta.status（TR/R1/R2 阶段不同）
+        var tries = 0;
+        function poll() {
+          tries += 1;
+          var h2 = deps.headers();
+          h2['Content-Type'] = 'application/json';
+          deps.fetch(base + '/rows', {
+            method: 'POST', credentials: 'same-origin', headers: h2,
+            body: JSON.stringify({ rowIds: [Number(rowId)], scope: 'entireRow' }),
+          }).then(function (r2) { return r2.json(); }).then(function (rows) {
+            var row = (rows && rows[0]) || {};
+            var st = (row.meta && row.meta.status) ? String(row.meta.status) : '';
+            if (!st && tries < 5) { setTimeout(poll, 250); return; }
+            var mapped = '';
+            try {
+              mapped = deps.rowStatus({ status: st }, !!(row.target && row.target.symbols
+                && row.target.symbols.length));
+            } catch (e) {}
+            try { deps.refreshRow(rowId); } catch (e) {}
+            deps.push('row-action-result', {
+              ok: true, action: action, rowNo: target, rowId: rowId,
+              status: st, mappedStatus: mapped,
+            });
+          }).catch(function (e) {
+            if (tries < 5) { setTimeout(poll, 250); return; }
+            deps.push('row-action-result', {
+              ok: false, action: action, rowNo: target, rowId: rowId,
+              err: String(e.message || e).slice(0, 200),
+            });
+          });
+        }
+        setTimeout(poll, 250);
       }).catch(function (e) {
         deps.push('row-action-result', {
           ok: false, action: action, rowNo: target, rowId: rowId,
