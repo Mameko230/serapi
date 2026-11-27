@@ -22,6 +22,7 @@ datas = [
     ("app/row_ops.js", "app"),
     ("app/tm_hits.js", "app"),
     ("app/segment_api.js", "app"),
+    ("app/preview_context.js", "app"),
     ("app/old_editor.js", "app"),
     ("app/segment_view.js", "app"),
     ("app/capabilities.js", "app"),
