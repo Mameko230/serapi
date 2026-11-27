@@ -4,5 +4,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('serapiHost', {
   showEngine: () => ipcRenderer.invoke('engine:show'),
   hideEngine: () => ipcRenderer.invoke('engine:hide'),
+  loadEngine: (url) => ipcRenderer.invoke('engine:load', String(url)),
   info: () => ipcRenderer.invoke('host:info'),
 });

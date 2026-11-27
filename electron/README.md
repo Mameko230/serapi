@@ -47,7 +47,40 @@ Captures the workspace View, then exits.
 - Engine BrowserView is detached until the workspace calls `serapiHost.showEngine()`
   (the toolbar’s “引擎” button).
 - Both views share the `persist:serapi` profile.
-- The engine page is a placeholder; step 2 replaces it with the real memoQ URL
-  and the existing bridge injection.
+- The engine page defaults to a placeholder; step 2 injects the same bridge bundle
+  as `app/bridge.py` through `bridge-inject.js` + `qwebchannel-shim.js`.
+- Set a server URL for the engine only through the environment at this stage:
 
-See [docs/electron-migration.md](../docs/electron-migration.md) for the phased plan.
+  ```powershell
+  $env:SERAPI_ENGINE_URL="https://your-server/memoqweb"
+  npm start -- --no-sandbox
+  ```
+
+  The IPC path `serapiHost.loadEngine(url)` validates http/https and rejects
+  credentials embedded in the URL. It will be wired to the Web account/welcome
+  page in step 4.
+
+## Bridge fixture
+
+A synthetic page verifies the injection pipeline without a memoQ server:
+
+```powershell
+$env:SERAPI_ENGINE_FIXTURE="1"
+$env:SERAPI_ENGINE_SHOW="1"
+$env:SERAPI_CAPTURE="preview-electron.png"
+$env:SERAPI_CAPTURE_ENGINE="preview-engine-fixture.png"
+npm start -- --no-sandbox
+```
+
+Expected main-process log: `[serapi] engine event: bridge-ready`.
+Screenshot: `preview-engine-fixture.png`.
+
+The fixture contains no project data, credentials or real server URL.
+
+## Not done yet
+
+- Real memoQ login/project navigation and cookie persistence verification.
+- Reverse bridge channel (main/Python calling `window.__md.api.*`).
+- SSO popups, downloads, certificate errors and proxy parity.
+- Python sidecar and actual data wiring.
+- PyQt removal.

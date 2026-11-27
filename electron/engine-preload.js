@@ -1,8 +1,9 @@
-// Engine preload placeholder. Later this loads the bridge injection and
-// exposes a controlled API to the host; for step 1 it only marks readiness.
-const { contextBridge } = require('electron');
+// Engine preload: controlled transport between the memoQ page and Electron main.
+// The bridge bundle is injected into the main world by main.js.
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('serapiEngine', {
   ready: true,
   host: 'electron-migration',
+  push: (payload) => ipcRenderer.send('engine:bridge', String(payload)),
 });

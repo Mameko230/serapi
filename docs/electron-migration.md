@@ -48,12 +48,28 @@ Electron main
 - 列宽拖拽已进入工作区：`col-resizer`，比例持久化，双击恢复 40/60。
 - `electron/tests/host-contract.js` 是静态守卫，不启动 Electron。
 
-### Step 2 — Engine WebView 接管
+### Step 2 — Engine WebView 接管（进行中）
 - 接真实 memoQ URL 与登录页；
 - 复刻 QWebEngineScript 的注入时机（document start）+ 现有 bridge；
 - QWebChannel → preload/IPC；
 - cookie、SSO popup、下载、证书错误、代理行为对齐；
 - **待真机验证**：登录保持、刷新后 bridge、项目切换。
+
+**Step 2 已完成部分（2026-11-28）**
+
+- `bridge-inject.js` 按 `bridge.py` 的顺序读取 `app/*.js` + `page_rules.json`，生成注入 bundle；
+- `qwebchannel-shim.js` 提供 `QWebChannel`/`qt.webChannelTransport` 兼容层，`mdBridge.push` 走 `engine-preload.js` → `ipcMain('engine:bridge')`；
+- Engine WebView 在 `dom-ready` 注入，`did-start-navigation` 时重置注入标记；
+- 合成 fixture（`engine/fixture.html`）验证注入成功，主进程收到 `bridge-ready`；
+- 支持 `SERAPI_ENGINE_URL` 环境变量和受限的 `engine:load` IPC（只接受 http/https、禁止 URL 内嵌账号密码）。
+
+**Step 2 待办**
+
+- 真实 memoQ 登录页/项目页验证；
+- 页面刷新、软导航后的重新注入；
+- 反向通道：主进程/Python 调 `window.__md.api.*`（替代 Qt `runJavaScript` 回调）；
+- SSO 弹窗、下载、证书错误、代理；
+- cookie 持久化验证（当前 profile cache ACL 告警未消）。
 
 ### Step 3 — Workspace 数据接线
 - Python sidecar（JSON-RPC over stdio 或回环 HTTP）；
