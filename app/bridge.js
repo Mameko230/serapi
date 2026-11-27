@@ -495,6 +495,10 @@
       for (var j = 0; j < roots.length && !(out.src && out.tgt); j++) {
         scanLangFields(roots[j], 0, out, seen);
       }
+      if (!out.src || !out.tgt) try { var sEl = document.querySelector('[data-segment-type="source"][lang]'), tEl = document.querySelector('[data-segment-type="target"][lang]');
+        if (!out.src && sEl) { out.src = String(sEl.getAttribute('lang') || ''); out.fromDom = true; }
+        if (!out.tgt && tEl) { out.tgt = String(tEl.getAttribute('lang') || ''); out.fromDom = true; }
+      } catch (e) {}
       if (out.src && out.tgt) {
         try { window.__md._docLangs = out; } catch (e) {}
       }
@@ -567,6 +571,7 @@
     function termGetEntry(tb, id, prj) { return newTermsAdd().termGetEntry(tb, id, prj); }
     window.__md.api.termAddReq = function (req, params) { return newTermsAdd().termAddReq(req, params); };
     window.__md.api.termEntryReq = function (req, params) { return newTermsAdd().termEntryReq(req, params); };
+    window.__md.api.termContextReq = function (req) { return newTermsApi().termContext(req); };
     /* 详情栏用：读回原文/译文语言层的 Definition 与术语层 Example（只读）。 */
     window.__md.api.termDetailReq = function (req, params) {
       return newTermsApi().termDetail(req, params);

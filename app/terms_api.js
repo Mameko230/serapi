@@ -319,16 +319,20 @@
         } else {
           prj = deps.termProjectGuidFor(params);
           var docLangs = deps.documentLanguageCodes();
-          srcLang = String(params.sourceLang || docLangs.src || '');
-          tgtLang = String(params.targetLang || docLangs.tgt || '');
+          // DOM 的 lang=jp/zh 只是页面本地化代码，不等于 memoQ TB 的 jpn/zho；
+          // 用它只做“识别成功”判断，实际写条目交给 TB 模板语言层。
+          var domOnly = !!docLangs.fromDom;
+          srcLang = String(params.sourceLang || (domOnly ? '' : (docLangs.src || '')) || '');
+          tgtLang = String(params.targetLang || (domOnly ? '' : (docLangs.tgt || '')) || '');
+          if (domOnly && !params.targetLang) tgtLang = '';
         }
         if (!prj) throw new Error('项目 GUID 未找到');
-        if (kind === 'new' && (!srcLang || !tgtLang)) {
+        if (kind === 'new' && !domOnly && (!srcLang || !tgtLang)) {
           return deps.fail('term-quick-err', req,
             '未能识别文档语言：请先切换到有术语命中的段，再使用 Ctrl+Q');
         }
         var wanted = String(params.tbGuid || '').trim();
-        termTbList(prj, tgtLang).then(function (items) {
+        function withTbList(items) {
           if (!items.length) throw new Error('当前项目没有可用的术语库');
           var chosen = null;
           if (wanted) {
@@ -347,6 +351,8 @@
             });
             return;
           }
+          // 优先使用术语库模板里的真实语言层 code；显式传入的语言码（测试/旧版）
+          // 仍由 termQuickAddEntry 覆盖，DOM lang 兜底时 src/tgt 为空。
           return termQuickAddEntry(req, chosen, source, target, srcLang, tgtLang, prj)
             .then(function () {
               if (core) {
@@ -356,6 +362,11 @@
                 }).catch(function () {});
               }
             });
+        }
+        termTbList(prj, tgtLang).then(function (items) {
+          if (items && items.length) return withTbList(items);
+          // 新版 DOM 语言码不一定是 TB targetLanguage 过滤值；退回不筛选。
+          return termTbList(prj, '').then(withTbList);
         }).catch(function (e) { deps.fail('term-quick-err', req, e.message || e); });
       } catch (e) { deps.fail('term-quick-err', req, e.message || e); }
       return { ok: true };

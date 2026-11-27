@@ -97,27 +97,43 @@ class _AssetCard(QWidget):
 
 
 class _DictHitCard(QFrame):
-    """单个词典命中卡片：词典名 + 可换行释义；长释义默认折叠。"""
+    """单个词典命中卡片：词典色条 + 名称 + 分段释义 + 例句块；长释义默认折叠。"""
+
+    _ACCENTS = ("#3f7ad6", "#0f766e", "#b45309", "#7c3aed")
 
     def __init__(self, hit: dict, parent=None):
         super().__init__(parent)
         self.setObjectName("dictHit")
         self.setStyleSheet(
-            "QFrame#dictHit { background: rgba(255,255,255,210);"
+            "QFrame#dictHit { background: rgba(255,255,255,215);"
             " border: 1px solid rgba(219,228,242,220); border-radius: 10px; }")
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
-        lay.setSpacing(5)
+        name = str(hit.get("name") or "词典")
+        accent = self._ACCENTS[sum(ord(c) for c in name) % len(self._ACCENTS)]
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        bar = QFrame()
+        bar.setFixedWidth(4)
+        bar.setStyleSheet(f"QFrame {{ background: {accent}; border: none;"
+                          " border-radius: 2px; }}")
+        outer.addWidget(bar)
+        content = QWidget()
+        content.setStyleSheet("QWidget { background: transparent; }")
+        lay = QVBoxLayout(content)
+        lay.setContentsMargins(12, 10, 14, 10)
+        lay.setSpacing(4)
+        outer.addWidget(content, 1)
+
         head = QHBoxLayout()
         head.setSpacing(8)
-        name = str(hit.get("name") or "词典")
         name_lab = QLabel(name)
         name_lab.setWordWrap(True)
-        name_lab.setStyleSheet("color:#1d4ed8; font-weight:700; font-size:14px;"
+        name_lab.setStyleSheet(f"color:{accent}; font-weight:700; font-size:14px;"
                                " background: transparent;")
         entries = [str(x) for x in (hit.get("entries") or []) if str(x).strip()]
         count = QLabel(f"{len(entries)} 条释义" if entries else "无释义")
-        count.setStyleSheet("color:#64748b; font-size:12px; background: transparent;")
+        count.setStyleSheet("color:#475569; font-size:11px; background:#eef4ff;"
+                            " border-radius:8px; padding:2px 7px;")
         head.addWidget(name_lab)
         head.addStretch(1)
         head.addWidget(count)
@@ -128,21 +144,52 @@ class _DictHitCard(QFrame):
             empty.setWordWrap(True)
             empty.setStyleSheet("color:#94a3b8; background: transparent;")
             lay.addWidget(empty)
+            self.toggle = None
             return
 
         text = "\n\n".join(_dict_plain_text(x) for x in entries)
-        self._full_text = text
         self._collapsed = len(text) > _DICT_PREVIEW_CHARS
-        self.text_label = QLabel()
-        self.text_label.setWordWrap(True)
-        self.text_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.text_label.setSizePolicy(QSizePolicy.Policy.Ignored,
-                                      QSizePolicy.Policy.Preferred)
-        self.text_label.setStyleSheet(
-            "color:#334155; font-size:13px; background: transparent;"
-            " line-height: 1.45;")
-        lay.addWidget(self.text_label)
+        self._paragraphs = []
+        self._example_boxes = []
+        self._block = QVBoxLayout()
+        self._block.setSpacing(2)
+        lay.addLayout(self._block)
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                spacer = QLabel("")
+                spacer.setFixedHeight(2)
+                self._block.addWidget(spacer)
+                continue
+            is_example = line.startswith(("例", "例文", "例句"))
+            is_heading = (len(line) <= 12 and not line.endswith(("。", "！", "？", ".", "；"))
+                          and line in ("近义词", "词源", "用法", "参考", "同义词", "反义词"))
+            if is_example:
+                box = QFrame()
+                box.setStyleSheet(
+                    "QFrame { background:#f1f6ff; border: none; border-radius:4px; }")
+                bl = QVBoxLayout(box)
+                bl.setContentsMargins(8, 5, 8, 5)
+                lab = QLabel(line)
+                lab.setWordWrap(True)
+                lab.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                lab.setStyleSheet("color:#334155; font-size:13px; background:transparent;")
+                bl.addWidget(lab)
+                self._block.addWidget(box)
+                self._paragraphs.append(box)
+                self._example_boxes.append(box)
+                continue
+            lab = QLabel(line)
+            lab.setWordWrap(True)
+            lab.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            lab.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            weight = "600" if is_heading else "400"
+            lab.setStyleSheet(f"color:{'#1f2937' if is_heading else '#334155'};"
+                              f" font-size:13px; font-weight:{weight};"
+                              " background:transparent;")
+            self._block.addWidget(lab)
+            self._paragraphs.append(lab)
+        self.text_label = self._paragraphs[0] if self._paragraphs else None
 
         self.toggle = None
         if self._collapsed:
@@ -150,19 +197,18 @@ class _DictHitCard(QFrame):
             self.toggle.setStyleSheet(_BUTTON_QSS)
             self.toggle.clicked.connect(self._toggle)
             lay.addWidget(self.toggle, 0, Qt.AlignmentFlag.AlignLeft)
-        self._apply_text()
+        self._apply_collapse()
 
-    def _apply_text(self):
-        text = self._full_text
-        if self._collapsed:
-            text = text[:_DICT_PREVIEW_CHARS].rstrip() + "…"
-        self.text_label.setText(text)
+    def _apply_collapse(self):
+        # 折叠时保留前 6 个段落，避免把开头解释藏掉。
+        for i, widget in enumerate(self._paragraphs):
+            widget.setVisible(not self._collapsed or i < 6)
         if self.toggle is not None:
             self.toggle.setText("展开全部" if self._collapsed else "收起")
 
     def _toggle(self):
         self._collapsed = not self._collapsed
-        self._apply_text()
+        self._apply_collapse()
 
 
 class AssetQueryOverlay(_AssetCard):

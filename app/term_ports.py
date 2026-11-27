@@ -7,6 +7,7 @@ from .res_panel import ResPanel
 
 
 class TermPortsMixin:
+    @staticmethod
     def _term_selection_text(tokens):
         """术语只取选区文字；tag 不带入术语，跨行选区归一为空格。"""
         parts = []
