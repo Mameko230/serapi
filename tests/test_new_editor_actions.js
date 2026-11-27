@@ -114,6 +114,7 @@ function load() {
       fetches.push({ url, options, body });
       const action = /\/rows\/(\d+)\/(confirm|reject)$/.exec(url);
       if (action) {
+        lastBatchAction = action[2];
         return Promise.resolve({
           ok: true, status: 200,
           json: () => Promise.resolve({
@@ -186,7 +187,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   assert.strictEqual(confirmPush.data.status, 'reviewer1Confirmed');
   assert.strictEqual(confirmPush.data.mappedStatus, 'reviewer1');
 
-  // 2) 拒绝第 3 行：rowNo=3 → rowId=2，走原生批量 rows/reject。
+  // 2) 拒绝第 3 行：rowNo=3 → rowId=2，走逐行 rows/<id>/reject，并从服务端复核。
   ctx.__fetches.length = 0;
   ctx.__pushes.length = 0;
   ret = api.rejectSegment(3);

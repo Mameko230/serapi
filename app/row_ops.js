@@ -35,22 +35,32 @@
         if (!batch) {
           var row = (res.body && (res.body.row || res.body)) || {};
           var status = (row.meta && row.meta.status) ? String(row.meta.status) : '';
-          var mappedStatus = '';
-          try {
-            var cached = null;
-            try { cached = deps.rowsState().rows[target] || null; } catch (e) {}
-            mappedStatus = deps.rowStatus(
-              { status: status }, cached ? !!cached.tgt : true);
-          } catch (e) {}
-          try { deps.refreshRow(rowId); } catch (e) {}
-          if (action === 'reject' && deps.activateRow) {
-            // 原生页隐藏时可能不重绘外部 API 改出的状态；重新聚焦该行。
-            try { deps.activateRow(target); } catch (e) {}
+          function finish(st) {
+            var mappedStatus = '';
+            try {
+              var cached = null;
+              try { cached = deps.rowsState().rows[target] || null; } catch (e) {}
+              mappedStatus = deps.rowStatus(
+                { status: st }, cached ? !!cached.tgt : true);
+            } catch (e) {}
+            try { deps.refreshRow(rowId); } catch (e) {}
+            deps.push('row-action-result', {
+              ok: true, action: action, rowNo: target, rowId: rowId,
+              status: st, mappedStatus: mappedStatus,
+            });
           }
-          deps.push('row-action-result', {
-            ok: true, action: action, rowNo: target, rowId: rowId, status: status,
-            mappedStatus: mappedStatus,
-          });
+          // 以服务端重新读取的状态为准，而不是只信动作响应；这样左栏变红
+          // 就代表服务器行状态确实已是 rejected。
+          var headers2 = deps.headers();
+          headers2['Content-Type'] = 'application/json';
+          deps.fetch(base + '/rows', {
+            method: 'POST', credentials: 'same-origin', headers: headers2,
+            body: JSON.stringify({ rowIds: [Number(rowId)], scope: 'entireRow' }),
+          }).then(function (r2) { return r2.json(); }).then(function (rows) {
+            var actual = (rows && rows[0] && rows[0].meta && rows[0].meta.status)
+              ? String(rows[0].meta.status) : status;
+            finish(actual);
+          }).catch(function () { finish(status); });
           return;
         }
         // 原生批量 job 返回 jobId；轮询目标行拿到真实 meta.status（TR/R1/R2 阶段不同）
