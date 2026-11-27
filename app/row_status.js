@@ -33,11 +33,19 @@
         var m = mutations[i];
         var node = m.target;
         try {
-          if (!node || !node.closest || !node.closest('.translation-row')) continue;
+          var roleRow = node && node.closest && node.closest('[role="row"]');
+          if (!roleRow) continue;
           // 编辑器正文的输入不触发状态同步；只看行状态/徽章等非编辑区变化。
           if (inEditor(node)) continue;
-          var row = node.closest('.translation-row');
-          var rid = row && row.getAttribute('data-row-id');
+          // memoQ 新版状态单元格是 .translation-row 的兄弟节点，
+          // 不能只按 .translation-row 过滤，否则拒绝/确认状态永远收不到。
+          var tr = roleRow.querySelector('.translation-row');
+          var rid = tr && tr.getAttribute('data-row-id');
+          if ((rid === null || rid === undefined || rid === '') && node.closest) {
+            var cell = node.closest('[id^="status-cell-"]');
+            var mm = cell && /status-cell-(\d+)/.exec(cell.id || '');
+            if (mm) rid = mm[1];
+          }
           if (rid !== null && rid !== undefined && rid !== '') changedRows[rid] = true;
           if (m.type === 'attributes') { relevant = true; break; }
           if (m.type === 'characterData' && node.parentElement) { relevant = true; break; }
