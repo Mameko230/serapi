@@ -131,6 +131,17 @@ resources/
 The NSIS portable target is currently blocked on this machine by an NSIS mmap
 failure; use the zip target for now.
 
+## Host shell
+
+- Single-instance lock; the second instance focuses the existing window.
+- System tray: workspace / memoQ engine / settings / quit.
+- Closing the window hides it to the tray; “退出 Serapi” is the explicit exit.
+- Global `Ctrl+Shift+W` toggles workspace ↔ engine.
+- On this machine the Electron singleton lock file is denied by AppData ACLs;
+  smoke/capture runs with `SERAPI_DISABLE_SINGLE_INSTANCE=1`. Normal user
+  environments should not need it. Tray/second-instance interaction still needs
+  a real-desktop check.
+
 ## Bridge fixture
 
 A synthetic page verifies the injection pipeline without a memoQ server:

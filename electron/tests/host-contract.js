@@ -83,6 +83,10 @@ assert.match(workspaceJs, /saveCurrentSegment/, 'workspace has a save/confirm pa
 assert.match(workspaceJs, /write\.decide/, 'workspace asks the sidecar WritePolicy before writing');
 assert.match(workspaceJs, /writeSegment/, 'workspace calls Engine writeSegment');
 assert.match(main, /SERAPI_CAPTURE_WRITE/, 'write path has a fixture smoke hook');
+assert.match(main, /requestSingleInstanceLock/, 'host owns a single-instance lock');
+assert.match(main, /new Tray/, 'host creates a system tray');
+assert.match(main, /globalShortcut/, 'host owns a global workspace shortcut');
+assert.ok(fs.existsSync(path.join(root, 'assets', 'icon-32.png')), 'tray icon exists');
 assert.match(preload, /onEngineEvent/, 'preload exposes Engine event forwarding');
 assert.match(main, /engine:event/, 'main forwards Engine events to the workspace');
 assert.match(workspaceJs, /tmHitsPoll/, 'TM/TB polling is wired through engine API');

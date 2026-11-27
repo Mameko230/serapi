@@ -34,6 +34,7 @@
       "qwebchannel-shim.js",
       "sidecar-client.js",
       "engine-api-allowlist.json",
+      "assets/**",
       "workspace/**",
       "engine/**",
       "package.json"

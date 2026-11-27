@@ -18,7 +18,7 @@ assert.ok(pkg.scripts['dist:dir'], 'unpacked build script is wired');
 assert.ok(pkg.scripts['dist:zip'], 'zip distributable script is wired');
 
 const files = build.files || [];
-for (const required of ['main.js', 'preload.js', 'engine-preload.js', 'workspace/**', 'engine/**']) {
+for (const required of ['main.js', 'preload.js', 'engine-preload.js', 'workspace/**', 'engine/**', 'assets/**']) {
   assert.ok(files.includes(required), `packaged files must include ${required}`);
 }
 const resources = build.extraResources || [];

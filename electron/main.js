@@ -3,7 +3,7 @@
 // The engine View is only attached when requested; later steps load the real
 // memoQ URL and inject the existing bridge.
 
-const { app, BrowserWindow, BrowserView, ipcMain, session } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, session, Tray, Menu, nativeImage, globalShortcut } = require('electron');
 const { buildBundle } = require('./bridge-inject');
 const { SidecarClient } = require('./sidecar-client');
 const ENGINE_API = require('./engine-api-allowlist.json').methods;
@@ -28,6 +28,11 @@ let engineBridgeReady = false;
 let engineLastLoadOk = false;
 let sidecar = null;
 let sidecarReady = false;
+let tray = null;
+let isQuitting = false;
+const SINGLE_INSTANCE_DISABLED = process.env.SERAPI_DISABLE_SINGLE_INSTANCE === '1';
+const gotSingleInstanceLock = SINGLE_INSTANCE_DISABLED ? true : app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) app.quit();
 
 const PRELOAD = path.join(__dirname, 'preload.js');
 const WORKSPACE_ENTRY = path.join(__dirname, 'workspace', 'index.html');
@@ -272,6 +277,50 @@ function startSidecar() {
     });
 }
 
+function showWindow() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function showWorkspace() {
+  showWindow();
+  setEngineVisible(false);
+}
+
+function showEngine() {
+  showWindow();
+  setEngineVisible(true);
+}
+
+function createTray() {
+  try {
+    const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon-32.png'));
+    tray = new Tray(icon);
+    tray.setToolTip('Serapi');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: '显示工作区', click: showWorkspace },
+      { label: '显示 memoQ 引擎', click: showEngine },
+      { type: 'separator' },
+      { label: '设置', click: () => {
+        showWorkspace();
+        workspace.webContents.executeJavaScript(
+          'document.querySelector("[data-action=\"设置\"]")?.click(); true', true
+        ).catch(() => {});
+      } },
+      { type: 'separator' },
+      { label: '退出 Serapi', click: () => { isQuitting = true; app.quit(); } },
+    ]));
+    tray.on('click', () => {
+      if (win && win.isVisible() && !win.isMinimized()) win.hide();
+      else showWindow();
+    });
+  } catch (err) {
+    console.error('[serapi] tray failed:', err);
+  }
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1600,
@@ -286,6 +335,10 @@ function createWindow() {
   win.setMenuBarVisibility(false);
   createViews();
   if (ENGINE_SHOW_ON_START) setEngineVisible(true);
+  win.on('close', (event) => {
+    if (!isQuitting) { event.preventDefault(); win.hide(); }
+  });
+  createTray();
   win.on('resize', resizeViews);
   win.webContents.on('did-finish-load', () => {});
   win.once('ready-to-show', () => {
@@ -419,6 +472,7 @@ ipcMain.handle('host:capture', async (_event, target) => {
 });
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   // A dedicated, persisted profile is the Electron equivalent of the
   // QWebEngineProfile used by the current PyQt app. It will be shared by the
   // workspace and the memoQ engine View.
@@ -429,14 +483,30 @@ app.whenReady().then(() => {
   );
   startSidecar();
   createWindow();
+  try {
+    globalShortcut.register('CommandOrControl+Shift+W', () => {
+      if (engineVisible) setEngineVisible(false);
+      else setEngineVisible(true);
+    });
+  } catch (err) {
+    console.error('[serapi] global shortcut failed:', err);
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // Keep the host alive in the tray; explicit Quit is the only exit.
+});
+app.on('second-instance', () => {
+  showWorkspace();
+});
+app.on('will-quit', () => {
+  try { globalShortcut.unregisterAll(); } catch (_) {}
+  if (tray) { try { tray.destroy(); } catch (_) {} tray = null; }
 });
 app.on('before-quit', () => {
+  isQuitting = true;
   if (sidecar) sidecar.close();
 });
