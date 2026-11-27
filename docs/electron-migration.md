@@ -63,9 +63,16 @@ Electron main
 - 合成 fixture（`engine/fixture.html`）验证注入成功，主进程收到 `bridge-ready`；
 - 支持 `SERAPI_ENGINE_URL` 环境变量和受限的 `engine:load` IPC（只接受 http/https、禁止 URL 内嵌账号密码）。
 
+**Step 2 真实登录页冒烟（2026-11-28）**
+
+- 用本机已配置的真实 memoQ 服务器打开登录/落地页，**未记录地址、项目、账号或正文**；
+- `bridge-ready` 事件收到，说明真实页面上的注入与 push 通道可用；
+- 登录/落地页上 `listRows` 返回“仅旧版支持”，符合当前页面没有打开旧版文档的预期；
+- 尚未登录并打开真实文档，因此 `listRows`/`readSegment`/`tmHits` 的真实 editor 形状仍**待登录后验证**。
+
 **Step 2 待办**
 
-- 真实 memoQ 登录页/项目页验证；
+- 登录后打开真实文档，验证 `listRows`/`readSegment`/`tmHits` 返回形状；
 - 页面刷新、软导航后的重新注入；
 - SSO 弹窗、下载、证书错误、代理；
 - cookie 持久化验证（当前 profile cache ACL 告警未消）。

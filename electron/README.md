@@ -92,6 +92,21 @@ Captures the workspace View, then exits.
   credentials embedded in the URL. It will be wired to the Web account/welcome
   page in step 4.
 
+## Engine smoke
+
+The host can verify a real memoQ login page without logging its URL:
+
+```powershell
+$env:SERAPI_ENGINE_URL=$url
+$env:SERAPI_ENGINE_SHOW="1"
+$env:SERAPI_ENGINE_SMOKE="1"
+$env:SERAPI_SMOKE_EXIT="1"
+npm start -- --no-sandbox
+```
+
+Expected line: `ENGINE_SMOKE: ready (login page loaded, bridge injected)`.
+Logs must not include the server origin, project GUID or page content.
+
 ## Bridge fixture
 
 A synthetic page verifies the injection pipeline without a memoQ server:

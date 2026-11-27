@@ -24,6 +24,8 @@ let engineVisible = false;
 let engineInjected = false;
 let bridgeBundle = null;
 let lastEngineEvent = null;
+let engineBridgeReady = false;
+let engineLastLoadOk = false;
 let sidecar = null;
 let sidecarReady = false;
 
@@ -84,6 +86,11 @@ function createViews() {
   } else {
     engine.webContents.loadFile(ENGINE_FIXTURE_API_MODE ? ENGINE_FIXTURE_API : (ENGINE_FIXTURE_MODE ? ENGINE_FIXTURE : ENGINE_ENTRY));
   }
+  engine.webContents.on('did-finish-load', () => { engineLastLoadOk = true; maybeFinishSmoke(); });
+  engine.webContents.on('did-fail-load', (_e, code, desc) => {
+    engineLastLoadOk = false;
+    console.error('[serapi] engine load failed:', code, String(desc || '').slice(0, 80));
+  });
   engine.webContents.on('dom-ready', () => injectBridge());
   if (ENGINE_FIXTURE_API_MODE) {
     // The synthetic Engine fixture does not run the bridge bundle, but QA needs
@@ -99,7 +106,7 @@ function createViews() {
       setEngineVisible(false);
     }
   });
-  engine.webContents.on('did-start-navigation', () => { engineInjected = false; });
+  engine.webContents.on('did-start-navigation', () => { engineInjected = false; engineBridgeReady = false; });
   // Do not attach the engine view until needed; keeps it out of the workspace.
   resizeViews();
 }
@@ -118,9 +125,7 @@ async function injectBridge() {
   try {
     if (!bridgeBundle) bridgeBundle = buildBundle(APP_DIR);
     await engine.webContents.executeJavaScript(bridgeBundle, true);
-    let safeOrigin = '';
-    try { safeOrigin = new URL(url).origin; } catch (_e) { safeOrigin = 'unknown-origin'; }
-    console.log('[serapi] engine bridge injected:', safeOrigin);
+    console.log('[serapi] engine bridge injected');
     const smokeApi = process.env.SERAPI_ENGINE_INVOKE;
     if (smokeApi) {
       const result = await invokeEngineApi(smokeApi, []);
@@ -203,6 +208,18 @@ async function captureAndQuit(target) {
 }
 
 
+
+function maybeFinishSmoke() {
+  if (process.env.SERAPI_ENGINE_SMOKE !== '1') return;
+  if (!engineLastLoadOk || !engineBridgeReady) return;
+  if (global.__serapiSmokeDone) return;
+  global.__serapiSmokeDone = true;
+  console.log('[serapi] ENGINE_SMOKE: ready (login page loaded, bridge injected)');
+  if (process.env.SERAPI_SMOKE_EXIT === '1') {
+    setTimeout(() => app.quit(), 800);
+  }
+}
+
 function startSidecar() {
   const python = process.env.SERAPI_PYTHON
     || path.join(__dirname, '..', '.venv314', 'Scripts', 'python.exe');
@@ -265,7 +282,12 @@ ipcMain.on('engine:bridge', (_event, payload) => {
   try {
     const parsed = JSON.parse(String(payload));
     lastEngineEvent = { type: parsed.type || '', time: Date.now() };
-    console.log('[serapi] engine event:', lastEngineEvent.type);
+    if (parsed.type === 'bridge-ready') {
+      engineBridgeReady = true;
+      console.log('[serapi] engine bridge ready');
+      maybeFinishSmoke();
+    }
+    if (process.env.SERAPI_DEBUG === '1') console.log('[serapi] engine event:', lastEngineEvent.type);
     if (workspace && !workspace.webContents.isDestroyed()) {
       workspace.webContents.send('engine:event', parsed);
     }
@@ -331,8 +353,17 @@ async function invokeEngineApi(name, args) {
 ipcMain.handle('engine:api', async (_event, name, args) => {
   const result = await invokeEngineApi(name, args);
   if (process.env.SERAPI_DEBUG === '1') {
-    console.log('[serapi] engine api', String(name || ''), result && result.ok ? 'ok' : 'fail',
-      result && result.error ? result.error : '');
+    const r = result && result.value;
+    const shape = {
+      ok: !!(result && result.ok),
+      valueOk: !!(r && r.ok),
+      rows: r && Array.isArray(r.rows) ? r.rows.length : -1,
+      error: result && result.error ? String(result.error).slice(0, 80) : '',
+      valueType: typeof r,
+      valueKeys: r && typeof r === 'object' ? Object.keys(r).slice(0, 8) : [],
+      valueErr: r && r.err ? String(r.err).slice(0, 80) : '',
+    };
+    console.log('[serapi] engine api', String(name || ''), JSON.stringify(shape));
   }
   return result;
 });
@@ -355,6 +386,7 @@ ipcMain.handle('host:info', () => ({
   engineVisible,
   engineUrl: engine ? engine.webContents.getURL() : '',
   lastEngineEvent,
+  engineBridgeReady,
   sidecarReady,
 }));
 ipcMain.handle('host:capture', async (_event, target) => {
