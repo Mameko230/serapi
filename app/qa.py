@@ -100,6 +100,25 @@ def build_payload(source_tokens, target_tokens, *, config: QaConfig,
     return payload
 
 
+def format_warning_message(issue: dict, tag_display: str = "short") -> str:
+    """Tag 差额按编辑器长短显格式化；旧响应没有 tagNo 时保留原 message。"""
+    message = str((issue or {}).get("message") or "")
+    if (issue or {}).get("rule") != "tags":
+        return message
+    no = str((issue or {}).get("tagNo") or "").strip()
+    if not no:
+        return message
+    count = int((issue or {}).get("tagCount") or 0)
+    action = "缺少" if (issue or {}).get("tagMissing") else "多出"
+    text = f"{action} tag #{no}"
+    value = str((issue or {}).get("tagValue") or "").strip()
+    if tag_display == "long" and value:
+        text += f"（{value}）"
+    if count > 0:
+        text += f"（{count} 个）"
+    return text
+
+
 def normalize_result(raw) -> dict:
     if isinstance(raw, str):
         try:
@@ -117,6 +136,10 @@ def normalize_result(raw) -> dict:
             "label": str(item.get("label") or RULE_LABELS.get(item.get("rule"), item.get("rule") or "")),
             "line": max(0, int(item.get("line") or 0)),
             "message": str(item.get("message") or ""),
+            "tagNo": str(item.get("tagNo") or ""),
+            "tagValue": str(item.get("tagValue") or ""),
+            "tagMissing": bool(item.get("tagMissing")),
+            "tagCount": max(0, int(item.get("tagCount") or 0)),
         })
     counts = raw.get("counts") if isinstance(raw.get("counts"), dict) else {}
     return {"ok": True, "warnings": warnings,

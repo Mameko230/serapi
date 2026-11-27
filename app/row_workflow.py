@@ -5,6 +5,7 @@
 """
 
 import json
+import time
 
 from PyQt6.QtCore import QTimer
 
@@ -37,6 +38,7 @@ class RowWorkflowMixin:
                 return
         self._confirm_busy = True
         self._confirm_seq += 1
+        self._confirm_t0 = time.perf_counter()
         confirm_id = self._confirm_seq
 
         def release_if_stuck():
@@ -190,6 +192,22 @@ class RowWorkflowMixin:
         if callable(select):
             select()
 
+    def _on_row_action_accepted(self, data):
+        """批量确认已受理：先跳到下一行，状态回执稍后回填。"""
+        data = data or {}
+        if str(data.get("action") or "") != "confirm":
+            return
+        try:
+            row_no = int(data.get("rowNo") or self._cur_row)
+        except (TypeError, ValueError):
+            return
+        self._confirm_jumped_from = row_no
+        target = self._next_unlocked_row(row_no)
+        if target is None:
+            return
+        self.log(f"确认已受理，先跳到第 {target} 行；状态稍后回填")
+        self._jump_to_row(target)
+
     def _on_row_action(self, data):
         """新版确认/拒绝 HTTP 结果：按行号落状态、刷缓存，并处理确认后跳转。"""
         data = data or {}
@@ -197,6 +215,7 @@ class RowWorkflowMixin:
         label = "确认" if action == "confirm" else "拒绝"
         if not data.get("ok"):
             self._confirm_busy = False
+            self._confirm_jumped_from = None
             self.log(f"{label}失败：{data.get('err') or '未知错误'}")
             self.res_panel.set_status(f"{label}失败：{data.get('err') or '未知错误'}")
             return
@@ -220,10 +239,18 @@ class RowWorkflowMixin:
         if callable(stats_fn):
             QTimer.singleShot(700, stats_fn)
         if action == "confirm":
-            self.log(f"memoQ 已确认第 {row_no} 行" + (f"（{status}）" if status else ""))
-            target = self._next_unlocked_row(row_no)
-            if target is not None:
-                self._jump_to_row(target)
+            elapsed = ""
+            t0 = getattr(self, "_confirm_t0", None)
+            if t0 is not None:
+                elapsed = f"（{int((time.perf_counter() - t0) * 1000)} ms）"
+                self._confirm_t0 = None
+            self.log(f"memoQ 已确认第 {row_no} 行" + (f"（{status}）" if status else "") + elapsed)
+            jumped_from = getattr(self, "_confirm_jumped_from", None)
+            self._confirm_jumped_from = None
+            if jumped_from != row_no:
+                target = self._next_unlocked_row(row_no)
+                if target is not None:
+                    self._jump_to_row(target)
         else:
             self.log(f"memoQ 已拒绝第 {row_no} 行（状态 {status or 'rejected'}）")
             self.res_panel.set_status(f"第 {row_no} 行已拒绝")

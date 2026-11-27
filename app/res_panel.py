@@ -465,16 +465,21 @@ class ResPanel(QWidget):
                 return ""
             value = f'<b>{esc(terms[0])}</b>'
             if len(terms) > 1:
-                value += ('<br><span style="font-weight:normal; color:#475569;">'
-                          + esc("；".join(terms[1:])) + '</span>')
-            return value
+                value += ('<div style="font-weight:normal; color:#475569; '
+                          'line-height:160%; margin-top:2px;">'
+                          + esc("；".join(terms[1:])) + '</div>')
+            return f'<div style="font-size:13px; line-height:160%;">{value}</div>'
 
         def definition_html(lang):
-            return esc(lang.get("definition"))
+            value = esc(lang.get("definition"))
+            return f'<div style="line-height:165%; color:#334155;">{value}</div>' if value else ""
 
         def examples_html(lang):
             values = [str(x) for x in (lang.get("examples") or []) if str(x or "").strip()]
-            return "<br>".join(esc(v) for v in values)
+            if not values:
+                return ""
+            return ('<div style="line-height:165%; color:#475569;">'
+                    + "<br>".join(esc(v) for v in values) + '</div>')
 
         def fields_html(lang):
             items = []
@@ -485,15 +490,21 @@ class ResPanel(QWidget):
                 value = str(item.get("value") or "").strip()
                 if value:
                     items.append((esc(name) + "：" if name else "") + esc(value))
-            return "<br>".join(items)
+            if not items:
+                return ""
+            return ('<div style="line-height:160%; color:#64748b;">'
+                    + "<br>".join(items) + '</div>')
 
         def head_cell(lang):
             role = str(lang.get("role") or "other")
             code = esc(lang.get("code"))
-            return (f'<td width="{width}" valign="top" style="border-bottom:1px solid #e2e8f0;">'
+            return (f'<td width="{width}" valign="top" '
+                    'style="padding:5px 8px 7px; border-bottom:1px solid #dbe4f0; '
+                    'background:#f8fafc;">'
                     f'<span style="color:{role_color.get(role, "#0f766e")}; font-weight:bold;">'
                     f'{role_name.get(role, "语言")}</span>'
-                    + (f' <span style="color:#8a93a6;">{code}</span>' if code else "")
+                    + (f'<div style="color:#8a93a6; font-size:11px; margin-top:2px;">{code}</div>'
+                       if code else "")
                     + '</td>')
 
         fields = [
@@ -507,11 +518,14 @@ class ResPanel(QWidget):
             if not any(render(lang) for lang in cols):
                 continue
             cells = "".join(
-                f'<td width="{width}" valign="top">{render(lang)}</td>' for lang in cols)
-            rows.append(f'<tr><td width="36" valign="top" style="color:#9ca3af;">{label}</td>'
-                        + cells + '</tr>')
-        head = '<td width="36"></td>' + "".join(head_cell(lang) for lang in cols)
-        return ('<table width="100%" cellspacing="0" cellpadding="4" style="margin-top:6px;">'
+                f'<td width="{width}" valign="top" style="padding:6px 8px; '
+                f'border-bottom:1px solid #eef2f7;">{render(lang)}</td>' for lang in cols)
+            rows.append(f'<tr><td width="44" valign="top" '
+                        'style="padding:6px 6px 6px 2px; color:#9ca3af; '
+                        f'border-bottom:1px solid #eef2f7;">{label}</td>' + cells + '</tr>')
+        head = '<td width="44"></td>' + "".join(head_cell(lang) for lang in cols)
+        return ('<table width="100%" cellspacing="0" cellpadding="0" '
+                'style="margin-top:8px; border-collapse:collapse;">'
                 f'<tr>{head}</tr>' + "".join(rows) + '</table>')
 
     @staticmethod
@@ -530,17 +544,21 @@ class ResPanel(QWidget):
             if not terms and not definition and not examples:
                 continue
             code = esc(lang.get("code"))
-            block = '<div style="margin-top:5px;">'
+            block = ('<div style="margin-top:8px; padding:8px 10px; '
+                     'background:#f8fafc; border:1px solid #e8edf4; border-radius:8px;">')
             if code:
-                block += f'<span style="color:#0f766e; font-weight:bold;">{code}</span> '
+                block += (f'<div style="color:#0f766e; font-weight:bold; '
+                          f'font-size:12px; margin-bottom:3px;">{code}</div>')
             if terms:
-                block += f'<b>{esc(terms[0])}</b>'
+                block += f'<div style="font-size:13px; line-height:160%;"><b>{esc(terms[0])}</b>'
                 if len(terms) > 1:
                     block += (f' <span style="color:#475569;">（{esc("；".join(terms[1:]))}）</span>')
+                block += '</div>'
             if definition:
-                block += f'<div style="color:#334155;">定义：{esc(definition)}</div>'
+                block += (f'<div style="color:#334155; line-height:165%; margin-top:3px;">'
+                          f'定义：{esc(definition)}</div>')
             if examples:
-                block += ('<div style="color:#475569;">示例：'
+                block += ('<div style="color:#475569; line-height:165%; margin-top:3px;">示例：'
                           + "<br>".join(esc(v) for v in examples) + '</div>')
             field_items = []
             for item in (lang.get("fields") or []):
@@ -551,14 +569,15 @@ class ResPanel(QWidget):
                 if value:
                     field_items.append((esc(name) + "：" if name else "") + esc(value))
             if field_items:
-                block += ('<div style="color:#64748b;">字段：'
+                block += ('<div style="color:#64748b; line-height:160%; margin-top:3px;">字段：'
                           + "<br>".join(field_items) + '</div>')
             block += '</div>'
             blocks.append(block)
         if not blocks:
             return ""
-        return ('<div style="margin-top:8px; padding-top:6px; border-top:1px solid #e2e8f0;'
-                ' color:#8a93a6; font-weight:bold;">其他语言</div>' + "".join(blocks))
+        return ('<div style="margin-top:12px; padding-top:8px; border-top:1px solid #e2e8f0;'
+                ' color:#64748b; font-weight:bold; font-size:12px;">其他语言</div>'
+                + "".join(blocks))
 
     @staticmethod
     def _tb_meta_html(payload):

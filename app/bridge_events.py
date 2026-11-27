@@ -89,6 +89,9 @@ class BridgeEventsMixin:
         if msg.get("type") == "row-action-result":
             self._on_row_action(data)
             return
+        if msg.get("type") == "row-action-accepted":
+            self._on_row_action_accepted(data)
+            return
         if msg.get("type") in ("term-pick-tb", "term-quick-result", "term-quick-err"):
             self._handle_quick_term(msg.get("type"), data)
             return

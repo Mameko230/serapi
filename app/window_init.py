@@ -654,6 +654,7 @@ class WindowInitMixin:
         self.res_panel.set_status("选中段后自动加载 TM/术语命中")
         from .qa_ui import QaPanel
         self.qa_panel = QaPanel(self)
+        self.qa_panel.set_tag_display(self._tag_display)
         self.qa_panel.ruleToggled.connect(self._set_qa_rule)
         self.qa_panel.issueActivated.connect(self._goto_qa_issue)
         self.qa_panel.set_config(self._ensure_qa())

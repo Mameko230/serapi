@@ -37,6 +37,9 @@ class EditorViewMixin:
         self._save_ui_state({"tagDisplay": self._tag_display})
         self._update_tagmode_btn()
         self._rerender_editors()
+        qa_panel = getattr(self, "qa_panel", None)
+        if qa_panel is not None:
+            qa_panel.set_tag_display(self._tag_display)
 
     # ---------------- 空格可视化开关 ----------------
     def _toggle_spaces(self, on: bool):

@@ -172,12 +172,17 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   assert.strictEqual(ret.pending, true);
   assert.strictEqual(ret.rowNo, 5);
   assert.strictEqual(String(ret.rowId), '4');
-  await delay(450);
+  await delay(900);
   const confirmReq = ctx.__fetches.find(
     (f) => f.url.endsWith('/rows/confirm'));
   assert.ok(confirmReq, ctx.__fetches.map((f) => f.url));
   assert.deepStrictEqual(confirmReq.body,
     { rowIds: [4], saveToTranslationMemory: true, autoOptions: {} });
+  const acceptPush = ctx.__pushes.map((p) => JSON.parse(p))
+    .find((p) => p.type === 'row-action-accepted');
+  assert.ok(acceptPush, ctx.__pushes);
+  assert.strictEqual(acceptPush.data.action, 'confirm');
+  assert.strictEqual(acceptPush.data.rowNo, 5);
   const confirmPush = ctx.__pushes.map((p) => JSON.parse(p))
     .find((p) => p.type === 'row-action-result');
   assert.ok(confirmPush, ctx.__pushes);

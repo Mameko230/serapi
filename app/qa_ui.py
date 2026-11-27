@@ -28,6 +28,8 @@ class QaPanel(QWidget):
         super().__init__(parent)
         self._row_no = 0
         self._issues = []
+        self._result = {}
+        self._tag_display = "short"
         self.setObjectName("qaPanel")
         self.setStyleSheet(
             "QWidget#qaPanel { background: transparent; border-top: 1px solid rgba(120,130,160,50); }")
@@ -81,22 +83,33 @@ class QaPanel(QWidget):
 
     def set_result(self, result: dict, row_no: int) -> None:
         self._row_no = int(row_no or 0)
-        self._issues = list(result.get("warnings") or [])
-        self._list.clear()
-        for idx, issue in enumerate(self._issues):
-            text = "[%s] %s" % (issue.get("label") or issue.get("rule"), issue.get("message"))
-            item = QListWidgetItem(text)
-            item.setData(ROLE_LINE, int(issue.get("line") or 0))
-            item.setData(ROLE_ROW, self._row_no)
-            item.setToolTip(text)
-            self._list.addItem(item)
+        self._result = result or {}
+        self._issues = list(self._result.get("warnings") or [])
+        self._render_issues()
         self._count.setText(str(len(self._issues)))
         has = bool(self._issues)
         self._list.setVisible(has)
         self._empty.setVisible(not has)
 
+    def set_tag_display(self, mode: str) -> None:
+        self._tag_display = "long" if str(mode) == "long" else "short"
+        if self._issues:
+            self._render_issues()
+
+    def _render_issues(self) -> None:
+        self._list.clear()
+        for issue in self._issues:
+            message = qa.format_warning_message(issue, self._tag_display)
+            text = "[%s] %s" % (issue.get("label") or issue.get("rule"), message)
+            item = QListWidgetItem(text)
+            item.setData(ROLE_LINE, int(issue.get("line") or 0))
+            item.setData(ROLE_ROW, self._row_no)
+            item.setToolTip(text)
+            self._list.addItem(item)
+
     def clear(self) -> None:
         self._issues = []
+        self._result = {}
         self._list.clear()
         self._count.setText("0")
         self._list.setVisible(False)

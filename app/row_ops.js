@@ -63,8 +63,20 @@
           }).catch(function () { finish(status); });
           return;
         }
+        // 原生批量 job 返回 jobId；批量确认先通知“已受理”，让 UI 立即跳下一行，
+        // 状态回执继续轮询，避免用户为等一次状态回读多停 400–4800ms。
+        if (batch) {
+          deps.push('row-action-accepted', {
+            action: action, rowNo: target, rowId: rowId,
+            jobId: (res.body && res.body.jobId) || '',
+          });
+        }
         // 原生批量 job 返回 jobId；轮询目标行拿到真实 meta.status（TR/R1/R2 阶段不同）
         var tries = 0;
+        var confirmedSeen = false;
+        function isConfirmedStatus(st) {
+          return /^(manuallyConfirmed|reviewer1Confirmed|reviewer2Confirmed|proofread|reviewed)$/i.test(st);
+        }
         function poll() {
           tries += 1;
           var h2 = deps.headers();
@@ -75,7 +87,22 @@
           }).then(function (r2) { return r2.json(); }).then(function (rows) {
             var row = (rows && rows[0]) || {};
             var st = (row.meta && row.meta.status) ? String(row.meta.status) : '';
-            if (!st && tries < 12) { setTimeout(poll, 400); return; }
+            if (!isConfirmedStatus(st)) {
+              // 不能把刚发确认前的 edited/partiallyEdited 当成成功；
+              // 继续等原生 job 把状态推进到 confirmed/proofread。
+              if (tries < 12) { setTimeout(poll, 400); return; }
+              deps.push('row-action-result', {
+                ok: false, action: action, rowNo: target, rowId: rowId,
+                status: st, err: '确认未生效（服务器状态: ' + (st || '未知') + '）',
+              });
+              return;
+            }
+            if (!confirmedSeen) {
+              // 连续两次读到确认态：防止第一次读到旧缓存/中间态，关闭后重新打开又回到 edited。
+              confirmedSeen = true;
+              setTimeout(poll, 350);
+              return;
+            }
             var mapped = '';
             try {
               mapped = deps.rowStatus({ status: st }, !!(row.target && row.target.symbols

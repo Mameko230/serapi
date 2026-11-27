@@ -52,6 +52,18 @@ ret = L.analyze({
 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(ret.warnings)), [], ret.warnings);
 
+// 3d) Tag 差额带编号/值，供 QA 面板长短显格式化
+ret = L.analyze({
+  source: [{ t: 'tag', id: '1', name: 'mq:rxt',
+             attrs: { output: '1', attributes: [{ name: 'val', value: 'item01' }] } }],
+  target: [], rules: { tags: true },
+});
+assert.strictEqual(ret.warnings.length, 1, ret.warnings);
+assert.strictEqual(ret.warnings[0].tagNo, '1');
+assert.strictEqual(ret.warnings[0].tagValue, 'item01');
+assert.strictEqual(ret.warnings[0].tagMissing, true);
+assert.strictEqual(ret.warnings[0].tagCount, 1);
+
 // 4) 全半角数字混用
 ret = L.analyze({ source: [txt('12')], target: [txt('1２')], rules: { width: true } });
 assert.strictEqual(ret.warnings.length, 1, ret.warnings);

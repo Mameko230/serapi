@@ -50,4 +50,15 @@ host._run_qa()
 assert host.qa_panel._list.count() == 1
 assert host.qa_panel._count.text() == "1"
 assert host.editor._qa_selections, "应给编辑器加 QA 行内标记"
+
+# Tag 提示随编辑器长短显联动：短显编号，长显编号+值。
+panel = QaPanel()
+panel.set_result({"warnings": [{
+    "rule": "tags", "label": "Tag", "line": 0,
+    "message": "缺少 tag mq:rxt（2 个）",
+    "tagNo": "1", "tagValue": "item01", "tagMissing": True, "tagCount": 2,
+}]}, 4)
+assert panel._list.item(0).text() == "[Tag] 缺少 tag #1（2 个）", panel._list.item(0).text()
+panel.set_tag_display("long")
+assert panel._list.item(0).text() == "[Tag] 缺少 tag #1（item01）（2 个）", panel._list.item(0).text()
 print("QA_UI_TEST: PASS")

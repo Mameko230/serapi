@@ -62,6 +62,55 @@
     return String(value);
   }
 
+  function tagDisplayInfo(t) {
+    if (!t) return { no: '', value: '', name: '' };
+    if (t.t === 'newline') return { no: '', value: '', name: 'mq:ch' };
+    var attrs = t.attrs || {};
+    var raw = t.raw || {};
+    function firstValue(container) {
+      if (!container) return '';
+      if (Array.isArray(container)) {
+        for (var i = 0; i < container.length; i++) {
+          var item = container[i] || {};
+          var n = String(item.name || '').toLowerCase();
+          if (n === 'val') return String(item.value === undefined ? '' : item.value);
+        }
+        for (var j = 0; j < container.length; j++) {
+          var it = container[j] || {};
+          if (String(it.name || '').toLowerCase() === 'displaytext') {
+            return String(it.value === undefined ? '' : it.value);
+          }
+        }
+        return '';
+      }
+      if (typeof container === 'object') {
+        var keys = Object.keys(container);
+        for (var k = 0; k < keys.length; k++) {
+          if (keys[k].toLowerCase() === 'val') {
+            var v = container[keys[k]];
+            return String(v && typeof v === 'object'
+              ? (v.value === undefined ? '' : v.value) : v);
+          }
+        }
+      }
+      return '';
+    }
+    var no = attrs.output !== undefined ? attrs.output
+           : (t.output !== undefined ? t.output
+             : (raw.output !== undefined ? raw.output : (t.id !== undefined ? t.id : '')));
+    var value = firstValue(attrs.attributes !== undefined ? attrs.attributes : raw.attributes);
+    if (!value) {
+      var display = attrs.display !== undefined ? attrs.display : raw.display;
+      value = display && typeof display === 'object'
+        ? String(display.text || '') : String(display || (t.display || ''));
+    }
+    return {
+      no: (no === null || no === undefined || no === '') ? '' : String(no),
+      value: String(value || ''),
+      name: String(t.name || attrs.name || raw.name || ''),
+    };
+  }
+
   function tagKey(t) {
     // memoQ 新版 tag 的 NumID 是按段分配的，源/译可能不同；QA 只比较
     // 标签名 + 类型 + 属性值，避免把“编号不同”误报成缺 tag。
@@ -156,16 +205,20 @@
         var a = sc.map[k].count, b = (tc.map[k] || { count: 0 }).count;
         if (a > b) {
           var t = sc.map[k].token || {};
+          var info = tagDisplayInfo(t);
           add('tags', 0, '缺少 tag ' + (t.name || t.display || '#' + (t.id || '?')) + '（' + (a - b) + ' 个）',
-              { tag: t.name || '', tagId: t.id });
+              { tag: t.name || '', tagId: t.id, tagNo: info.no, tagValue: info.value,
+                tagMissing: true, tagCount: a - b });
         }
       });
       tc.order.forEach(function (k) {
         var a = (sc.map[k] || { count: 0 }).count, b = tc.map[k].count;
         if (b > a) {
           var t2 = tc.map[k].token || {};
+          var info2 = tagDisplayInfo(t2);
           add('tags', 0, '多出 tag ' + (t2.name || t2.display || '#' + (t2.id || '?')) + '（' + (b - a) + ' 个）',
-              { tag: t2.name || '', tagId: t2.id });
+              { tag: t2.name || '', tagId: t2.id, tagNo: info2.no, tagValue: info2.value,
+                tagMissing: false, tagCount: b - a });
         }
       });
     }

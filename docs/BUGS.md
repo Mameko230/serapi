@@ -6,6 +6,7 @@
 
 | bug | 根因类别 | 守卫 |
 |---|---|---|
+| 确认后左栏绿但服务器仍是已编辑 | API 语义 | `tests/test_new_editor_actions.js`（确认态连续两次读取） + `docs/SMOKE.md` N4 |
 | 超长单段译文编辑器白屏/卡顿 | 集成崩溃 | `tests/test_long_segment_editor.py`（超长段禁用逐行卡片自绘） + `docs/SMOKE.md` N3 |
 | Ctrl+K 选中词语卡死/闪退 | 集成崩溃 | `tests/test_concordance_shortcut.py`（选区检索延迟到下一轮事件循环） |
 | Ctrl+E 新版术语添加不可用 | API 语义 | `tests/test_term_add_new_editor.py` + `tests/test_capabilities.js` |
