@@ -398,6 +398,55 @@ def _workspace_normalize_context(params):
         lines.append([label, text[:160]])
     return {"ok": True, "contextLines": lines}
 
+
+_DICT_SERVICE = None
+
+
+def _dictionary_service():
+    global _DICT_SERVICE
+    if _DICT_SERVICE is not None:
+        return _DICT_SERVICE
+    sys.path.insert(0, str(ROOT))
+    try:
+        from app import assets
+        override = os.environ.get("SERAPI_ASSETS_DIR")
+        if override:
+            base = Path(override)
+            assets.ASSET_DIR = base
+            assets.PERSONAL_JSON = base / "personal.json"
+            assets.PERSONAL_STARDICT = base / "personal"
+            assets.CONFIG_PATH = base / "config.json"
+        _DICT_SERVICE = assets.DictionaryService()
+    except Exception:
+        _DICT_SERVICE = None
+    return _DICT_SERVICE
+
+
+def _dictionary_query(params):
+    word = str((params or {}).get("word") or "").strip()[:80]
+    if not word:
+        return {"ok": False, "error": "empty-word"}
+    service = _dictionary_service()
+    if service is None:
+        return {"ok": True, "word": word, "hits": [], "candidates": []}
+    try:
+        result = service.query(word, max_candidates=3)
+    except Exception as exc:
+        return {"ok": False, "error": "query-failed", "detail": str(exc)[:200]}
+    hits = []
+    for hit in result.get("hits") or []:
+        if not isinstance(hit, dict):
+            continue
+        entries = [str(e).strip()[:1200] for e in hit.get("entries") or [] if str(e).strip()]
+        if entries:
+            hits.append({"name": str(hit.get("name") or "词典"), "entries": entries[:2]})
+    return {
+        "ok": True,
+        "word": result.get("word") or word,
+        "hits": hits[:3],
+        "candidates": [str(c) for c in result.get("candidates") or []][:3],
+    }
+
 METHODS = {
     "ping": _ping,
     "version": _version,
@@ -410,6 +459,7 @@ METHODS = {
     "qa.config": _qa_config,
     "workspace.normalize_hits": _workspace_normalize_hits,
     "workspace.normalize_context": _workspace_normalize_context,
+    "dictionary.query": _dictionary_query,
 }
 
 

@@ -60,17 +60,19 @@ const requests = [
       { rowNo: 5, sourcecell: '后二' },
     ] },
   },
+  { id: 11, method: 'dictionary.query', params: { word: '攻撃力' } },
 ];
 const result = spawnSync(python, ['-u', sidecar], {
   cwd: path.join(root, '..'),
   input: requests.map((request) => JSON.stringify(request)).join('\n') + '\n',
   encoding: 'utf8',
   timeout: 10000,
-  env: { ...process.env, SERAPI_CONFIG_PATH: configPath },
+  env: { ...process.env, SERAPI_CONFIG_PATH: configPath,
+    SERAPI_ASSETS_DIR: path.join(root, 'fixtures', 'assets') },
 });
 assert.equal(result.status, 0, result.stderr || 'sidecar exited non-zero');
 const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
-assert.equal(lines.length, 10, 'expected ten sidecar responses');
+assert.equal(lines.length, 11, 'expected eleven sidecar responses');
 const ping = JSON.parse(lines[0]);
 const version = JSON.parse(lines[1]);
 const config = JSON.parse(lines[2]);
@@ -81,6 +83,7 @@ const segment = JSON.parse(lines[6]);
 const qa = JSON.parse(lines[7]);
 const hits = JSON.parse(lines[8]);
 const context = JSON.parse(lines[9]);
+const dictionary = JSON.parse(lines[10]);
 assert.equal(ping.ok, true);
 assert.equal(ping.result.ok, true);
 assert.equal(version.ok, true);
@@ -115,6 +118,9 @@ assert.equal(context.ok, true);
 assert.equal(context.result.contextLines.length, 5);
 assert.equal(context.result.contextLines[1][1], '前一');
 assert.equal(context.result.contextLines[2][1], '当前原文');
+assert.equal(dictionary.ok, true);
+assert.ok(dictionary.result.hits.length >= 1);
+assert.ok(dictionary.result.hits[0].entries.length >= 1);
 assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf8')).memoq_url,
   'https://demo.example.invalid/memoqweb');
 fs.rmSync(tmpDir, { recursive: true, force: true });

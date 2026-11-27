@@ -77,6 +77,9 @@ Captures the workspace View, then exits.
 - Context: `previewContextReq` + `preview-context` events are forwarded from the
   Engine through `engine:event`; sidecar `workspace.normalize_context` builds the
   five-line ribbon.
+- Dictionary: selecting a word in the paired editor calls sidecar
+  `dictionary.query` (reuses `app/assets.py`, personal library first, no TB).
+  No full-text scan; no hit → section stays hidden.
 - Reverse Engine API: `serapiHost.invokeEngineApi(method, args)` → restricted
   `window.__md.api.<method>` call. The allowlist is `engine-api-allowlist.json`.
 - Tests: `npm test` runs host + sidecar contract guards.

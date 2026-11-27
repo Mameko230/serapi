@@ -28,7 +28,7 @@
             total: 3,
             source: "new-api",
             rows: [
-              { rowNo: 1, rowId: "fixture-row-1", src: "最初の行です。", tgt: "这是第一行 3。", status: "manuallyConfirmed", tmRate: 100, locked: false },
+              { rowNo: 1, rowId: "fixture-row-1", src: "攻撃力が上がった。", tgt: "攻击力提升了 3。", status: "manuallyConfirmed", tmRate: 100, locked: false },
               { rowNo: 2, rowId: "fixture-row-2", src: "二番目の行です。長い段落の折り返しを確認します。", tgt: "这是第二行。用于检查长段落换行。", status: "partiallyEdited", tmRate: 76, locked: false },
               { rowNo: 3, rowId: "fixture-row-3", src: "三番目の行です。", tgt: "这是第三行。", status: "proofread", tmRate: 91, locked: false }
             ]
@@ -38,7 +38,7 @@
           return {
             ok: true,
             rows: [
-              { rowNo: 1, sourcecell: '最初の行です。', speaker: '', maxLen: 0, extras: [] },
+              { rowNo: 1, sourcecell: '攻撃力が上がった。', speaker: '', maxLen: 0, extras: [] },
               { rowNo: 2, sourcecell: '二番目の行です。', speaker: 'アリス', maxLen: 42, extras: [] },
               { rowNo: 3, sourcecell: '三番目の行です。', speaker: '', maxLen: 0, extras: [] },
               { rowNo: 4, sourcecell: '四番目の行です。', speaker: '', maxLen: 0, extras: [] },
@@ -50,11 +50,11 @@
           window.__fixtureTm = {
             status: 'done',
             tm: [
-              { rate: 99, res: 'DEMO_TM', user: 'reviewer-1', time: '2026-11-12', srcDisp: '最初の行です。', tgtDecorated: '这是第一行。' },
-              { rate: 84, res: 'DEMO_TM', user: 'reviewer-2', time: '2026-11-10', srcDisp: '最初の行', tgtDecorated: '第一行' }
+              { rate: 99, res: 'DEMO_TM', user: 'reviewer-1', time: '2026-11-12', srcDisp: '攻撃力が上がった。', tgtDecorated: '攻击力提升了 3。' },
+              { rate: 84, res: 'DEMO_TM', user: 'reviewer-2', time: '2026-11-10', srcDisp: '攻撃力', tgtDecorated: '攻击力' }
             ],
             tb: [
-              { s: '最初', t: '最初', res: 'Demo Terms', user: '', time: '' }
+              { s: '攻撃力', t: '攻击力', res: 'Demo Terms', user: '', time: '' }
             ]
           };
           return { ok: true, row: rowNo };
@@ -80,8 +80,8 @@
           }
           return {
             ok: true, rowId: rowId, rowNo: 1, locked: false,
-            srcTokens: [{ t: 'text', v: '最初の行です。' }],
-            tokens: [{ t: 'text', v: '这是第一行 3。' }]
+            srcTokens: [{ t: 'text', v: '攻撃力が上がった。' }],
+            tokens: [{ t: 'text', v: '攻击力提升了 3。' }]
           };
         }
       }

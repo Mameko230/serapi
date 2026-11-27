@@ -312,6 +312,55 @@ async function loadContextForSegment(seg, index) {
   } catch (_) {}
 }
 
+let dictTimer = null;
+
+async function lookupSelectedWord(word) {
+  const host = window.serapiHost;
+  const section = document.querySelector("#dictSection");
+  if (!host || !host.sidecar || !section) return;
+  try {
+    const reply = await host.sidecar.call("dictionary.query", { word });
+    const result = reply && reply.ok ? reply.result : null;
+    if (!result || !result.ok || !Array.isArray(result.hits) || !result.hits.length) {
+      section.hidden = true;
+      return;
+    }
+    const hit = result.hits[0];
+    const entry = String((hit.entries && hit.entries[0]) || "").trim();
+    if (!entry) { section.hidden = true; return; }
+    const lines = entry.split("\n");
+    const first = lines.shift() || "";
+    let reading = "";
+    if (first.includes(word)) reading = first.replace(word, "").trim();
+    document.querySelector("#dictTerm").textContent = result.word || word;
+    document.querySelector("#dictReading").textContent = reading;
+    document.querySelector("#dictMeaning").textContent = lines.join(" · ").trim() || entry;
+    document.querySelector("#dictSection .dict-source").textContent = hit.name || "词典";
+    section.hidden = false;
+  } catch (_) {}
+}
+
+function initDictionarySelection() {
+  if (!window.serapiHost || !window.serapiHost.sidecar) return;
+  document.addEventListener("selectionchange", () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const text = String(selection.toString() || "").trim();
+    if (!text || text.length > 40) return;
+    const node = selection.anchorNode;
+    const el = node && (node.nodeType === 3 ? node.parentElement : node);
+    if (!el || !el.closest || !el.closest("#codePane")) return;
+    clearTimeout(dictTimer);
+    dictTimer = setTimeout(() => lookupSelectedWord(text), 220);
+  });
+  // Double-click inside a paired row is the deliberate lookup gesture.
+  document.querySelector("#codePane").addEventListener("dblclick", () => {
+    const selection = window.getSelection();
+    const text = String(selection ? selection.toString() : "").trim();
+    if (text) lookupSelectedWord(text);
+  });
+}
+
 function initEngineEvents() {
   const host = window.serapiHost;
   if (!host || !host.onEngineEvent) return;
@@ -596,6 +645,7 @@ async function bootWorkspace() {
   initSplitter();
   initWelcome();
   initEngineEvents();
+  initDictionarySelection();
   loadSegmentDetail(state.current);
 }
 bootWorkspace();

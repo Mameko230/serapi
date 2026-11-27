@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "demo1",
+      "term": "攻撃力",
+      "reading": "こうげきりょく",
+      "translations": [
+        {"text": "攻击力", "note": "游戏属性", "tags": ["战斗"], "example": "攻撃力が上がった", "status": "已验证"}
+      ]
+    }
+  ]
+}

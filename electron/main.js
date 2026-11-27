@@ -157,6 +157,25 @@ async function captureAndQuit(target) {
       await new Promise((resolve) => targetView.webContents.once('did-finish-load', resolve));
     }
     await new Promise((resolve) => setTimeout(resolve, 900));
+    if (!captureEngine && process.env.SERAPI_CAPTURE_SELECT === '1') {
+      try {
+        await workspace.webContents.executeJavaScript(`(() => {
+          const el = document.querySelector('#codePane .source-text');
+          if (!el || !el.firstChild) return '';
+          const range = document.createRange();
+          range.setStart(el.firstChild, 0);
+          range.setEnd(el.firstChild, Math.min(3, el.firstChild.textContent.length));
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          document.dispatchEvent(new Event('selectionchange'));
+          return selection.toString();
+        })()`, true);
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      } catch (err) {
+        console.error('[serapi] capture selection failed:', err);
+      }
+    }
     const image = await targetView.webContents.capturePage();
     fs.writeFileSync(targetPath, image.toPNG());
     console.log('[serapi] capture:', targetPath, image.getSize());
