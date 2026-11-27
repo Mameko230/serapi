@@ -17,3 +17,4 @@ electron/profile-test/
 electron/.profile/
 electron/*.log
 
+electron/.sidecar-test-*/

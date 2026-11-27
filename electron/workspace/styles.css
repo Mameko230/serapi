@@ -333,6 +333,63 @@ body.dark .line-text:focus { background: rgba(255,255,255,.06); }
 .dict-meaning { color: var(--body); font-size: 10px; line-height: 1.45; margin-top: 3px; max-width: 32em; }
 .dict-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; color: var(--faint); font-size: 8px; }
 
+
+/* welcome / account surface */
+.welcome {
+  position: fixed; inset: 0; z-index: 40; display: grid; place-items: center;
+  background: rgba(233, 227, 216, .76); backdrop-filter: blur(22px);
+}
+.welcome[hidden] { display: none; }
+.welcome-glow {
+  position: absolute; width: 720px; height: 720px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(31, 111, 92, .14), transparent 68%);
+  transform: translate(220px, -180px); pointer-events: none;
+}
+.welcome-card {
+  position: relative; width: min(520px, calc(100vw - 48px));
+  padding: 26px 30px 20px; border: 1px solid rgba(255, 255, 255, .86);
+  border-radius: 22px; background: rgba(253, 251, 247, .92);
+  box-shadow: 0 26px 80px rgba(50, 38, 26, .18);
+}
+.welcome-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 24px; }
+.welcome-brand img { width: 36px; height: 36px; border-radius: 10px; }
+.welcome-brand span { color: var(--ink); font-family: var(--font-brand); font-size: 24px; letter-spacing: -.4px; }
+.welcome-kicker { color: var(--jade); font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.welcome-card h1 { margin: 5px 0 8px; color: var(--ink); font-family: var(--font-brand); font-size: 30px; font-weight: 400; letter-spacing: -.6px; }
+.welcome-sub { margin: 0 0 22px; max-width: 36em; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.welcome-label { display: block; margin-bottom: 6px; color: var(--faint); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.server-field { display: flex; gap: 8px; }
+.server-field input {
+  flex: 1; min-width: 0; height: 40px; padding: 0 11px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; outline: none;
+  transition: border-color var(--motion), box-shadow var(--motion);
+}
+.server-field input::placeholder { color: var(--faint); }
+.server-field input:focus { border-color: var(--jade); box-shadow: 0 0 0 3px var(--jade-soft); }
+.server-field button {
+  height: 40px; padding: 0 18px; border: 0; border-radius: 9px;
+  background: var(--jade); color: #f7f3eb; font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: transform var(--motion), background var(--motion);
+}
+.server-field button:hover { background: #1a5f4f; }
+.server-field button:active { transform: translateY(1px); }
+.quick-servers { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; min-height: 22px; }
+.quick-server {
+  border: 1px solid var(--line-soft); border-radius: 999px; background: var(--raised);
+  color: var(--muted); font-size: 9px; padding: 3px 8px; cursor: pointer;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.quick-server:hover { border-color: var(--line); color: var(--jade); }
+.welcome-error { min-height: 17px; margin-top: 7px; color: var(--red); font-size: 10px; }
+.welcome-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.welcome-link { border: 0; background: transparent; color: var(--jade); font-size: 10px; padding: 3px 0; cursor: pointer; }
+.welcome-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.welcome-actions span { color: var(--faint); font-size: 9px; text-align: right; }
+.welcome-foot { display: flex; align-items: center; gap: 6px; margin-top: 22px; padding-top: 11px; border-top: 1px solid var(--line-soft); color: var(--faint); font-size: 9px; }
+.welcome-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+body.dark .welcome { background: rgba(18, 21, 21, .78); }
+body.dark .welcome-card { background: rgba(32, 36, 37, .94); border-color: rgba(255,255,255,.10); }
+
 /* status */
 .statusbar { display: flex; align-items: center; gap: 22px; padding: 0 14px; color: var(--faint); font-size: 9px; }
 .status-group { display: flex; align-items: center; gap: 6px; }

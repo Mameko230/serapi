@@ -85,7 +85,9 @@ Electron main
 
 **Step 3 已完成骨架（2026-11-28）**
 
-- `sidecar.py`：无 PyQt 的 JSON-lines JSON-RPC；`ping` / `version` 可用；
+- `sidecar.py`：无 PyQt 的 JSON-lines JSON-RPC；`ping` / `version` / `config.get` / `config.remember_server` / `config.forget_server` 可用；
+- config 服务只保存服务器地址与展示名，不保存密码；URL 校验 http/https、拒绝内嵌凭证；
+- sidecar stdout/stdin 显式 UTF-8，避免 Windows 管道中文乱码；
 - `sidecar-client.js`：spawn/超时/退出/日志；主进程启动并健康检查；
 - preload：`serapiHost.sidecar.call(method, params)`；
 - 实测 sidecar ping + version（Python 3.14.10，APP_VERSION 1.2.2）；
@@ -98,9 +100,25 @@ Electron main
 - 写路径保留在 Python sidecar，并补 WritePolicy 回归；
 - Workspace 左栏/中栏/右栏替换 fixture 数据。
 
-### Step 4 — 欢迎/账号/设置 Web 化
+### Step 4 — 欢迎/账号/设置 Web 化（进行中）
 - 服务器历史、连接、主题、快捷键、Tag 规则、编辑器字号；
 - 密码不落地；只存服务器和非敏感偏好。
+
+**Step 4 已完成骨架（2026-11-28）**
+
+- Web 欢迎页：服务器地址、历史服务器 chip、连接、先看工作区；
+- 欢迎页通过 `sidecar.config.get` 读取地址/历史，通过 `config.remember_server` 保存；
+- 连接后调用 `serapiHost.loadEngine(url)` 打开 Engine WebView；
+- Engine View 下 `Ctrl+Shift+W` 返回工作区；
+- 顶部账号按钮重新打开欢迎页；
+- 截图 `electron/preview-welcome.png`（使用 `fixtures/app-config.empty.json` 合成配置，不含真实服务器）。
+
+**Step 4 待办**
+
+- 登录完成后的自动切回/状态反馈；
+- 服务器改名/删除 UI；
+- 主题、快捷键、Tag 规则、编辑器字号迁移；
+- 真实登录冒烟与 cookie 持久化。
 
 ### Step 5 — PyQt 退场
 - 移除 QWebEngine/Qt 面板/QSS/Fluent；

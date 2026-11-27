@@ -1,0 +1,11 @@
+{
+  "memoq_url": "",
+  "server_history": [
+    "https://demo.example.invalid/memoqweb"
+  ],
+  "server_names": {
+    "https://demo.example.invalid/memoqweb": "演示服务器"
+  },
+  "outer_theme": "teal",
+  "editor_theme": "green"
+}

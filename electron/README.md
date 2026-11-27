@@ -56,8 +56,12 @@ Captures the workspace View, then exits.
   npm start -- --no-sandbox
   ```
 
-- `sidecar.py` is spawned on startup (JSON-lines RPC); `ping`/`version` are the
-  first methods. Workspace API: `serapiHost.sidecar.call(method, params)`.
+- Web welcome surface: server input, recent servers, connect, and “先看工作区”.
+  Connect saves the URL through the sidecar, then loads it in the Engine View.
+  `Ctrl+Shift+W` returns from the Engine View.
+- `sidecar.py` is spawned on startup (JSON-lines RPC); `ping`, `version`, and
+  `config.get` / `config.remember_server` / `config.forget_server` are available.
+  Workspace API: `serapiHost.sidecar.call(method, params)`.
 - Reverse Engine API: `serapiHost.invokeEngineApi(method, args)` → restricted
   `window.__md.api.<method>` call. The allowlist is `engine-api-allowlist.json`.
 - Tests: `npm test` runs host + sidecar contract guards.

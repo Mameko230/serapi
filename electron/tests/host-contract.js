@@ -54,10 +54,13 @@ assert.match(bridgeInject, /page_rules\.json/, 'bridge injector carries page rul
 
 assert.match(workspace, /id="codePane"/, 'workspace has paired code rows');
 assert.match(workspace, /id="colResizer"/, 'workspace has a source/target splitter');
+assert.match(workspace, /id="welcome"/, 'workspace has a Web welcome surface');
 assert.match(workspaceCss, /--src-fr/, 'splitter drives source column width');
 assert.match(workspaceCss, /--tgt-fr/, 'splitter drives target column width');
 assert.match(workspaceJs, /initSplitter/, 'splitter is initialized');
 assert.match(workspaceJs, /serapi:split/, 'splitter ratio is persisted');
 assert.match(workspaceJs, /serapiHost\.showEngine/, 'engine button calls host API');
+assert.match(workspaceJs, /config\.get/, 'welcome reads config from the sidecar');
+assert.match(workspaceJs, /config\.remember_server/, 'welcome saves the server through the sidecar');
 
 console.log('HOST_CONTRACT: PASS');

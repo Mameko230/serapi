@@ -260,6 +260,9 @@ $$("[data-action]").forEach((el) => el.addEventListener("click", () => {
   if (el.dataset.action === "引擎" && window.serapiHost) {
     window.serapiHost.showEngine();
     toast("切换到 memoQ Engine WebView");
+  } else if (el.dataset.action === "账号" && window.serapiHost) {
+    const welcome = document.querySelector("#welcome");
+    if (welcome) welcome.hidden = false;
   } else {
     toast(`${el.dataset.action} · 原型入口`);
   }
@@ -349,6 +352,78 @@ function initSplitter() {
   updateSplitHandle();
 }
 
+/* Web welcome / account surface (step 4 skeleton). */
+async function initWelcome() {
+  const el = document.querySelector("#welcome");
+  const host = window.serapiHost;
+  if (!el) return;
+  if (!host || !host.sidecar) return;
+  let config = null;
+  try {
+    const reply = await host.sidecar.call("config.get", {});
+    config = reply && reply.ok ? reply.result : null;
+  } catch (_) {}
+  const query = new URLSearchParams(location.search);
+  if (query.has("workspace")) return;
+  const force = query.has("welcome") || location.hash === "#welcome";
+  if (!force && config && config.memoq_url) return;
+  const input = document.querySelector("#serverInput");
+  const history = document.querySelector("#serverHistory");
+  if (config && config.memoq_url) input.value = config.memoq_url;
+  if (config && Array.isArray(config.server_history)) {
+    const names = config.server_names || {};
+    history.innerHTML = config.server_history.filter(Boolean).slice(0, 4).map((url) => {
+      const name = names[url] || "";
+      let label = name || url;
+      try { label = name || new URL(url).host; } catch (_) {}
+      return `<button class="quick-server" data-url="${esc(url)}" title="${esc(url)}">${esc(label)}</button>`;
+    }).join("");
+    history.querySelectorAll(".quick-server").forEach((btn) => {
+      btn.addEventListener("click", () => { input.value = btn.dataset.url; input.focus(); });
+    });
+  }
+  el.hidden = false;
+  input.focus();
+  input.select();
+
+  const error = document.querySelector("#welcomeError");
+  const connect = async () => {
+    const raw = String(input.value || "").trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(raw)) {
+      error.textContent = "请输入完整的 http(s) 服务器地址。";
+      input.focus();
+      return;
+    }
+    error.textContent = "";
+    const btn = document.querySelector("#connectBtn");
+    btn.disabled = true;
+    btn.textContent = "连接中…";
+    try {
+      const saved = await host.sidecar.call("config.remember_server", { url: raw });
+      if (!saved || !saved.ok || !saved.result || !saved.result.ok) {
+        error.textContent = "服务器地址保存失败，请检查配置权限。";
+        return;
+      }
+      const loaded = await host.loadEngine(raw);
+      if (!loaded || !loaded.ok) {
+        error.textContent = "无法打开 memoQ： " + ((loaded && loaded.error) || "unknown");
+        return;
+      }
+      el.hidden = true;
+      toast("memoQ 登录页已打开；登录完成后按 Ctrl+Shift+W 返回工作区");
+    } catch (err) {
+      error.textContent = "连接失败： " + String(err && err.message || err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "连接";
+    }
+  };
+  document.querySelector("#connectBtn").addEventListener("click", connect);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
+  document.querySelector("#demoBtn").addEventListener("click", () => { el.hidden = true; });
+}
+
 if (location.hash === "#dark") document.body.classList.add("dark");
 renderSegmentList(); renderContext(); renderEditor(segments[state.current]); renderQA(); renderHits();
 initSplitter();
+initWelcome();

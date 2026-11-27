@@ -143,6 +143,27 @@
     <div class="status-prototype">Web UI 原型 v3</div>
   </footer>
 </div>
+<div class="welcome" id="welcome" hidden>
+  <div class="welcome-glow"></div>
+  <div class="welcome-card">
+    <div class="welcome-brand"><img src="icon-a.svg" alt=""><span>Serapi</span></div>
+    <div class="welcome-kicker">Web workspace · Electron</div>
+    <h1>连接你的 memoQ</h1>
+    <p class="welcome-sub">服务器地址留在这里，登录仍在 memoQ 官方页面完成。Serapi 不保存密码。</p>
+    <label class="welcome-label" for="serverInput">服务器地址</label>
+    <div class="server-field">
+      <input id="serverInput" type="url" autocomplete="off" spellcheck="false" placeholder="https://your-server/memoqweb">
+      <button id="connectBtn">连接</button>
+    </div>
+    <div class="quick-servers" id="serverHistory"></div>
+    <div class="welcome-error" id="welcomeError" role="alert"></div>
+    <div class="welcome-actions">
+      <button class="welcome-link" id="demoBtn">先看工作区</button>
+      <span>连接后按 Ctrl+Shift+W 返回工作区</span>
+    </div>
+    <div class="welcome-foot"><span class="welcome-dot"></span>本机运行 · 不保存凭证 · Web UI 原型</div>
+  </div>
+</div>
 <div class="toast" id="toast" role="status"></div>
 <script src="app.js"></script>
 </body>

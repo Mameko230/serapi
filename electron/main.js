@@ -59,7 +59,8 @@ function createViews() {
       partition: 'persist:serapi',
     },
   });
-  workspace.webContents.loadFile(WORKSPACE_ENTRY);
+  workspace.webContents.loadFile(WORKSPACE_ENTRY,
+    process.env.SERAPI_WORKSPACE_ONLY === '1' ? { query: { workspace: '1' } } : undefined);
   win.addBrowserView(workspace);
 
   engine = new BrowserView({
@@ -77,6 +78,13 @@ function createViews() {
     engine.webContents.loadFile(ENGINE_FIXTURE_MODE ? ENGINE_FIXTURE : ENGINE_ENTRY);
   }
   engine.webContents.on('dom-ready', () => injectBridge());
+  engine.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.control && input.shift
+        && String(input.key || '').toLowerCase() === 'w') {
+      event.preventDefault();
+      setEngineVisible(false);
+    }
+  });
   engine.webContents.on('did-start-navigation', () => { engineInjected = false; });
   // Do not attach the engine view until needed; keeps it out of the workspace.
   resizeViews();
