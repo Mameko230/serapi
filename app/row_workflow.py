@@ -206,7 +206,7 @@ class RowWorkflowMixin:
         if target is None:
             return
         t0 = getattr(self, "_confirm_t0", None)
-        elapsed = f"{int((time.perf_counter() - t0) * 1000)} ms" if t0 is not None else ""
+        elapsed = f"{int((time.perf_counter() - t0) * 1000)} ms" if t0 is not None else "已受理"
         self.log(f"确认已受理（{elapsed}），先跳到第 {target} 行；状态稍后回填")
         self._jump_to_row(target)
 
