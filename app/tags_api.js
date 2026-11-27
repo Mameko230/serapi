@@ -7,7 +7,9 @@
         var kind = deps.detect();
         if (kind === 'new') {
           var seg = deps.readCurrent ? deps.readCurrent() : null;
-          if (!seg || !seg.ok) return { ok: false, err: '当前段尚未读取' };
+          if (!seg || (!seg.tokens && !seg.srcTokens)) {
+            return { ok: false, err: '当前段尚未读取' };
+          }
           function tagToken(tk) {
             if (!tk || tk.t !== 'tag') return null;
             return {

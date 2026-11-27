@@ -20,25 +20,34 @@
   function observe(onChange) {
     if (!window.MutationObserver || !document.body) return;
     var timer = null;
+    function inEditor(node) {
+      try {
+        return !!(node && node.closest &&
+          node.closest('.ProseMirror, [contenteditable="true"], textarea'));
+      } catch (e) { return false; }
+    }
     var observer = new MutationObserver(function (mutations) {
       var relevant = false;
       for (var i = 0; i < mutations.length; i++) {
-        var node = mutations[i].target;
+        var m = mutations[i];
+        var node = m.target;
         try {
-          if (node && node.closest && node.closest('.translation-row')) {
-            relevant = true;
-            break;
-          }
+          if (!node || !node.closest || !node.closest('.translation-row')) continue;
+          // 编辑器正文的输入不触发状态同步；只看行状态/徽章等非编辑区变化。
+          if (inEditor(node)) continue;
+          if (m.type === 'attributes') { relevant = true; break; }
+          if (m.type === 'characterData' && node.parentElement) { relevant = true; break; }
+          if (m.type === 'childList') { relevant = true; break; }
         } catch (e) {}
       }
       if (!relevant || timer) return;
       timer = setTimeout(function () {
         timer = null;
         try { onChange(); } catch (e) {}
-      }, 160);
+      }, 250);
     });
     observer.observe(document.body, {
-      subtree: true, attributes: true,
+      subtree: true, attributes: true, childList: true, characterData: true,
       attributeFilter: ['class', 'aria-label', 'data-status', 'style'],
     });
   }
