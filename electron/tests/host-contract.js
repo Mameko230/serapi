@@ -67,5 +67,8 @@ assert.match(workspaceJs, /loadEngineSnapshot/, 'workspace tries real Engine row
 assert.match(workspaceJs, /workspace\.normalize/, 'workspace normalizes Engine rows in the sidecar');
 assert.match(workspaceJs, /loadSegmentDetail/, 'workspace loads per-segment detail from the Engine');
 assert.match(workspaceJs, /workspace\.normalize_segment/, 'workspace normalizes segment tokens in the sidecar');
+assert.match(workspaceJs, /lintEngine/, 'workspace runs QA through the Engine lint engine');
+assert.match(workspaceJs, /qa\.config/, 'workspace reads QA rules from the sidecar');
+assert.match(main, /engine:lint/, 'main exposes engine:lint IPC');
 
 console.log('HOST_CONTRACT: PASS');

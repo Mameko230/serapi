@@ -28,10 +28,16 @@
             total: 3,
             source: "new-api",
             rows: [
-              { rowNo: 1, rowId: "fixture-row-1", src: "最初の行です。", tgt: "这是第一行。", status: "manuallyConfirmed", tmRate: 100, locked: false },
+              { rowNo: 1, rowId: "fixture-row-1", src: "最初の行です。", tgt: "这是第一行 3。", status: "manuallyConfirmed", tmRate: 100, locked: false },
               { rowNo: 2, rowId: "fixture-row-2", src: "二番目の行です。長い段落の折り返しを確認します。", tgt: "这是第二行。用于检查长段落换行。", status: "partiallyEdited", tmRate: 76, locked: false },
               { rowNo: 3, rowId: "fixture-row-3", src: "三番目の行です。", tgt: "这是第三行。", status: "proofread", tmRate: 91, locked: false }
             ]
+          };
+        },
+        segmentInfo: function (rowNo) {
+          return {
+            ok: true, rowNo: Number(rowNo) || 1, contextId: 'fixture-context', originalId: '',
+            comments: ['fixture comment'], commentsLoading: false
           };
         },
         readSegment: function (rowId) {
@@ -47,7 +53,7 @@
           return {
             ok: true, rowId: rowId, rowNo: 1, locked: false,
             srcTokens: [{ t: 'text', v: '最初の行です。' }],
-            tokens: [{ t: 'text', v: '这是第一行。' }]
+            tokens: [{ t: 'text', v: '这是第一行 3。' }]
           };
         }
       }

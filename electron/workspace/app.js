@@ -5,6 +5,7 @@ let qaIssues = [];
 let hits = [];
 let projectInfo = {};
 let workspaceSource = "synthetic";
+let qaConfig = null;
 
 const statusLabels = {
   confirmed: "已确认", edited: "编辑", reviewer1: "R1", reviewer2: "R2",
@@ -237,12 +238,25 @@ function focusQA(index) {
   if (row) {
     row.scrollIntoView({ block: "center", behavior: "smooth" });
     const text = row.querySelector(".target-text");
-    if (text) {
+    if (text && q.match) {
       text.innerHTML = esc(text.textContent).replace(q.match, `<span class="qa-mark">${q.match}</span>`);
       text.querySelector(".qa-mark")?.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }
   $("#statusNote").textContent = `QA · ${q.rule} · 第 ${segments[state.current].no} 段`;
+}
+
+async function ensureQaConfig() {
+  if (qaConfig) return qaConfig;
+  try {
+    const reply = await window.serapiHost.sidecar.call("qa.config", {});
+    qaConfig = reply && reply.ok && reply.result
+      ? { rules: reply.result.rules || {}, options: reply.result.options || {} }
+      : { rules: {}, options: {} };
+  } catch (_) {
+    qaConfig = { rules: {}, options: {} };
+  }
+  return qaConfig;
 }
 
 async function loadSegmentDetail(index) {
@@ -251,6 +265,10 @@ async function loadSegmentDetail(index) {
   const seg = segments[index];
   if (!host || !host.invokeEngineApi || !host.sidecar || !seg || seg._detailLoaded) return;
   seg._detailLoaded = true;
+  if (workspaceSource === "engine-listRows") {
+    qaIssues = [];
+    renderQA();
+  }
   try {
     const raw = await host.invokeEngineApi("readSegment", [seg.key]);
     if (!raw || !raw.ok || !raw.value) return;
@@ -258,7 +276,37 @@ async function loadSegmentDetail(index) {
     if (!normalized || !normalized.ok || !normalized.result || !normalized.result.ok) return;
     Object.assign(seg, normalized.result.segment);
     if (segments[state.current] !== seg) return;
+    try {
+      const info = await host.invokeEngineApi("segmentInfo", [seg.no]);
+      if (info && info.ok && info.value && info.value.ok) {
+        seg.contextId = info.value.contextId || "";
+        seg.originalId = info.value.originalId || "";
+        seg.comments = Array.isArray(info.value.comments) ? info.value.comments.length : 0;
+        if (info.value.speaker) seg.speaker = String(info.value.speaker);
+      }
+    } catch (_) {}
+    if (host.lintEngine) {
+      const config = await ensureQaConfig();
+      const lint = await host.lintEngine({
+        rules: config.rules,
+        options: config.options,
+        source: raw.value.srcTokens || [],
+        target: raw.value.tokens || [],
+        terms: [],
+      });
+      if (lint && lint.ok && lint.result && lint.result.ok) {
+        qaIssues = (lint.result.warnings || []).map((w) => ({
+          severity: ["digits", "terms", "tags"].includes(w.rule) ? "error" : "warn",
+          rule: w.label || w.rule || "",
+          msg: w.message || "",
+          line: Math.max(0, Number(w.line) || 0),
+          match: "",
+        }));
+        seg.qa = qaIssues.length;
+      }
+    }
     renderSegmentList();
+    renderQA();
     renderEditor(seg);
     $("#statusNote").textContent = `第 ${seg.no} 段 · 已载入译文`;
   } catch (_) {

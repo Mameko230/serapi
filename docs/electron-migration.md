@@ -95,15 +95,16 @@ Electron main
 - `workspace.snapshot` 已接入：Workspace 启动时优先走真实路径（Engine `listRows` → sidecar `workspace.normalize`），失败才回退合成快照；
 - 当前段详情已接入：选中行后 Engine `readSegment(rowId)` → sidecar `workspace.normalize_segment` → 更新原文/译文行；
 - token 流转换：`text` / `newline` / `tag`（tag 暂以 `[name]` 显示，后续换结构化胶囊）；
-- 快照 schema：`project/current/currentLine/segments/contextLines/qa/hits/dictionary`；
-- 真实路径 fixture：`engine/fixture-api.html`（listRows + readSegment 合成响应）；
-- 真实数据路径截图：`electron/preview-realpath-fixture.png`（3 行合成数据，含首段 detail 载入）；
+- QA 已接入：Engine `window.__mdLint.analyze` 通过 `engine:lint` 调用，规则由 sidecar `qa.config` 读取 `app/qa_rules.json`；
+- 段信息已接入：Engine `segmentInfo(rowNo)` → contextId/comments/speaker（有则用）；
+- 真实路径 fixture：`engine/fixture-api.html`（listRows + readSegment + segmentInfo + lint.js 注入）；
+- 真实数据路径截图：`electron/preview-realpath-fixture.png`（3 行合成数据，含 QA 与段信息）；
 - Workspace 截图（完整合成快照）：`electron/preview-electron.png`。
 
 **Step 3 待办**
 
-- 真实登录页/项目页验证 `listRows`/`readSegment` 返回形状；
-- 当前段 QA、TM/TB、段信息、语境、词典接入真实路径；
+- 真实登录页/项目页验证 `listRows`/`readSegment`/`segmentInfo`/lint 返回形状；
+- TM/TB、语境、词典接入真实路径；
 - 真实项目名/语言/进度从 Engine 状态读取；
 - 写路径保留在 Python sidecar，并补 WritePolicy 回归；
 - 真实数据接入前，任何真实 memoQ 正文不得写日志/截图。

@@ -304,6 +304,18 @@ def _workspace_normalize_segment(params):
         return {"ok": False, "error": "no-tokens"}
     return {"ok": True, "segment": out}
 
+
+def _qa_config(_params):
+    path = ROOT / "app" / "qa_rules.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    return {
+        "rules": data.get("rules") or {},
+        "options": data.get("options") or {},
+    }
+
 METHODS = {
     "ping": _ping,
     "version": _version,
@@ -313,6 +325,7 @@ METHODS = {
     "workspace.snapshot": _workspace_snapshot,
     "workspace.normalize": _workspace_normalize,
     "workspace.normalize_segment": _workspace_normalize_segment,
+    "qa.config": _qa_config,
 }
 
 

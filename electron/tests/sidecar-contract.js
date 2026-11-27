@@ -43,6 +43,7 @@ const requests = [
       srcTokens: [{ t: 'text', v: '原文一行' }, { t: 'newline' }, { t: 'text', v: '原文二行' }],
       tokens: [{ t: 'text', v: '译文一行' }, { t: 'tag', name: 'mq:rxt', display: { text: 'tag1' } }, { t: 'newline' }, { t: 'text', v: '译文二行' }] } },
   },
+  { id: 8, method: 'qa.config', params: {} },
 ];
 const result = spawnSync(python, ['-u', sidecar], {
   cwd: path.join(root, '..'),
@@ -53,7 +54,7 @@ const result = spawnSync(python, ['-u', sidecar], {
 });
 assert.equal(result.status, 0, result.stderr || 'sidecar exited non-zero');
 const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
-assert.equal(lines.length, 7, 'expected seven sidecar responses');
+assert.equal(lines.length, 8, 'expected eight sidecar responses');
 const ping = JSON.parse(lines[0]);
 const version = JSON.parse(lines[1]);
 const config = JSON.parse(lines[2]);
@@ -61,6 +62,7 @@ const remember = JSON.parse(lines[3]);
 const workspace = JSON.parse(lines[4]);
 const normalized = JSON.parse(lines[5]);
 const segment = JSON.parse(lines[6]);
+const qa = JSON.parse(lines[7]);
 assert.equal(ping.ok, true);
 assert.equal(ping.result.ok, true);
 assert.equal(version.ok, true);
@@ -83,6 +85,9 @@ assert.equal(segment.ok, true);
 assert.equal(segment.result.segment.srcLines.length, 2);
 assert.equal(segment.result.segment.tgtLines[0], '译文一行[tag1]');
 assert.equal(segment.result.segment.tgtLines[1], '译文二行');
+assert.equal(qa.ok, true);
+assert.equal(typeof qa.result.rules, 'object');
+assert.equal(qa.result.rules.digits, true);
 assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf8')).memoq_url,
   'https://demo.example.invalid/memoqweb');
 fs.rmSync(tmpDir, { recursive: true, force: true });

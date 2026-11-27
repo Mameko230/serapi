@@ -85,6 +85,13 @@ function createViews() {
     engine.webContents.loadFile(ENGINE_FIXTURE_API_MODE ? ENGINE_FIXTURE_API : (ENGINE_FIXTURE_MODE ? ENGINE_FIXTURE : ENGINE_ENTRY));
   }
   engine.webContents.on('dom-ready', () => injectBridge());
+  if (ENGINE_FIXTURE_API_MODE) {
+    // The synthetic Engine fixture does not run the bridge bundle, but QA needs
+    // the same pure lint.js engine as the real page.
+    engine.webContents.executeJavaScript(
+      fs.readFileSync(path.join(APP_DIR, 'lint.js'), 'utf8'), true
+    ).catch((err) => console.error('[serapi] fixture lint injection failed:', err));
+  }
   engine.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown' && input.control && input.shift
         && String(input.key || '').toLowerCase() === 'w') {
@@ -241,6 +248,28 @@ ipcMain.handle('engine:load', (_event, rawUrl) => {
   setEngineVisible(true);
   return { ok: true, url };
 });
+async function invokeEngineLint(payload) {
+  if (!engine) return { ok: false, error: 'engine-not-ready' };
+  let safe;
+  try { safe = JSON.parse(JSON.stringify(payload || {})); } catch (_e) { return { ok: false, error: 'bad-payload' }; }
+  if (JSON.stringify(safe).length > 1_500_000) return { ok: false, error: 'payload-too-large' };
+  const expr = `(function () {
+    try {
+      if (!window.__mdLint || typeof window.__mdLint.analyze !== 'function') {
+        return { ok: false, error: 'missing-lint' };
+      }
+      return window.__mdLint.analyze(${JSON.stringify(safe)});
+    } catch (e) {
+      return { ok: false, error: String(e && e.message || e) };
+    }
+  })()`;
+  try {
+    const result = await engine.webContents.executeJavaScript(expr, true);
+    return { ok: true, result };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
 async function invokeEngineApi(name, args) {
   const method = String(name || '');
   if (!ENGINE_API_ALLOWED.has(method)) return { ok: false, error: 'method-not-allowed' };
@@ -269,6 +298,7 @@ ipcMain.handle('engine:api', async (_event, name, args) => {
   }
   return result;
 });
+ipcMain.handle('engine:lint', (_event, payload) => invokeEngineLint(payload));
 ipcMain.handle('sidecar:call', async (_event, method, params) => {
   const name = String(method || '');
   if (!sidecar) return { ok: false, error: 'sidecar-not-started' };
