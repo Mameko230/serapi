@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -88,15 +88,11 @@
           <button class="icon-btn tiny" title="段信息"><svg class="icon sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>
         </div>
         <div class="editor-body">
-          <div class="editor-col source-col">
-            <div class="col-head"><span>原文 · 日本語</span><span class="col-hint">只读</span></div>
-            <div class="code-scroll" id="sourceScroll"></div>
+          <div class="cols-head">
+            <div class="col-label source">原文 · 日本語 <span class="col-hint">只读</span></div>
+            <div class="col-label target">译文 · 中文 <span class="col-hint" id="targetState">草稿</span></div>
           </div>
-          <div class="editor-divider"><span></span></div>
-          <div class="editor-col target-col">
-            <div class="col-head"><span>译文 · 中文</span><span class="col-hint" id="targetState">草稿</span></div>
-            <div class="code-scroll" id="targetScroll"></div>
-          </div>
+          <div class="code-scroll" id="codePane"></div>
         </div>
         <div class="editor-foot">
           <span><kbd>Ctrl</kbd><kbd>↵</kbd> 确认</span><span><kbd>Ctrl</kbd><kbd>S</kbd> 保存</span>

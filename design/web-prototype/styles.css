@@ -196,41 +196,50 @@ kbd {
 .row-id { color: var(--body); font-weight: 700; }
 .meta-sep { color: var(--line); }
 .editor-stat { font-family: var(--font-mono); font-size: 9px; color: var(--faint); }
-.editor-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 40fr) 26px minmax(0, 60fr); padding: 10px 16px 0; }
-.editor-col { min-height: 0; display: flex; flex-direction: column; }
-.col-head { display: flex; align-items: center; justify-content: space-between; color: var(--faint); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding-bottom: 5px; }
+.editor-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 8px 16px 0; }
+.cols-head {
+  display: grid; grid-template-columns: 40fr 60fr; gap: 0;
+  color: var(--faint); font-size: 9px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; padding: 0 4px 5px;
+}
+.col-label { display: flex; align-items: center; justify-content: space-between; padding: 0 3px 0 36px; }
+.col-label.target { padding-left: 40px; }
 .col-hint { color: var(--faint); font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 9px; }
 .code-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; outline: none; }
 .code-scroll:focus-visible { box-shadow: inset 0 0 0 2px var(--jade); border-radius: 7px; }
-.code-line {
-  display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 7px;
-  min-height: 35px; align-items: start; padding: 3px 5px 3px 0;
-  border-radius: 6px; position: relative;
+/* 每一行同时承载源/译：行高由较高的一侧决定，换行不会把后续行推歪。 */
+.code-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 40fr) 1px 30px minmax(0, 60fr);
+  column-gap: 7px;
+  align-items: stretch;
+  min-height: 36px;
+  padding: 3px 4px 3px 0;
+  border-radius: 6px;
   transition: background var(--motion), box-shadow var(--motion);
 }
-.code-line:nth-child(even) { background: rgba(255, 255, 255, .20); }
-.code-line:hover, .code-line.hover { background: var(--row-hover); }
-.code-line.current { background: var(--jade-soft); box-shadow: inset 2px 0 0 var(--jade); }
-.code-line.qa-row { background: var(--red-soft); }
-.code-line.current.qa-row { background: linear-gradient(90deg, var(--red-soft), var(--jade-soft)); }
+.code-row:nth-child(even) { background: rgba(255, 255, 255, .20); }
+.code-row:hover { background: var(--row-hover); }
+.code-row.current { background: var(--jade-soft); box-shadow: inset 2px 0 0 var(--jade); }
+.code-row.qa-row { background: var(--red-soft); }
+.code-row.current.qa-row { background: linear-gradient(90deg, var(--red-soft), var(--jade-soft)); }
 .line-no {
   color: var(--muted); font-family: var(--font-mono); font-size: 10px;
   text-align: right; padding-top: 4px; user-select: none;
   opacity: .72; font-variant-numeric: tabular-nums;
 }
-.code-line.current .line-no { color: var(--jade); opacity: 1; font-weight: 700; }
+.code-row.current .line-no { color: var(--jade); opacity: 1; font-weight: 700; }
+.row-divider { width: 1px; background: var(--line-soft); margin: 2px 0; }
 .line-text {
   color: var(--muted); font-size: 15px; line-height: 1.7;
-  padding: 1px 0 1px 2px; white-space: pre-wrap; word-break: break-word;
-  border-radius: 3px;
+  padding: 1px 2px; white-space: pre-wrap; word-break: break-word;
+  border-radius: 3px; min-height: 30px;
 }
 .line-text:focus { outline: none; background: rgba(255,255,255,.38); box-shadow: 0 0 0 2px rgba(31,111,92,.22); }
-.target-col .line-text { color: var(--ink); font-size: 16px; }
-.target-col .code-line.empty .line-text { color: var(--faint); }
-body.dark .code-line:nth-child(even) { background: rgba(255,255,255,.035); }
+.line-text.target-text { color: var(--ink); font-size: 16px; }
+.code-row.current .target-text { color: var(--ink); }
+body.dark .code-row:nth-child(even) { background: rgba(255,255,255,.035); }
 body.dark .line-text:focus { background: rgba(255,255,255,.06); }
-.editor-divider { display: flex; justify-content: center; }
-.editor-divider span { width: 1px; background: var(--line-soft); margin: 4px 0 2px; }
 .tag { display: inline-flex; align-items: baseline; height: 18px; padding: 0 5px; margin: 0 2px; border-radius: 4px; background: var(--jade-soft); color: var(--jade); font-size: 10px; line-height: 18px; font-family: var(--font-mono); vertical-align: 1px; }
 .qa-mark { text-decoration: underline wavy var(--red); text-decoration-thickness: 1.3px; text-underline-offset: 4px; }
 .qa-mark.warn { text-decoration-color: var(--amber); }

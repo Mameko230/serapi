@@ -10,7 +10,7 @@ const segments = [
     src: "アリスは Ancient Ruins の入口に立ち、古い石扉に刻まれた紋章を見つめた。",
     tgt: "爱丽丝站在 Ancient Ruins 的入口，凝视着刻在古老石门上的纹章。",
     srcLines: [
-      "アリスは Ancient Ruins の入口に立ち、",
+      "アリスは Ancient Ruins の入口に立ち、古い石扉に刻まれた紋章をじっと見つめた。",
       "古い石扉に刻まれた紋章を見つめた。",
       "「この封印は、まだ生きている……」",
       "風が吹くたび、青白い光が",
@@ -24,7 +24,7 @@ const segments = [
       "遠くで何かが目を覚ました。"
     ],
     tgtLines: [
-      "爱丽丝站在 Ancient Ruins 的入口，",
+      "爱丽丝站在遗迹入口。",
       "凝视着刻在古老石门上的纹章。",
       "“这道封印，还活着……”",
       "每当风吹过，苍白的微光",
@@ -123,50 +123,48 @@ function renderContext() {
     <div class="ctx-src">${esc(text)}</div></div>`).join("");
 }
 
-function codeLines(lines, editable, qaLine = -1) {
-  return lines.map((line, i) => {
-    const classes = ["code-line", editable ? "target" : "source"];
+function codeRows(seg, qaLine = -1) {
+  const count = Math.max(seg.srcLines.length, seg.tgtLines.length);
+  const rows = [];
+  for (let i = 0; i < count; i++) {
+    const classes = ["code-row"];
     if (i === state.currentLine) classes.push("current");
     if (i === qaLine) classes.push("qa-row");
-    return `<div class="${classes.join(" ")}" data-line="${i}">
+    const src = seg.srcLines[i] === undefined ? "" : seg.srcLines[i];
+    const tgt = seg.tgtLines[i] === undefined ? "" : seg.tgtLines[i];
+    rows.push(`<div class="${classes.join(" ")}" data-line="${i}">
       <div class="line-no">${String(i + 1).padStart(2, "0")}</div>
-      <div class="line-text" ${editable ? 'contenteditable="true" spellcheck="false"' : ""}>${line}</div>
-    </div>`;
-  }).join("");
+      <div class="line-text source-text">${src}</div>
+      <div class="row-divider"></div>
+      <div class="line-no">${String(i + 1).padStart(2, "0")}</div>
+      <div class="line-text target-text" contenteditable="true" spellcheck="false">${tgt}</div>
+    </div>`);
+  }
+  return rows.join("");
 }
 
 function renderEditor(seg) {
   $("#editorRow").textContent = "第 " + seg.no + " 段";
   $("#editorKey").textContent = seg.key;
   $("#editorStat").textContent = `${seg.srcLines.length} 行 · 28 / 42 字`;
-  $("#sourceScroll").innerHTML = codeLines(seg.srcLines, false, qaIssues[0].line);
-  $("#targetScroll").innerHTML = codeLines(seg.tgtLines, true, qaIssues[0].line);
+  $("#codePane").innerHTML = codeRows(seg, qaIssues[0].line);
   const qaLine = qaIssues.find((q) => q.severity === "error");
   if (qaLine) {
-    const targetLine = $("#targetScroll").children[qaLine.line];
-    if (targetLine) {
-      const text = targetLine.querySelector(".line-text");
-      if (text && text.textContent.includes(qaLine.match)) {
-        text.innerHTML = esc(text.textContent).replace(qaLine.match, `<span class="qa-mark">${qaLine.match}</span>`);
-      }
+    const row = $("#codePane").querySelector(`.code-row[data-line="${qaLine.line}"]`);
+    const text = row && row.querySelector(".target-text");
+    if (text && text.textContent.includes(qaLine.match)) {
+      text.innerHTML = esc(text.textContent).replace(qaLine.match, `<span class="qa-mark">${qaLine.match}</span>`);
     }
   }
-  $$("#targetScroll .line-text").forEach((el) => el.addEventListener("input", () => {
+  $$("#codePane .target-text").forEach((el) => el.addEventListener("input", () => {
     $("#statusNote").textContent = "草稿 · 有未保存修改";
     $("#targetState").textContent = "草稿";
   }));
-  $$("#sourceScroll .code-line, #targetScroll .code-line").forEach((line) => {
-    const n = line.dataset.line;
-    line.addEventListener("mouseenter", () => {
-      $$(`.code-line[data-line="${n}"]`).forEach((row) => row.classList.add("hover"));
-    });
-    line.addEventListener("mouseleave", () => {
-      $$(`.code-line[data-line="${n}"]`).forEach((row) => row.classList.remove("hover"));
-    });
-    line.addEventListener("click", () => {
-      state.currentLine = Number(n);
-      $$(".code-line.current").forEach((row) => row.classList.remove("current"));
-      $$(`.code-line[data-line="${n}"]`).forEach((row) => row.classList.add("current"));
+  $$("#codePane .code-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      state.currentLine = Number(row.dataset.line);
+      $$("#codePane .code-row.current").forEach((r) => r.classList.remove("current"));
+      row.classList.add("current");
     });
   });
   $("#targetState").textContent = statusLabels[seg.status];
@@ -216,11 +214,10 @@ function renderHitDetail() {
 
 function focusQA(index) {
   const q = qaIssues[index]; if (!q) return;
-  $("#targetScroll").querySelectorAll(".qa-mark").forEach((m) => m.classList.remove("warn"));
-  const line = $("#targetScroll").children[q.line];
-  if (line) {
-    line.scrollIntoView({ block: "center", behavior: "smooth" });
-    const text = line.querySelector(".line-text");
+  const row = $("#codePane").querySelector(`.code-row[data-line="${q.line}"]`);
+  if (row) {
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    const text = row.querySelector(".target-text");
     if (text) {
       text.innerHTML = esc(text.textContent).replace(q.match, `<span class="qa-mark">${q.match}</span>`);
       text.querySelector(".qa-mark")?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -236,21 +233,6 @@ function selectSegment(no) {
   $("#statusNote").textContent = `第 ${segments[idx].no} 段 · ${statusLabels[segments[idx].status]}`;
   document.querySelector(`#segList .seg[data-no="${no}"]`)?.scrollIntoView({ block: "nearest" });
 }
-
-/* sync scroll between source/target by ratio (v1: equal line counts in most rows) */
-let syncing = false;
-function syncScroll(from, to) {
-  from.addEventListener("scroll", () => {
-    if (syncing) return;
-    syncing = true;
-    const max = Math.max(1, from.scrollHeight - from.clientHeight);
-    const ratio = from.scrollTop / max;
-    to.scrollTop = ratio * Math.max(0, to.scrollHeight - to.clientHeight);
-    requestAnimationFrame(() => { syncing = false; });
-  });
-}
-syncScroll($("#sourceScroll"), $("#targetScroll"));
-syncScroll($("#targetScroll"), $("#sourceScroll"));
 
 $$("#filters .filter").forEach((btn) => btn.addEventListener("click", () => {
   $$("#filters .filter").forEach((b) => b.classList.toggle("active", b === btn));
