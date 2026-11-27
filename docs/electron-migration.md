@@ -159,12 +159,26 @@ Electron main
 - 合成 fixture 已跑通保存回执：`electron/preview-write-fixture.png`；
 - **真实 memoQ 写回、确认状态回读、WritePolicy 真机回归未完成。**
 
+**打包骨架（2026-11-28）**
+
+- `electron-builder`（`--dir` / zip）已配置；
+- `scripts/build-sidecar.cjs` 用 PyInstaller 把 Python sidecar 打成单文件 exe；
+- 打包后 `resources/app` 提供 bridge 注入脚本，`resources/sidecar/serapi-sidecar.exe` 提供 Python RPC；
+- 已验证 `dist/win-unpacked/Serapi.exe`：
+  - 能启动；
+  - 能拉起打包版 sidecar；
+  - sidecar ping/version 成功；
+  - workspace 截图成功（`electron/preview-packaged.png`）；
+- 分发 zip：`dist/Serapi-0.1.0-win.zip`（约 111MB，未签名）；
+- NSIS portable 目标在本机因 NSIS mmap 失败，暂用 zip；签名/安装器后续处理。
+
 **未完成**
 
 - 真实登录/项目页；
 - 真实写回后回读与状态校验；
 - 保存失败/会话过期/跟踪修改的真实冒烟；
-- PyQt 移除、打包、托盘、更新器。
+- PyQt 移除；
+- 托盘、单实例、全局快捷键、更新器、签名。
 
 ## 4. 当前已知风险
 

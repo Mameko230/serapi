@@ -6,10 +6,53 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/host-contract.js && node tests/sidecar-contract.js",
-    "capture": "electron ."
+    "test": "node tests/host-contract.js && node tests/sidecar-contract.js && node tests/packaging-contract.js",
+    "capture": "electron .",
+    "build:sidecar": "node scripts/build-sidecar.cjs",
+    "dist:dir": "electron-builder --dir",
+    "dist": "electron-builder --win portable",
+    "dist:zip": "electron-builder --win zip"
   },
   "devDependencies": {
-    "electron": "30.5.1"
+    "electron": "30.5.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.serapi.app",
+    "productName": "Serapi",
+    "directories": {
+      "output": "dist"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "engine-preload.js",
+      "bridge-inject.js",
+      "bridge-scripts.json",
+      "qwebchannel-shim.js",
+      "sidecar-client.js",
+      "engine-api-allowlist.json",
+      "workspace/**",
+      "engine/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../app",
+        "to": "app"
+      },
+      {
+        "from": "vendor/serapi-sidecar.exe",
+        "to": "sidecar/serapi-sidecar.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    }
   }
 }

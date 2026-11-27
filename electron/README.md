@@ -110,6 +110,27 @@ npm start -- --no-sandbox
 Expected line: `ENGINE_SMOKE: ready (login page loaded, bridge injected)`.
 Logs must not include the server origin, project GUID or page content.
 
+## Build
+
+```powershell
+npm install
+npm run build:sidecar   # PyInstaller one-file sidecar (requires .venv314 + pyinstaller)
+npm run dist:dir        # unpacked app in dist/win-unpacked
+npm run dist:zip        # unsigned distributable zip
+```
+
+Packaged layout:
+
+```text
+resources/
+├─ app/                    bridge scripts + page_rules
+├─ sidecar/serapi-sidecar.exe
+└─ app.asar                workspace/engine/main/preload
+```
+
+The NSIS portable target is currently blocked on this machine by an NSIS mmap
+failure; use the zip target for now.
+
 ## Bridge fixture
 
 A synthetic page verifies the injection pipeline without a memoQ server:

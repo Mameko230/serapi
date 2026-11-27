@@ -2,9 +2,10 @@
 const { spawn } = require('node:child_process');
 
 class SidecarClient {
-  constructor({ python, script, cwd, onLog }) {
+  constructor({ python, script, args, cwd, onLog }) {
     this.python = python;
-    this.script = script;
+    this.script = script || null;
+    this.args = Array.isArray(args) ? args : null;
     this.cwd = cwd;
     this.onLog = onLog || (() => {});
     this.child = null;
@@ -15,7 +16,8 @@ class SidecarClient {
 
   start() {
     if (this.child) return;
-    this.child = spawn(this.python, ['-u', this.script], {
+    const argv = this.args ? this.args : ['-u', this.script];
+    this.child = spawn(this.python, argv, {
       cwd: this.cwd,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],

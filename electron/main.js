@@ -34,7 +34,7 @@ const WORKSPACE_ENTRY = path.join(__dirname, 'workspace', 'index.html');
 const ENGINE_ENTRY = path.join(__dirname, 'engine', 'placeholder.html');
 const ENGINE_FIXTURE = path.join(__dirname, 'engine', 'fixture.html');
 const ENGINE_FIXTURE_API = path.join(__dirname, 'engine', 'fixture-api.html');
-const APP_DIR = path.join(__dirname, '..', 'app');
+const APP_DIR = app.isPackaged ? path.join(process.resourcesPath, 'app') : path.join(__dirname, '..', 'app');
 const ENGINE_URL = String(process.env.SERAPI_ENGINE_URL || '').trim();
 const ENGINE_FIXTURE_MODE = process.env.SERAPI_ENGINE_FIXTURE === '1';
 const ENGINE_FIXTURE_API_MODE = process.env.SERAPI_ENGINE_FIXTURE_API === '1';
@@ -230,19 +230,32 @@ function maybeFinishSmoke() {
 }
 
 function startSidecar() {
-  const python = process.env.SERAPI_PYTHON
-    || path.join(__dirname, '..', '.venv314', 'Scripts', 'python.exe');
-  if (!fs.existsSync(python)) {
-    console.error('[serapi] sidecar python not found:', python);
-    return;
+  const packagedExe = app.isPackaged
+    ? path.join(process.resourcesPath, 'sidecar', 'serapi-sidecar.exe')
+    : '';
+  if (packagedExe && fs.existsSync(packagedExe)) {
+    sidecar = new SidecarClient({
+      python: packagedExe,
+      args: [],
+      cwd: path.dirname(packagedExe),
+      onLog: (line) => console.log(line),
+    });
+    sidecar.start();
+    console.log('[serapi] sidecar: packaged');
+  } else {
+    const python = process.env.SERAPI_PYTHON
+      || path.join(__dirname, '..', '.venv314', 'Scripts', 'python.exe');
+    if (!fs.existsSync(python)) {
+      console.error('[serapi] sidecar python not found:', python);
+      return;
+    }
+    sidecar = new SidecarClient({
+      python,
+      script: path.join(__dirname, 'sidecar.py'),
+      cwd: path.join(__dirname, '..'),
+      onLog: (line) => console.log(line),
+    });
   }
-  sidecar = new SidecarClient({
-    python,
-    script: path.join(__dirname, 'sidecar.py'),
-    cwd: path.join(__dirname, '..'),
-    onLog: (line) => console.log(line),
-  });
-  sidecar.start();
   sidecar.call('ping', {}, 5000)
     .then((result) => {
       sidecarReady = true;
