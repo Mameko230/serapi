@@ -1,4 +1,4 @@
-__pycache__/
+﻿__pycache__/
 *.py[cod]
 .venv/
 venv/
@@ -10,3 +10,10 @@ Thumbs.db
 *_preview.png
 # 本地探针（抓 memoQ 接口用，不入库）
 /probe*.js
+
+# Electron migration
+electron/node_modules/
+electron/profile-test/
+electron/.profile/
+electron/*.log
+

@@ -1,0 +1,15 @@
+{
+  "name": "serapi-electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serapi Electron desktop host (migration branch)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/host-contract.js",
+    "capture": "electron ."
+  },
+  "devDependencies": {
+    "electron": "30.5.1"
+  }
+}

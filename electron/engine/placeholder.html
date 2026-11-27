@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>memoQ Engine · Electron placeholder</title>
+<style>
+  html,body{height:100%;margin:0;background:#eef2f5;font-family:"Microsoft YaHei UI","Segoe UI",sans-serif;color:#28313a}
+  .wrap{height:100%;display:grid;place-items:center}
+  .card{width:390px;padding:28px 30px 24px;background:#fff;border:1px solid #dfe5ea;border-radius:14px;box-shadow:0 18px 50px rgba(20,30,40,.10)}
+  .mark{width:40px;height:40px;border-radius:11px;background:linear-gradient(145deg,#1f5e50,#123f36);color:#f7f3eb;display:grid;place-items:center;font-family:Georgia,serif;font-size:24px;margin-bottom:16px}
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:-.2px}
+  p{font-size:12px;color:#7c8791;margin:0 0 18px;line-height:1.6}
+  label{display:block;font-size:11px;color:#52606a;margin:10px 0 4px}
+  input{width:100%;box-sizing:border-box;height:36px;border:1px solid #d7dee4;border-radius:7px;padding:0 10px;font:inherit;font-size:13px;outline:none}
+  input:focus{border-color:#1f6f5c;box-shadow:0 0 0 3px rgba(31,111,92,.12)}
+  button{width:100%;height:38px;margin-top:18px;border:0;border-radius:7px;background:#1f6f5c;color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+  .note{margin-top:14px;font-size:10px;color:#9aa5ae;line-height:1.5}
+  .badge{float:right;font-size:10px;color:#6b7a85;background:#f0f4f6;border-radius:999px;padding:2px 8px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <form class="card" onsubmit="event.preventDefault()">
+      <span class="badge">Electron Engine View</span>
+      <div class="mark">m</div>
+      <h1>memoQ WebTrans</h1>
+      <p>这是 Electron 宿主中的 Engine WebView 占位页。后续步骤会在这里加载真实的 memoQ 登录页，并注入现有 bridge。</p>
+      <label>服务器地址</label>
+      <input value="https://your-memoq-server/memoqweb" readonly>
+      <label>用户名</label>
+      <input value="登录在 memoQ 官方页面完成" readonly>
+      <button type="button">下一步：接入真实页面</button>
+      <div class="note">Step 1 · 双 WebView 宿主骨架<br>Workspace 与 Engine 共享同一持久化 profile，登录 cookie 不会丢。</div>
+    </form>
+  </div>
+</body>
+</html>
