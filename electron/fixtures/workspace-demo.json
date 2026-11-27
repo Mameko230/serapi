@@ -1,0 +1,392 @@
+{
+  "synthetic": true,
+  "project": {
+    "name": "Project Aurora",
+    "file": "chapter_03.json",
+    "languages": "JA→ZH",
+    "progress": {
+      "done": 1240,
+      "total": 2150,
+      "percent": 58
+    },
+    "current": 2
+  },
+  "current": 2,
+  "segments": [
+    {
+      "no": 1,
+      "key": "ev_0010_guard",
+      "speaker": "衛兵",
+      "status": "confirmed",
+      "rate": 100,
+      "qa": 0,
+      "src": "装備画面を開きます。",
+      "tgt": "打开装备界面。",
+      "srcLines": [
+        "装備画面を開きます。"
+      ],
+      "tgtLines": [
+        "打开装备界面。"
+      ]
+    },
+    {
+      "no": 2,
+      "key": "ev_0020_guard",
+      "speaker": "旅人",
+      "status": "edited",
+      "rate": 96,
+      "qa": 1,
+      "src": "よし、行くぞ！",
+      "tgt": "好，出发吧！",
+      "srcLines": [
+        "よし、行くぞ！"
+      ],
+      "tgtLines": [
+        "好，出发吧！"
+      ]
+    },
+    {
+      "no": 3,
+      "key": "ev_0030_alice",
+      "speaker": "アリス",
+      "status": "reviewer1",
+      "rate": 88,
+      "qa": 3,
+      "src": "アリスは Ancient Ruins の入口に立ち、古い石扉に刻まれた紋章を見つめた。",
+      "tgt": "爱丽丝站在 Ancient Ruins 的入口，凝视着刻在古老石门上的纹章。",
+      "srcLines": [
+        "アリスは Ancient Ruins の入口に立ち、古い石扉に刻まれた紋章をじっと見つめた。",
+        "古い石扉に刻まれた紋章を見つめた。",
+        "「この封印は、まだ生きている……」",
+        "風が吹くたび、青白い光が",
+        "紋章の縁をゆっくりと伝っていく。",
+        "「本当に開けるつもりか？」",
+        "後ろからロウが低い声で尋ねた。",
+        "「開けなければ、先へは進めない」",
+        "アリスは短く答え、",
+        "指先を石扉に触れさせる。",
+        "その瞬間、空気が震え、",
+        "遠くで何かが目を覚ました。"
+      ],
+      "tgtLines": [
+        "爱丽丝站在遗迹入口。",
+        "凝视着刻在古老石门上的纹章。",
+        "“这道封印，还活着……”",
+        "每当风吹过，苍白的微光",
+        "便沿着纹章边缘缓缓游走。",
+        "“真的打算打开它吗？”",
+        "罗从身后低声问道。",
+        "“不开的话，就无法继续前进。”",
+        "爱丽丝简短地回答，",
+        "将指尖触上石门。",
+        "那一瞬间，空气震动，",
+        "远处有什么东西醒了过来。"
+      ]
+    },
+    {
+      "no": 4,
+      "key": "ev_0040_item",
+      "speaker": "アリス",
+      "status": "reviewer2",
+      "rate": 91,
+      "qa": 1,
+      "src": "回復薬を3つ使いますか？",
+      "tgt": "要使用 3 个恢复药吗？",
+      "srcLines": [
+        "回復薬を3つ使いますか？"
+      ],
+      "tgtLines": [
+        "要使用 3 个恢复药吗？"
+      ]
+    },
+    {
+      "no": 5,
+      "key": "ev_0050_save",
+      "speaker": "システム",
+      "status": "untranslated",
+      "rate": null,
+      "qa": 0,
+      "src": "セーブデータを上書きします。",
+      "tgt": "将覆盖存档数据。",
+      "srcLines": [
+        "セーブデータを上書きします。"
+      ],
+      "tgtLines": [
+        "将覆盖存档数据。"
+      ]
+    },
+    {
+      "no": 6,
+      "key": "ev_0060_warn",
+      "speaker": "ナレーション",
+      "status": "edited",
+      "rate": 73,
+      "qa": 0,
+      "src": "この先は危険です。",
+      "tgt": "前方危险。",
+      "srcLines": [
+        "この先は危険です。"
+      ],
+      "tgtLines": [
+        "前方危险。"
+      ]
+    },
+    {
+      "no": 7,
+      "key": "ev_0070_town",
+      "speaker": "ナレーション",
+      "status": "confirmed",
+      "rate": 100,
+      "qa": 0,
+      "src": "町へ戻りましょう。",
+      "tgt": "回城吧。",
+      "srcLines": [
+        "町へ戻りましょう。"
+      ],
+      "tgtLines": [
+        "回城吧。"
+      ]
+    },
+    {
+      "no": 8,
+      "key": "ev_0080_level",
+      "speaker": "システム",
+      "status": "draft",
+      "rate": 68,
+      "qa": 1,
+      "src": "レベルが上がりました！",
+      "tgt": "等级提升了！",
+      "srcLines": [
+        "レベルが上がりました！"
+      ],
+      "tgtLines": [
+        "等级提升了！"
+      ]
+    },
+    {
+      "no": 9,
+      "key": "ev_0090_menu",
+      "speaker": "システム",
+      "status": "edited",
+      "rate": 84,
+      "qa": 0,
+      "src": "設定画面に移動します。",
+      "tgt": "前往设置画面。",
+      "srcLines": [
+        "設定画面に移動します。"
+      ],
+      "tgtLines": [
+        "前往设置画面。"
+      ]
+    },
+    {
+      "no": 10,
+      "key": "ev_0100_continue",
+      "speaker": "システム",
+      "status": "rejected",
+      "rate": 77,
+      "qa": 0,
+      "src": "コンティニューしますか？",
+      "tgt": "要继续吗？",
+      "srcLines": [
+        "コンティニューしますか？"
+      ],
+      "tgtLines": [
+        "要继续吗？"
+      ]
+    }
+  ],
+  "contextLines": [
+    [
+      "前 · 2",
+      "旅人: ここで待っていてくれ。"
+    ],
+    [
+      "前 · 1",
+      "「本当に開けるつもりか？」"
+    ],
+    [
+      "当前",
+      "アリスは Ancient Ruins の入口に立ち、"
+    ],
+    [
+      "后 · 1",
+      "「この封印は、まだ生きている……」"
+    ],
+    [
+      "后 · 2",
+      "風が吹くたび、青白い光が"
+    ]
+  ],
+  "qa": [
+    {
+      "severity": "error",
+      "rule": "数字一致性",
+      "msg": "原文没有数字，译文多出「3」。",
+      "line": 3,
+      "match": "苍白"
+    },
+    {
+      "severity": "warn",
+      "rule": "术语",
+      "msg": "「封印」应统一为「封印」，不要混用。",
+      "line": 2,
+      "match": "封印"
+    },
+    {
+      "severity": "warn",
+      "rule": "全半角",
+      "msg": "日中混排行检测到半角数字。",
+      "line": 3,
+      "match": "苍白"
+    }
+  ],
+  "hits": [
+    {
+      "type": "TM",
+      "rate": "99%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 1 · 2026-11-11"
+    },
+    {
+      "type": "TM",
+      "rate": "97%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 2 · 2026-11-10"
+    },
+    {
+      "type": "TM",
+      "rate": "95%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 3 · 2026-11-09"
+    },
+    {
+      "type": "TM",
+      "rate": "93%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 4 · 2026-11-08"
+    },
+    {
+      "type": "TM",
+      "rate": "91%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 5 · 2026-11-07"
+    },
+    {
+      "type": "TM",
+      "rate": "89%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 6 · 2026-11-06"
+    },
+    {
+      "type": "TM",
+      "rate": "87%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 7 · 2026-11-05"
+    },
+    {
+      "type": "TM",
+      "rate": "85%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 8 · 2026-11-12"
+    },
+    {
+      "type": "TM",
+      "rate": "83%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 9 · 2026-11-11"
+    },
+    {
+      "type": "TM",
+      "rate": "81%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 10 · 2026-11-10"
+    },
+    {
+      "type": "TM",
+      "rate": "79%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 11 · 2026-11-09"
+    },
+    {
+      "type": "TM",
+      "rate": "77%",
+      "src": "アリスは古代遺跡の入口に立ち、封印を見つめた。",
+      "tgt": "爱丽丝站在古代遗迹入口，凝视着封印。",
+      "meta": "DEMO_TM · reviewer 12 · 2026-11-08"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": "封印",
+      "tgt": "封印",
+      "meta": "Game Terms · read-only · entry 1"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": "紋章",
+      "tgt": "纹章",
+      "meta": "Game Terms · read-only · entry 2"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": "石扉",
+      "tgt": "石门",
+      "meta": "Game Terms · read-only · entry 3"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": " Ancient Ruins",
+      "tgt": "Ancient Ruins",
+      "meta": "Game Terms · read-only · entry 4"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": "青白い",
+      "tgt": "苍白",
+      "meta": "Game Terms · read-only · entry 5"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": "ロウ",
+      "tgt": "罗",
+      "meta": "Game Terms · read-only · entry 6"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": "入口",
+      "tgt": "入口",
+      "meta": "Game Terms · read-only · entry 7"
+    },
+    {
+      "type": "TB",
+      "rate": "术语",
+      "src": "空気",
+      "tgt": "空气",
+      "meta": "Game Terms · read-only · entry 8"
+    }
+  ],
+  "dictionary": {
+    "term": "攻撃力",
+    "reading": "こうげきりょく",
+    "meaning": "攻击力。角色对敌人造成伤害的基础数值。",
+    "source": "个人库"
+  }
+}

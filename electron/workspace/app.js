@@ -1,64 +1,9 @@
 // Serapi Web Workspace v2 — synthetic prototype data, no network.
-const segments = [
-  { no: 1, key: "ev_0010_guard", speaker: "衛兵", status: "confirmed", rate: 100, qa: 0,
-    src: "装備画面を開きます。", tgt: "打开装备界面。",
-    srcLines: ["装備画面を開きます。"], tgtLines: ["打开装备界面。"] },
-  { no: 2, key: "ev_0020_guard", speaker: "旅人", status: "edited", rate: 96, qa: 1,
-    src: "よし、行くぞ！", tgt: "好，出发吧！",
-    srcLines: ["よし、行くぞ！"], tgtLines: ["好，出发吧！"] },
-  { no: 3, key: "ev_0030_alice", speaker: "アリス", status: "reviewer1", rate: 88, qa: 3,
-    src: "アリスは Ancient Ruins の入口に立ち、古い石扉に刻まれた紋章を見つめた。",
-    tgt: "爱丽丝站在 Ancient Ruins 的入口，凝视着刻在古老石门上的纹章。",
-    srcLines: [
-      "アリスは Ancient Ruins の入口に立ち、古い石扉に刻まれた紋章をじっと見つめた。",
-      "古い石扉に刻まれた紋章を見つめた。",
-      "「この封印は、まだ生きている……」",
-      "風が吹くたび、青白い光が",
-      "紋章の縁をゆっくりと伝っていく。",
-      "「本当に開けるつもりか？」",
-      "後ろからロウが低い声で尋ねた。",
-      "「開けなければ、先へは進めない」",
-      "アリスは短く答え、",
-      "指先を石扉に触れさせる。",
-      "その瞬間、空気が震え、",
-      "遠くで何かが目を覚ました。"
-    ],
-    tgtLines: [
-      "爱丽丝站在遗迹入口。",
-      "凝视着刻在古老石门上的纹章。",
-      "“这道封印，还活着……”",
-      "每当风吹过，苍白的微光",
-      "便沿着纹章边缘缓缓游走。",
-      "“真的打算打开它吗？”",
-      "罗从身后低声问道。",
-      "“不开的话，就无法继续前进。”",
-      "爱丽丝简短地回答，",
-      "将指尖触上石门。",
-      "那一瞬间，空气震动，",
-      "远处有什么东西醒了过来。"
-    ] },
-  { no: 4, key: "ev_0040_item", speaker: "アリス", status: "reviewer2", rate: 91, qa: 1,
-    src: "回復薬を3つ使いますか？", tgt: "要使用 3 个恢复药吗？",
-    srcLines: ["回復薬を3つ使いますか？"], tgtLines: ["要使用 3 个恢复药吗？"] },
-  { no: 5, key: "ev_0050_save", speaker: "システム", status: "untranslated", rate: null, qa: 0,
-    src: "セーブデータを上書きします。", tgt: "将覆盖存档数据。",
-    srcLines: ["セーブデータを上書きします。"], tgtLines: ["将覆盖存档数据。"] },
-  { no: 6, key: "ev_0060_warn", speaker: "ナレーション", status: "edited", rate: 73, qa: 0,
-    src: "この先は危険です。", tgt: "前方危险。",
-    srcLines: ["この先は危険です。"], tgtLines: ["前方危险。"] },
-  { no: 7, key: "ev_0070_town", speaker: "ナレーション", status: "confirmed", rate: 100, qa: 0,
-    src: "町へ戻りましょう。", tgt: "回城吧。",
-    srcLines: ["町へ戻りましょう。"], tgtLines: ["回城吧。"] },
-  { no: 8, key: "ev_0080_level", speaker: "システム", status: "draft", rate: 68, qa: 1,
-    src: "レベルが上がりました！", tgt: "等级提升了！",
-    srcLines: ["レベルが上がりました！"], tgtLines: ["等级提升了！"] },
-  { no: 9, key: "ev_0090_menu", speaker: "システム", status: "edited", rate: 84, qa: 0,
-    src: "設定画面に移動します。", tgt: "前往设置画面。",
-    srcLines: ["設定画面に移動します。"], tgtLines: ["前往设置画面。"] },
-  { no: 10, key: "ev_0100_continue", speaker: "システム", status: "rejected", rate: 77, qa: 0,
-    src: "コンティニューしますか？", tgt: "要继续吗？",
-    srcLines: ["コンティニューしますか？"], tgtLines: ["要继续吗？"] }
-];
+let segments = [];
+let contextLines = [];
+let qaIssues = [];
+let hits = [];
+let projectInfo = {};
 
 const statusLabels = {
   confirmed: "已确认", edited: "编辑", reviewer1: "R1", reviewer2: "R2",
@@ -66,26 +11,36 @@ const statusLabels = {
 };
 const statusClass = { confirmed: "confirmed", edited: "edited", reviewer1: "r1", reviewer2: "r2", rejected: "rejected", untranslated: "untranslated", draft: "edited" };
 
-const contextLines = [
-  ["前 · 2", "旅人: ここで待っていてくれ。"],
-  ["前 · 1", "「本当に開けるつもりか？」"],
-  ["当前", "アリスは Ancient Ruins の入口に立ち、"],
-  ["后 · 1", "「この封印は、まだ生きている……」"],
-  ["后 · 2", "風が吹くたび、青白い光が"]
-];
-
-const qaIssues = [
-  { severity: "error", rule: "数字一致性", msg: "原文没有数字，译文多出「3」。", line: 3, match: "苍白" },
-  { severity: "warn", rule: "术语", msg: "「封印」应统一为「封印」，不要混用。", line: 2, match: "封印" },
-  { severity: "warn", rule: "全半角", msg: "日中混排行检测到半角数字。", line: 3, match: "苍白" }
-];
-
-const hits = [];
-for (let i = 1; i <= 12; i++) {
-  hits.push({ type: "TM", rate: Math.max(72, 101 - i * 2) + "%", src: "アリスは古代遺跡の入口に立ち、封印を見つめた。", tgt: "爱丽丝站在古代遗迹入口，凝视着封印。", meta: `DEMO_TM · reviewer ${i} · 2026-11-${String(12 - (i % 8)).padStart(2, "0")}` });
+function applySnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.segments) || !snapshot.segments.length) return false;
+  segments = snapshot.segments;
+  contextLines = Array.isArray(snapshot.contextLines) ? snapshot.contextLines : [];
+  qaIssues = Array.isArray(snapshot.qa) ? snapshot.qa : [];
+  hits = Array.isArray(snapshot.hits) ? snapshot.hits : [];
+  projectInfo = snapshot.project || {};
+  state.current = Math.max(0, Math.min(segments.length - 1, Number(snapshot.current) || 0));
+  state.selectedHit = 0;
+  if (projectInfo.name) document.querySelector(".crumb-project").textContent = projectInfo.name;
+  if (projectInfo.file) document.querySelector(".crumb-file").textContent = projectInfo.file;
+  if (projectInfo.languages) document.querySelector(".lang").textContent = projectInfo.languages;
+  if (projectInfo.progress) {
+    const p = projectInfo.progress;
+    $("#progressText").textContent = `${Number(p.done || 0).toLocaleString()} / ${Number(p.total || 0).toLocaleString()}`;
+    const bar = document.querySelector(".mini-progress i");
+    if (bar) bar.style.width = `${Math.max(0, Math.min(100, Number(p.percent) || 0))}%`;
+  }
+  return true;
 }
-for (let i = 1; i <= 8; i++) {
-  hits.push({ type: "TB", rate: "术语", src: ["封印", "紋章", "石扉", " Ancient Ruins", "青白い", "ロウ", "入口", "空気"][i - 1], tgt: ["封印", "纹章", "石门", "Ancient Ruins", "苍白", "罗", "入口", "空气"][i - 1], meta: `Game Terms · read-only · entry ${i}` });
+
+async function loadWorkspaceSnapshot() {
+  if (!window.serapiHost || !window.serapiHost.sidecar) return false;
+  try {
+    const reply = await window.serapiHost.sidecar.call("workspace.snapshot", {});
+    if (!reply || !reply.ok || !reply.result) return false;
+    return applySnapshot(reply.result);
+  } catch (_) {
+    return false;
+  }
 }
 
 const state = { current: 2, currentLine: 3, filter: "all", hitFilter: "all", selectedHit: 0, contextCollapsed: false };
@@ -147,7 +102,7 @@ function renderEditor(seg) {
   $("#editorRow").textContent = "第 " + seg.no + " 段";
   $("#editorKey").textContent = seg.key;
   $("#editorStat").textContent = `${seg.srcLines.length} 行 · 28 / 42 字`;
-  $("#codePane").innerHTML = codeRows(seg, qaIssues[0].line);
+  $("#codePane").innerHTML = codeRows(seg, qaIssues[0] ? qaIssues[0].line : -1);
   const qaLine = qaIssues.find((q) => q.severity === "error");
   if (qaLine) {
     const row = $("#codePane").querySelector(`.code-row[data-line="${qaLine.line}"]`);
@@ -424,6 +379,19 @@ async function initWelcome() {
 }
 
 if (location.hash === "#dark") document.body.classList.add("dark");
-renderSegmentList(); renderContext(); renderEditor(segments[state.current]); renderQA(); renderHits();
-initSplitter();
-initWelcome();
+
+async function bootWorkspace() {
+  await loadWorkspaceSnapshot();
+  if (!segments.length) {
+    $("#segList").innerHTML = '<div class="empty-workspace">未收到工作区数据<br><span>请检查 Python sidecar</span></div>';
+    return;
+  }
+  renderSegmentList();
+  renderContext();
+  renderEditor(segments[state.current]);
+  renderQA();
+  renderHits();
+  initSplitter();
+  initWelcome();
+}
+bootWorkspace();

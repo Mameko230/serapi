@@ -33,6 +33,7 @@ const requests = [
     method: 'config.remember_server',
     params: { url: 'https://demo.example.invalid/memoqweb', name: '演示服务器' },
   },
+  { id: 5, method: 'workspace.snapshot', params: {} },
 ];
 const result = spawnSync(python, ['-u', sidecar], {
   cwd: path.join(root, '..'),
@@ -43,11 +44,12 @@ const result = spawnSync(python, ['-u', sidecar], {
 });
 assert.equal(result.status, 0, result.stderr || 'sidecar exited non-zero');
 const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
-assert.equal(lines.length, 4, 'expected four sidecar responses');
+assert.equal(lines.length, 5, 'expected five sidecar responses');
 const ping = JSON.parse(lines[0]);
 const version = JSON.parse(lines[1]);
 const config = JSON.parse(lines[2]);
 const remember = JSON.parse(lines[3]);
+const workspace = JSON.parse(lines[4]);
 assert.equal(ping.ok, true);
 assert.equal(ping.result.ok, true);
 assert.equal(version.ok, true);
@@ -58,6 +60,9 @@ assert.equal(config.result.server_history.length, 1);
 assert.equal(remember.ok, true);
 assert.equal(remember.result.ok, true);
 assert.equal(remember.result.config.memoq_url, 'https://demo.example.invalid/memoqweb');
+assert.equal(workspace.ok, true);
+assert.equal(workspace.result.synthetic, true);
+assert.ok(workspace.result.segments.length >= 10);
 assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf8')).memoq_url,
   'https://demo.example.invalid/memoqweb');
 fs.rmSync(tmpDir, { recursive: true, force: true });

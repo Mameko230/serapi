@@ -91,14 +91,17 @@ Electron main
 - `sidecar-client.js`：spawn/超时/退出/日志；主进程启动并健康检查；
 - preload：`serapiHost.sidecar.call(method, params)`；
 - 实测 sidecar ping + version（Python 3.14.10，APP_VERSION 1.2.2）；
-- 反向 Engine API 已打通，fixture `ping` 返回 `pong`。
+- 反向 Engine API 已打通，fixture `ping` 返回 `pong`；
+- `workspace.snapshot` 已接入：Workspace 启动时从 sidecar 读取合成快照，左栏/编辑器/QA/TM/TB 不再依赖前端硬编码；
+- 快照 fixture：`electron/fixtures/workspace-demo.json`，`synthetic: true`；
+- Workspace 截图已改为 sidecar 数据渲染（`electron/preview-electron.png`）。
 
 **Step 3 待办**
 
-- sidecar 接入 `app/` 的真实读服务（先只读：行列表/段信息/QA/词典）；
-- 定义 workspace ↔ sidecar 的消息 schema，禁止把 memoQ GUID/正文写日志；
+- 把 `workspace.snapshot` 的 provider 从合成 fixture 换成真实只读数据：先 Engine `listRows`/`readSegment`，再 sidecar 归一化；
+- 定义稳定的 workspace ↔ sidecar schema（project/segments/qa/hits/context/dictionary）；
 - 写路径保留在 Python sidecar，并补 WritePolicy 回归；
-- Workspace 左栏/中栏/右栏替换 fixture 数据。
+- 真实数据接入前，任何真实 memoQ 正文不得写日志/截图。
 
 ### Step 4 — 欢迎/账号/设置 Web 化（进行中）
 - 服务器历史、连接、主题、快捷键、Tag 规则、编辑器字号；

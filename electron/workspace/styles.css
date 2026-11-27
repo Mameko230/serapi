@@ -334,6 +334,12 @@ body.dark .line-text:focus { background: rgba(255,255,255,.06); }
 .dict-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; color: var(--faint); font-size: 8px; }
 
 
+.empty-workspace {
+  padding: 40px 18px; color: var(--muted); font-size: 12px;
+  text-align: center; line-height: 1.7;
+}
+.empty-workspace span { color: var(--faint); font-size: 10px; }
+
 /* welcome / account surface */
 .welcome {
   position: fixed; inset: 0; z-index: 40; display: grid; place-items: center;

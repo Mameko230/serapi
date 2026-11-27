@@ -153,12 +153,27 @@ def _config_forget(params):
     return {"ok": True, "config": _public_config(cfg)}
 
 
+
+def _workspace_snapshot(_params):
+    """Read-only synthetic snapshot used until Engine data is wired.
+
+    The fixture is explicitly marked synthetic and contains no real memoQ
+    project, GUID, account or source text.
+    """
+    fixture = Path(os.environ.get("SERAPI_WORKSPACE_FIXTURE")
+                   or (ROOT / "electron" / "fixtures" / "workspace-demo.json"))
+    data = json.loads(fixture.read_text(encoding="utf-8"))
+    if not data.get("synthetic"):
+        raise ValueError("workspace fixture must be synthetic")
+    return data
+
 METHODS = {
     "ping": _ping,
     "version": _version,
     "config.get": _config_get,
     "config.remember_server": _config_remember,
     "config.forget_server": _config_forget,
+    "workspace.snapshot": _workspace_snapshot,
 }
 
 
