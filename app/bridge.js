@@ -562,7 +562,7 @@
           detect: detectEditor, termCore: termCore, termProjectGuid: termProjectGuid,
           fail: termFail, projectGuid: newProjectGuidFromUrl, langCodes: newTermLangCodes,
           language: termLanguage, primaryTerm: termPrimaryTerm, metaValue: termMetaValue,
-          setMeta: termSetMeta, apiPost: apiPost,
+          setMeta: termSetMeta, apiPost: apiPost, fetch: newApiFetch, headers: newApiHeaders, docBase: newDocApiBase,
           push: function (type, payload) { try { __md.push(type, payload); } catch (e) {} },
         });
       }

@@ -34,6 +34,34 @@
       var tbGuid = String(params.tbGuid || '');
       if (!source || !target || !tbGuid) return deps.fail('term-add-result', req, '原文、译文和术语库均为必填');
       try {
+        if (deps.detect() === 'new') {
+          // 新版编辑器用文档级 quick-add；旧 QTermService 只作旧版兼容。
+          var doc = String((deps.docBase && deps.docBase()) || '');
+          var trans = doc.replace('/api/editor/', '/api/translation/');
+          var hdr = deps.headers ? deps.headers() : {};
+          hdr['Content-Type'] = 'application/json';
+          deps.fetch(trans + '/info', { headers: hdr }).then(function (r) {
+            return r.json();
+          }).then(function (info) {
+            var srcCode = String((info.project && info.project.sourceLang &&
+                                  info.project.sourceLang.code) || '');
+            var tgtCode = String((info.document && info.document.targetLang &&
+                                  info.document.targetLang.code) || '');
+            return deps.fetch(doc + '/terms/quick-add', {
+              method: 'POST', headers: hdr,
+              body: JSON.stringify({
+                sourceTerm: { langCode: srcCode, termText: source },
+                targetTerm: { langCode: tgtCode, termText: target },
+              }),
+            }).then(function (r2) {
+              if (!r2.ok) throw new Error('HTTP ' + r2.status);
+              deps.push('term-add-result', {
+                req: req, ok: true, source: source, target: target, tbGuid: tbGuid,
+              });
+            });
+          }).catch(function (e) { deps.fail('term-add-result', req, e.message || e); });
+          return { ok: true };
+        }
         if (deps.detect() !== 'old') return deps.fail('term-add-result', req, '添加术语仅旧版支持');
         var core = deps.termCore();
         var prj = deps.termProjectGuid(core);

@@ -45,6 +45,18 @@ assert r2.index(0, 0).data() == "10  R2", r2.index(0, 0).data()
 r2.update_rows([{"rowNo": 10, "src": "甲", "tgt": "A", "status": "edited"}])
 assert r2.index(0, 0).data() == "10  R2", r2.index(0, 0).data()
 
+# R2/R1/已确认的权威状态必须持续压住旧 edited 快照，不能 8 秒后又回跳黄。
+auth = SegModel()
+auth.set_rows([{"rowNo": 20, "src": "甲", "tgt": "A", "status": "edited"}])
+auth.set_row_status(20, "reviewer2")
+for _ in range(3):
+    auth.update_rows([{"rowNo": 20, "src": "甲", "tgt": "A", "status": "edited"}])
+    assert auth.index(0, 0).data() == "20  R2", auth.index(0, 0).data()
+auth.update_rows([{"rowNo": 20, "src": "甲", "tgt": "A", "status": "reviewer1"}])
+assert auth.index(0, 0).data() == "20  R1", auth.index(0, 0).data()
+auth.update_rows([{"rowNo": 20, "src": "甲", "tgt": "A", "status": "edited"}])
+assert auth.index(0, 0).data() == "20  R1", auth.index(0, 0).data()
+
 # 缓存扩容属于结构变化，但新版走键控增量：不整表 reset，只插入新增行。
 expanded = updated + [{"rowNo": 3, "src": "丙", "tgt": "", "status": "untranslated"}]
 assert model.update_rows(expanded, {1: 85}) == 2

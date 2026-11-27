@@ -219,17 +219,21 @@ class SegModel(QAbstractTableModel):
             self.dataChanged.emit(top, bottom, [Qt.ItemDataRole.ForegroundRole])
 
     def _apply_authoritative(self, row: dict) -> dict:
-        """本地动作的 8 秒权威值：所有模型入口共用，换窗时也不能回跳。"""
+        """本地/服务端权威状态优先级：R1/R2/已确认/已拒绝不被旧 edited 快照盖回。
+
+        权威状态不再用 8 秒过期：状态抖动比“晚一点才允许回退”更不可接受。
+        只有出现另一个权威状态，或用户显式清空/换文档时才更新。
+        """
         row_no = row.get("rowNo")
         auth = self._authoritative_status.get(row_no)
         if auth is not None:
-            auth_status, auth_ts = auth
-            if row.get("status") == auth_status:
-                self._authoritative_status.pop(row_no, None)
-            elif time.monotonic() - auth_ts < 8.0:
-                row["status"] = auth_status
+            auth_status = auth[0]
+            incoming = str(row.get("status") or "")
+            if incoming in self.AUTHORITATIVE_STATUS and incoming != auth_status:
+                # 新的权威状态（例如 R2 再次确认/R1 确认）覆盖旧的。
+                self._authoritative_status[row_no] = (incoming, time.monotonic())
             else:
-                self._authoritative_status.pop(row_no, None)
+                row["status"] = auth_status
         aw = self._authoritative_write.get(row_no)
         if aw is not None:
             want_tgt, aw_ts = aw

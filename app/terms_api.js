@@ -126,9 +126,30 @@
 
     function termContext(req) {
       try {
-        if (deps.detectEditor() !== 'old') {
-          return deps.fail('term-context', req, '添加术语仅旧版支持');
+        var kind = deps.detectEditor();
+        if (kind === 'new') {
+          var doc = String(deps.docBase() || '');
+          if (!doc) return deps.fail('term-context', req, '文档 API 路径未找到');
+          var h = deps.headers ? deps.headers() : {};
+          deps.fetch(doc + '/resources/meta', { headers: h }).then(function (r) {
+            return r.json();
+          }).then(function (meta) {
+            var raw = (meta && meta.termBase) || [];
+            var items = raw.map(function (tb) {
+              return { guid: String(tb.id || ''), name: String(tb.name || tb.id || ''),
+                       primary: !!tb.isPrimary, readOnly: !!tb.isReadOnly,
+                       languages: tb.languages || [] };
+            }).filter(function (tb) { return !!tb.guid; });
+            if (!items.length) throw new Error('当前项目没有挂接术语库');
+            var primary = items.filter(function (tb) { return tb.primary; })[0];
+            deps.push('term-context', {
+              req: req, items: items,
+              selected: primary ? primary.guid : items[0].guid,
+            });
+          }).catch(function (e) { deps.fail('term-context', req, e.message || e); });
+          return { ok: true };
         }
+        if (kind !== 'old') return deps.fail('term-context', req, '添加术语仅旧版支持');
         var core = deps.termCore();
         var prj = deps.termProjectGuid(core);
         deps.post('TranslationService/ListServerProjectTBs', {

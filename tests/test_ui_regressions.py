@@ -562,9 +562,11 @@ assert fm._status_of(fm._all_rows[0]) == "reviewer1"
 fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "edited"}])
 assert fm._status_of(fm._all_rows[0]) == "reviewer1", "旧快照不得覆盖刚确认的状态"
 fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "reviewer1"}])
-assert 1 not in fm._authoritative_status
+assert fm._authoritative_status.get(1, ("",))[0] == "reviewer1", "权威状态需持续存在，避免之后被旧 edited 快照拉回"
 fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "edited"}])
-assert fm._status_of(fm._all_rows[0]) == "reviewer1", "随后状态变化仍走两次防抖"
+assert fm._status_of(fm._all_rows[0]) == "reviewer1", "旧快照不得覆盖权威状态"
+fm.update_rows([{"rowNo": 1, "src": "a", "tgt": "A", "status": "confirmed"}])
+assert fm._status_of(fm._all_rows[0]) == "confirmed", "新的权威状态应覆盖旧权威状态"
 
 # 14) 行号列宽度：自动只增不减；用户拖过则完全尊重用户宽度并持久化。
 wh = Dummy()
