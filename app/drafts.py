@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Serapi 未保存草稿：按文档 URL + 行号持久化，保存成功后才清除。"""
 import json
+import os
+import uuid
 from pathlib import Path
 
 
@@ -21,9 +23,19 @@ class DraftStore:
 
     def _write(self, data):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-        tmp.replace(self.path)
+        # 多实例/杀毒软件可能短暂占用固定 .tmp；使用唯一临时名，避免互相覆盖。
+        tmp = self.path.with_name(
+            self.path.name + f".{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+                           encoding="utf-8")
+            tmp.replace(self.path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except Exception:
+                    pass
 
     def put(self, doc_key, row_no, tokens, base_tokens=None):
         data = self._load()

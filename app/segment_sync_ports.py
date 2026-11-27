@@ -128,7 +128,30 @@ class SegmentSyncPortsMixin:
             self.editor.load_tokens(remote)
             self._last_tokens = self.editor.to_tokens()
             if draft:
-                self.editor.load_tokens(list(draft.get("tokens") or []))
+                # 已确认/审校完成的旧草稿，或 base 与当前远端 token 不一致的草稿，
+                # 不能恢复到编辑器，否则下次切行会把旧文本覆盖回 memoQ。
+                stale_status = {"confirmed", "reviewer1", "reviewer2", "rejected"}
+                snapshot = None
+                model = getattr(self, "seg_model", None)
+                if model is not None and hasattr(model, "row_snapshot"):
+                    try:
+                        snapshot = model.row_snapshot(row_no)
+                    except Exception:
+                        snapshot = None
+                row_status = str((snapshot or {}).get("status") or "")
+                base = draft.get("base")
+                stale = bool(row_status in stale_status)
+                if list(draft.get("tokens") or []) == self._last_tokens:
+                    stale = True
+                if stale:
+                    try:
+                        self._drafts.discard(self._editor_url, row_no)
+                    except Exception:
+                        pass
+                    draft = None
+                    self.log(f"已丢弃第 {row_no} 行的过期本地草稿")
+                else:
+                    self.editor.load_tokens(list(draft.get("tokens") or []))
             self.editor.document().setModified(bool(draft))
         finally:
             self._loading_editor = False
