@@ -817,7 +817,7 @@
     }, 300);
     window.__md.ready = true;
     window.__md.push('bridge-ready', { url: location.href, t: Date.now() });
-    try { window.__mdRowStatus.observe(function () { window.__md.push('rows-updated', { source: 'dom-status' }); }); } catch (e) {}
+    try { window.__mdRowStatus.observe(function (ids) { for (var i = 0; i < (ids || []).length; i++) { try { newRefreshRowCache(ids[i]); } catch (e) {} } setTimeout(function () { window.__md.push('rows-updated', { source: 'dom-status' }); }, 260); }); } catch (e) {}
     log('bridge ready');
 
     // 会话保活：memoQ 服务器会话闲置会过期，而桌面端可能长时间挂后台不碰网络。

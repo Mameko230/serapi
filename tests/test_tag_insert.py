@@ -72,4 +72,12 @@ old = run([{"t": "tag", "id": "1", "tagKind": "open", "name": "old"}])
 assert len(old.editor.inserted) == 1, old.logs
 assert old.editor.inserted[0]["id"] == "1"
 
+# 新版 mq:ch 换行 tag 必须和已有 newline token 对齐，不能再插一个普通 tag。
+host = Host([{"t": "newline", "name": "mq:ch"}])
+host.editor.tokens = [{"t": "text", "v": "甲"}, {"t": "newline"},
+                      {"t": "text", "v": "乙"}]
+tag_insert.backend_for = lambda _h: FakeBackend([{"t": "newline", "name": "mq:ch"}])
+host.insert_next_tag()
+assert host.editor.inserted == [], host.logs
+
 print("TAG_INSERT_TEST: PASS")

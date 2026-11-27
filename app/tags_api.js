@@ -12,11 +12,17 @@
           }
           function tagToken(tk) {
             if (!tk || tk.t !== 'tag') return null;
+            var name = String(tk.name || (tk.attrs && tk.attrs.name) || '');
+            var display = String(tk.display || (tk.attrs && tk.attrs.displayText) || '');
+            // 新版 PM 把 mq:ch 换行 tag 作为 tag 节点；F9 必须把它当已存在的
+            // 换行边界，而不是再插入一个“普通 tag”（否则会多出换行 tag）。
+            if (name === 'mq:ch' || display === 'br') {
+              return { t: 'newline', name: 'mq:ch' };
+            }
             return {
               t: 'tag', id: tk.id == null ? '' : String(tk.id),
               kind: tk.tagKind || tk.kind || (tk.attrs && tk.attrs.tagKind) || 'empty',
-              name: String(tk.name || (tk.attrs && tk.attrs.name) || ''),
-              display: String(tk.display || (tk.attrs && tk.attrs.displayText) || ''),
+              name: name, display: display,
               tagType: String(tk.tagType || (tk.attrs && tk.attrs.type) || ''),
               attrs: tk.attrs || null,
             };

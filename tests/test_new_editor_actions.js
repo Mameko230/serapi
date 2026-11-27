@@ -116,7 +116,9 @@ function load() {
       if (action) {
         return Promise.resolve({
           ok: true, status: 200,
-          json: () => Promise.resolve({ jobId: 'job-1' }),
+          json: () => Promise.resolve({
+            row: { meta: { status: action[2] === 'reject' ? 'rejected' : 'reviewer1Confirmed' } },
+          }),
         });
       }
       if (url.endsWith('/rows/confirm') || url.endsWith('/rows/reject')) {
@@ -190,8 +192,8 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   ret = api.rejectSegment(3);
   assert.strictEqual(ret.ok, true);
   assert.strictEqual(String(ret.rowId), '2');
-  await delay(450);
-  const rejectReq = ctx.__fetches.find((f) => f.url.endsWith('/rows/reject'));
+  await delay(300);
+  const rejectReq = ctx.__fetches.find((f) => f.url.endsWith('/rows/2/reject'));
   assert.ok(rejectReq, ctx.__fetches.map((f) => f.url));
   const rejectPush = ctx.__pushes.map((p) => JSON.parse(p))
     .find((p) => p.type === 'row-action-result');

@@ -11,9 +11,9 @@
 | Ctrl+Enter 保存后卡死（缺 `QTimer`/`json` 导入） | 集成崩溃 | `tests/test_save_flow.py`（离线覆盖调用路径） |
 | 新版确认/拒绝只改本地、原生状态不前进 | API 语义 | `tests/test_new_editor_actions.js` + `docs/SMOKE.md` N25–N27 |
 | 只读术语命中无法插入译文 | 逻辑错误 | `tests/test_hits.js`、`tests/test_new_editor_hits.js` + `docs/SMOKE.md` N25 |
-| F9 只支持旧版 `listTags`，新版无法插 tag | 逻辑错误 | 待补：`tests/test_tag_insert.py`（新增）+ `docs/SMOKE.md` N26 |
-| Shift+Enter 拒绝后 busy 未及时释放/状态不回执 | 集成崩溃 | `tests/test_new_editor_actions.js` + `docs/SMOKE.md` N27 |
-| 原生确认后编辑器状态不实时同步 | 集成崩溃 | `docs/SMOKE.md` N28（DOM 状态观察已接入，待真机） |
+| F9 新版插入多余换行 tag | API 语义 | `tests/test_tag_insert.py` + `docs/SMOKE.md` N26 |
+| Shift+Enter 拒绝批量端点 HTTP 405 | API 语义 | `tests/test_new_editor_actions.js` + `docs/SMOKE.md` N27 |
+| 原生确认后编辑器状态不实时同步 | 集成崩溃 | `docs/SMOKE.md` N28（按 rowId 刷新缓存 + DOM 状态观察） |
 | 新版 TB 编辑走旧 QTermService/Core | API 语义 | `tests/test_new_term_edit.js` + `tests/test_term_quick_add_new.js` + `docs/SMOKE.md` N29 |
 | 换行 tag 写回值与原文不同 | API 语义 | `tests/test_preview_context.js`（原始 symbol 复用） |
 | 左栏滚轮到底不加载更多 | 逻辑错误 | `tests/test_segment_sync.py` |

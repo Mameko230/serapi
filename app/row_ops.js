@@ -14,7 +14,7 @@
       }
       var headers = deps.headers();
       headers['Content-Type'] = 'application/json';
-      var batch = !!(deps.batchRowActions && (action === 'confirm' || action === 'reject'));
+      var batch = !!(deps.batchRowActions && action === 'confirm');
       var url = batch ? (base + '/rows/' + action)
                       : (base + '/rows/' + rowId + '/' + action);
       var body = batch ? { rowIds: [Number(rowId)],

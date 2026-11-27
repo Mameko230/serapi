@@ -20,6 +20,7 @@
   function observe(onChange) {
     if (!window.MutationObserver || !document.body) return;
     var timer = null;
+    var changedRows = {};
     function inEditor(node) {
       try {
         return !!(node && node.closest &&
@@ -35,6 +36,9 @@
           if (!node || !node.closest || !node.closest('.translation-row')) continue;
           // 编辑器正文的输入不触发状态同步；只看行状态/徽章等非编辑区变化。
           if (inEditor(node)) continue;
+          var row = node.closest('.translation-row');
+          var rid = row && row.getAttribute('data-row-id');
+          if (rid !== null && rid !== undefined && rid !== '') changedRows[rid] = true;
           if (m.type === 'attributes') { relevant = true; break; }
           if (m.type === 'characterData' && node.parentElement) { relevant = true; break; }
           if (m.type === 'childList') { relevant = true; break; }
@@ -43,7 +47,9 @@
       if (!relevant || timer) return;
       timer = setTimeout(function () {
         timer = null;
-        try { onChange(); } catch (e) {}
+        var ids = Object.keys(changedRows);
+        changedRows = {};
+        try { onChange(ids); } catch (e) {}
       }, 250);
     });
     observer.observe(document.body, {
