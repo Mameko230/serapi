@@ -21,3 +21,6 @@ electron/.sidecar-test-*/
 electron/vendor/
 electron/build/
 electron/dist/
+
+# Mac dev venv (mirrors Windows .venv314 convention)
+.venv314/

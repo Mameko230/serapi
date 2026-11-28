@@ -26,7 +26,7 @@ assert.match(main, /BrowserView/, 'main creates BrowserViews');
 assert.match(main, /engine:show/, 'main exposes engine:show IPC');
 assert.match(main, /engine:hide/, 'main exposes engine:hide IPC');
 assert.match(main, /persist:serapi/, 'both views use the persisted profile');
-assert.match(main, /process\.env\.LOCALAPPDATA/, 'profile avoids roaming AppData');
+assert.match(main, /getUserDataPath/, 'host chooses a platform-appropriate profile path');
 assert.match(main, /SERAPI_CAPTURE/, 'capture hook exists');
 assert.match(preload, /contextBridge\.exposeInMainWorld\('serapiHost'/, 'workspace host API is exposed');
 assert.match(preload, /showEngine/, 'host API can show the engine view');

@@ -6,16 +6,30 @@
 const { app, BrowserWindow, BrowserView, ipcMain, session, Tray, Menu, nativeImage, globalShortcut } = require('electron');
 const { buildBundle } = require('./bridge-inject');
 const { SidecarClient } = require('./sidecar-client');
+const {
+  getUserDataPath,
+  getFallbackLockPath,
+  getPackagedSidecarPath,
+  resolveDevelopmentPython,
+  isExecutablePath,
+} = require('./platform-paths');
 const ENGINE_API = require('./engine-api-allowlist.json').methods;
 const path = require('node:path');
 const fs = require('node:fs');
 
-// The profile must live under LocalAppData. On this machine the roaming
-// AppData profile cannot be used by Chromium's network sandbox (access denied),
-// which crashed the host before the window appeared.
-app.setPath('userData', path.join(process.env.LOCALAPPDATA || path.join(__dirname, '.profile'), 'Serapi'));
-app.commandLine.appendSwitch('disable-features', 'NetworkServiceSandbox,CalculateNativeWinOcclusion');
-app.disableHardwareAcceleration();
+// Keep the Chromium profile in the platform's user-data area. Windows uses
+// LocalAppData; macOS/Linux use Electron's normal per-user application-data path.
+const USER_DATA_PATH = getUserDataPath({
+  platform: process.platform,
+  env: process.env,
+  appDataPath: app.getPath('appData'),
+  appDir: __dirname,
+});
+app.setPath('userData', USER_DATA_PATH);
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-features', 'NetworkServiceSandbox,CalculateNativeWinOcclusion');
+  app.disableHardwareAcceleration();
+}
 
 let win = null;
 let workspace = null;
@@ -31,7 +45,7 @@ let sidecarReady = false;
 let tray = null;
 let isQuitting = false;
 const SINGLE_INSTANCE_DISABLED = process.env.SERAPI_DISABLE_SINGLE_INSTANCE === '1';
-const FALLBACK_LOCK = path.join(process.env.LOCALAPPDATA || path.join(__dirname, '.profile'), 'Serapi', 'instance.lock');
+const FALLBACK_LOCK = getFallbackLockPath(USER_DATA_PATH);
 let fallbackLocked = false;
 
 function acquireFallbackLock() {
@@ -275,29 +289,35 @@ function maybeFinishSmoke() {
 }
 
 function startSidecar() {
-  const packagedExe = app.isPackaged
-    ? path.join(process.resourcesPath, 'sidecar', 'serapi-sidecar.exe')
-    : '';
-  if (packagedExe && fs.existsSync(packagedExe)) {
+  if (app.isPackaged) {
+    const executable = getPackagedSidecarPath(process.resourcesPath, process.platform);
+    if (!fs.existsSync(executable)) {
+      console.error('[serapi] packaged sidecar not found:', executable);
+      return;
+    }
     sidecar = new SidecarClient({
-      python: packagedExe,
+      python: executable,
       args: [],
-      cwd: path.dirname(packagedExe),
+      cwd: path.dirname(executable),
       onLog: (line) => console.log(line),
     });
     sidecar.start();
     console.log('[serapi] sidecar: packaged');
   } else {
-    const python = process.env.SERAPI_PYTHON
-      || path.join(__dirname, '..', '.venv314', 'Scripts', 'python.exe');
-    if (!fs.existsSync(python)) {
+    const repoDir = path.join(__dirname, '..');
+    const python = resolveDevelopmentPython({
+      repoDir,
+      platform: process.platform,
+      env: process.env,
+    });
+    if (isExecutablePath(python) && !fs.existsSync(python)) {
       console.error('[serapi] sidecar python not found:', python);
       return;
     }
     sidecar = new SidecarClient({
       python,
       script: path.join(__dirname, 'sidecar.py'),
-      cwd: path.join(__dirname, '..'),
+      cwd: repoDir,
       onLog: (line) => console.log(line),
     });
   }
