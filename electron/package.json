@@ -45,8 +45,8 @@
         "to": "app"
       },
       {
-        "from": "vendor/serapi-sidecar.exe",
-        "to": "sidecar/serapi-sidecar.exe"
+        "from": "vendor/serapi-sidecar",
+        "to": "sidecar"
       }
     ],
     "win": {
@@ -54,6 +54,12 @@
         "portable"
       ],
       "signAndEditExecutable": false
-    }
+    },
+    "extraFiles": [
+      {
+        "from": "extra/run-serapi.cmd",
+        "to": "run-serapi.cmd"
+      }
+    ]
   }
 }

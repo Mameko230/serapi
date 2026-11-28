@@ -110,11 +110,29 @@ npm start -- --no-sandbox
 Expected line: `ENGINE_SMOKE: ready (login page loaded, bridge injected)`.
 Logs must not include the server origin, project GUID or page content.
 
+## Launch the packaged app
+
+On this machine use the launcher, not `Serapi.exe` directly:
+
+```text
+repo\start-electron.cmd
+```
+
+or:
+
+```text
+repo\electron\dist\win-unpacked\run-serapi.cmd
+```
+
+If you unzip `electron\dist\Serapi-0.1.0-win.zip`, run `run-serapi.cmd` inside
+the extracted folder. `Serapi.exe` needs `--no-sandbox` on this Windows profile;
+the launcher supplies it and clears `ELECTRON_RUN_AS_NODE`.
+
 ## Build
 
 ```powershell
 npm install
-npm run build:sidecar   # PyInstaller one-file sidecar (requires .venv314 + pyinstaller)
+npm run build:sidecar   # one-directory Python sidecar (requires .venv314 + pyinstaller)
 npm run dist:dir        # unpacked app in dist/win-unpacked
 npm run dist:zip        # unsigned distributable zip
 ```
@@ -124,7 +142,8 @@ Packaged layout:
 ```text
 resources/
 ├─ app/                    bridge scripts + page_rules
-├─ sidecar/serapi-sidecar.exe
+├─ sidecar/                one-directory Python sidecar
+│  └─ serapi-sidecar.exe
 └─ app.asar                workspace/engine/main/preload
 ```
 

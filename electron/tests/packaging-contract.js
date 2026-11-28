@@ -23,7 +23,7 @@ for (const required of ['main.js', 'preload.js', 'engine-preload.js', 'workspace
 }
 const resources = build.extraResources || [];
 assert.ok(resources.some((r) => r.to === 'app'), 'packaged app data is copied');
-assert.ok(resources.some((r) => r.to === 'sidecar/serapi-sidecar.exe'), 'sidecar exe is packaged');
+assert.ok(resources.some((r) => r.to === 'sidecar'), 'sidecar folder is packaged');
 
 assert.match(main, /app\.isPackaged/, 'main switches to packaged resources');
 assert.match(main, /process\.resourcesPath/, 'main resolves resources path');

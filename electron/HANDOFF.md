@@ -18,23 +18,38 @@ Branch: `electron-migration` (main untouched)
 - Single instance, tray, global `Ctrl+Shift+W`
 - Host / sidecar / packaging contract tests; L0 75/75; L1 PASS
 
-## Only remaining before PyQt removal
+## Only remaining
 
 1. Real memoQ login and open a document.
 2. Validate real `listRows` / `readSegment` / `segmentInfo` / `tmHits` / context shapes.
 3. Validate real save → confirm → reload; session expiry, tracking, read-only.
 4. Validate SSO popups, cookies across restart, refresh injection.
 5. Validate tray / close-to-tray / second-instance on a normal desktop.
-6. Then delete the PyQt entry point and keep legacy only as a temporary fallback.
+
+PyQt/Qt source is intentionally kept in this branch as the legacy fallback and
+test baseline. The packaged Electron artifact does not depend on it.
 
 ## Run
+
+Use the launcher (this machine needs `--no-sandbox`):
+
+```text
+repo\start-electron.cmd
+```
+
+Or the packaged launcher:
+
+```text
+repo\electron\dist\win-unpacked\run-serapi.cmd
+```
+
+Development:
 
 ```powershell
 cd electron
 npm install
 npm run build:sidecar
 npm run dist:zip
-# or
 npm start -- --no-sandbox
 ```
 

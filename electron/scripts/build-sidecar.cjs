@@ -15,7 +15,7 @@ if (!fs.existsSync(pyinstaller)) {
   process.exit(1);
 }
 const args = [
-  '--noconfirm', '--clean', '--onefile',
+  '--noconfirm', '--clean',
   '--name', 'serapi-sidecar',
   '--distpath', path.join(root, 'vendor'),
   '--workpath', path.join(root, 'build', 'pyi'),
@@ -30,4 +30,4 @@ const args = [
 ];
 const result = spawnSync(pyinstaller, args, { stdio: 'inherit', cwd: root, env: process.env });
 if (result.status !== 0) process.exit(result.status || 1);
-console.log('sidecar built:', path.join(root, 'vendor', 'serapi-sidecar.exe'));
+console.log('sidecar built:', path.join(root, 'vendor', 'serapi-sidecar', 'serapi-sidecar.exe'));

@@ -162,14 +162,15 @@ Electron main
 **打包骨架（2026-11-28）**
 
 - `electron-builder`（`--dir` / zip）已配置；
-- `scripts/build-sidecar.cjs` 用 PyInstaller 把 Python sidecar 打成单文件 exe；
+- `scripts/build-sidecar.cjs` 用 PyInstaller 把 Python sidecar 打成 one-directory 目录（约 23MB，无需解压临时目录）；
 - 打包后 `resources/app` 提供 bridge 注入脚本，`resources/sidecar/serapi-sidecar.exe` 提供 Python RPC；
+- 启动入口：`start-electron.cmd`（本机需要 `--no-sandbox`，并清掉 `ELECTRON_RUN_AS_NODE`）；
 - 已验证 `dist/win-unpacked/Serapi.exe`：
   - 能启动；
   - 能拉起打包版 sidecar；
   - sidecar ping/version 成功；
   - workspace 截图成功（`electron/preview-packaged.png`）；
-- 分发 zip：`dist/Serapi-0.1.0-win.zip`（约 111MB，未签名）；
+- 分发 zip：`dist/Serapi-0.1.0-win.zip`（约 111MB，未签名，含 `run-serapi.cmd`）；
 - NSIS portable 目标在本机因 NSIS mmap 失败，暂用 zip；签名/安装器后续处理。
 
 **宿主壳能力（2026-11-28）**
@@ -182,6 +183,12 @@ Electron main
 - 托盘图标 `electron/assets/icon-32.png`（由 icon-a.svg 渲染）；
 - 本机因 LocalAppData 单实例锁文件权限失败，冒烟时用 `SERAPI_DISABLE_SINGLE_INSTANCE=1`；正常 Windows 用户环境不应依赖该变量；
 - **托盘点击/关闭到托盘/第二实例聚焦需要真机交互验证**，当前截图模式只能验证不崩溃。
+
+**PyQt 保留决定（2026-11-28）**
+
+- 用户确认 PyQt/Qt 源码可以保留在本分支作为回退与测试基线，不要求删除；
+- Electron 产物本身不依赖 PyQt/Qt（打包版只带 Electron + Python sidecar）；
+- 因此“迁移完成”不再以删除 PyQt 源码为条件；真实登录/写回仍属于待真机验证项。
 
 **未完成**
 
