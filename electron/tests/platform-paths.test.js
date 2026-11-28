@@ -49,6 +49,9 @@ assert.equal(getPackagedSidecarPath('C:\\Serapi\\resources', 'win32'),
 assert.equal(getVenvPythonPath('/repo', 'darwin'), '/repo/.venv314/bin/python3');
 assert.equal(getVenvPythonPath('C:\\repo', 'win32'), 'C:\\repo\\.venv314\\Scripts\\python.exe');
 assert.equal(resolveDevelopmentPython({ repoDir: '/repo', platform: 'darwin', env: {}, existsSync: () => false }), 'python3');
+// Windows must not fall back to PATH: the baseline build fails when the repo venv is missing.
+assert.equal(resolveDevelopmentPython({ repoDir: 'C:\\repo', platform: 'win32', env: {}, existsSync: () => false }),
+  'C:\\repo\\.venv314\\Scripts\\python.exe');
 assert.equal(resolveDevelopmentPython({ repoDir: '/repo', platform: 'darwin', env: {}, existsSync: () => true }), '/repo/.venv314/bin/python3');
 assert.equal(resolveDevelopmentPython({ repoDir: '/repo', platform: 'darwin', env: { SERAPI_PYTHON: 'python-custom' } }), 'python-custom');
 assert.equal(isExecutablePath('python3', 'darwin'), false);

@@ -57,7 +57,12 @@ function resolveDevelopmentPython({
   if (env.SERAPI_PYTHON) return env.SERAPI_PYTHON;
   const venvPython = getVenvPythonPath(repoDir, platform);
   if (existsSync(venvPython)) return venvPython;
-  return platform === 'win32' ? 'python' : 'python3';
+  // Windows keeps the baseline contract: the build and the dev host require the
+  // repo venv, and a missing one must fail loudly instead of silently picking up
+  // whatever `python` happens to be on PATH. macOS/Linux fall back to python3,
+  // where the venv is optional (the packaged build does not need it at all).
+  if (platform === 'win32') return venvPython;
+  return 'python3';
 }
 
 function isExecutablePath(value, platform = process.platform) {
