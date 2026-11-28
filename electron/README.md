@@ -130,6 +130,8 @@ the launcher supplies it and clears `ELECTRON_RUN_AS_NODE`.
 
 ## Build
 
+Windows:
+
 ```powershell
 npm install
 npm run build:sidecar   # one-directory Python sidecar (requires .venv314 + pyinstaller)
@@ -137,18 +139,48 @@ npm run dist:dir        # unpacked app in dist/win-unpacked
 npm run dist:zip        # unsigned distributable zip
 ```
 
+macOS (arm64, built and smoke-tested on Apple silicon):
+
+```bash
+python3 -m venv .venv314          # repo-root venv; .venv314/bin/python3 is auto-detected
+.venv314/bin/python3 -m pip install pyinstaller
+cd electron
+npm install
+npm run dist:mac:dir   # unpacked dist/mac-arm64/Serapi.app
+npm run dist:mac       # dist/Serapi-<version>-arm64-mac.dmg + .zip
+```
+
+To start the unpacked app from Finder, double-click the repository-root
+`start-serapi.command` (already `chmod +x`). For source development, `npm start`
+works on macOS without `--no-sandbox` or `SERAPI_DISABLE_SINGLE_INSTANCE=1`.
+
+The sidecar binary is platform-specific: `serapi-sidecar.exe` on Windows,
+extension-less Mach-O on macOS. PyInstaller data paths use the host platform
+separator. macOS builds are unsigned (no Developer ID certificate); Gatekeeper
+requires right-click → Open on first launch of the zip/dmg build.
+
 Packaged layout:
 
 ```text
 resources/
 ├─ app/                    bridge scripts + page_rules
 ├─ sidecar/                one-directory Python sidecar
-│  └─ serapi-sidecar.exe
+│  └─ serapi-sidecar(.exe)
 └─ app.asar                workspace/engine/main/preload
 ```
 
-The NSIS portable target is currently blocked on this machine by an NSIS mmap
+The Windows NSIS portable target is currently blocked by an NSIS mmap
 failure; use the zip target for now.
+
+## Profile locations
+
+`electron/platform-paths.js` picks the per-user data directory per platform
+and `tests/platform-paths.test.js` guards the mapping:
+
+- Windows: `%LOCALAPPDATA%\Serapi` (roaming AppData is rejected by Chromium's
+  network sandbox on the development machine)
+- macOS: `~/Library/Application Support/Serapi`
+- Linux: `$XDG_CONFIG_HOME/Serapi` or `~/.config/Serapi`
 
 ## Host shell
 
@@ -168,23 +200,21 @@ failure; use the zip target for now.
 
 A synthetic page verifies the injection pipeline without a memoQ server:
 
-```powershell
-$env:SERAPI_ENGINE_FIXTURE="1"
-$env:SERAPI_ENGINE_SHOW="1"
-$env:SERAPI_CAPTURE="preview-electron.png"
-$env:SERAPI_CAPTURE_ENGINE="preview-engine-fixture.png"
-npm start -- --no-sandbox
+```bash
+SERAPI_ENGINE_FIXTURE=1 SERAPI_ENGINE_SHOW=1 SERAPI_ENGINE_SMOKE=1 \
+SERAPI_SMOKE_EXIT=1 SERAPI_CAPTURE=preview-electron.png npm start
 ```
 
-Expected main-process log: `[serapi] engine event: bridge-ready`.
-Screenshot: `preview-engine-fixture.png`.
+Expected main-process log: `[serapi] engine event: bridge-ready` and
+`ENGINE_SMOKE: ready`. On the Windows dev machine append `--no-sandbox`;
+macOS does not need it.
 
 The fixture contains no project data, credentials or real server URL.
 
 ## Not done yet
 
 - Real memoQ login/project navigation and cookie persistence verification.
-- Reverse bridge channel (main/Python calling `window.__md.api.*`).
 - SSO popups, downloads, certificate errors and proxy parity.
-- Python sidecar and actual data wiring.
+- macOS tray / second-instance / close-to-tray interaction on a real desktop.
+- Signed macOS builds (dmg/zip are unsigned; no auto-update path yet).
 - PyQt removal.

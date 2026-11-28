@@ -65,17 +65,32 @@
 | O3 | 术语浮层 | 列表/编辑/快捷添加正常 | ☐ |
 | O4 | 过滤/语词检索 | 正常 | ☐ |
 
-## 4. 发布判定
+## 4. macOS Electron 宿主（arm64）
+
+| # | 操作 | 预期 | 结果 |
+|---|---|---|---|
+| M1 | `npm run dist:mac` | 产出 arm64 dmg + zip；`Serapi.app/Contents/Resources/sidecar/serapi-sidecar` 是 Mach-O arm64，无 `.exe` | ☑ 本机离线 |
+| M2 | 从 `dist/mac-arm64/Serapi.app` 启动 | 工作区渲染，打包 sidecar ping/version 成功，日志无真实 URL/账号/正文 | ☑ 本机离线 |
+| M3 | 合成 Engine fixture + `npm start` | `bridge-ready`、`ENGINE_SMOKE: ready`；profile 写入 `~/Library/Application Support/Serapi` | ☑ 本机离线 |
+| M4 | 首次打开 dmg/zip 解压的 `.app` | Gatekeeper 未签名提示可控；右键 → 打开后可启动 | ☐ 待用户真机 |
+| M5 | 单实例、托盘、关窗隐藏、第二实例聚焦 | 与 Windows 行为一致；不依赖 `SERAPI_DISABLE_SINGLE_INSTANCE=1` | ☐ 待用户真机 |
+| M6 | 官方 memoQ 登录页 → 打开测试文档 | 登录态与 cookie 持久化；刷新/软导航后 bridge 重新注入；`listRows`/`readSegment`/`tmHits` 形状正确 | ☐ 待真机验证 |
+| M7 | 保存 → 确认 → 刷新回读 | 写策略通过后才写；会话过期/跟踪修改/只读/锁定按预期拒绝；原生状态与左栏一致 | ☐ 待真机验证 |
+
+M1–M3 的守卫：`electron/tests/platform-paths.test.js`、`electron/tests/packaging-contract.js`、`electron/tests/host-contract.js`、`electron/tests/sidecar-contract.js` 与 `tests/run_all.py --full`。M4–M7 必须按 [SMOKE_RESULTS.md](SMOKE_RESULTS.md) 记录，未跑前不得声称通过。
+
+## 5. 发布判定
 
 - patch：本次改动面通过即可发 latest；未跑全量 N1–N24 时 Release notes 明列未覆盖项。
 - minor/major：新版 N1–N24 全部通过，旧版 O1–O4 全部通过 → 可进入 stable 候选。
 - 任一失败 → 修完重跑；无法真机验证 → Release notes 写明“未完成真机验证”，patch 仍可 latest，minor/major 只能发 Prerelease。
 
-## 5. 回报模板
+## 6. 回报模板
 
 ```text
 版本：
-编辑器：新版 / 旧版
+平台：Windows / macOS arm64
+编辑器：新版 / 旧版 / Electron 宿主
 memoQ 版本（如知道）：
 通过项：
 失败项（编号 + 脱敏错误）：

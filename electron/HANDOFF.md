@@ -17,6 +17,7 @@ Branch: `electron-migration` (main untouched)
 - Electron builder `--dir` and zip; unsigned zip ~111 MB
 - Single instance, tray, global `Ctrl+Shift+W`
 - Host / sidecar / packaging contract tests; L0 75/75; L1 PASS
+- macOS arm64 packaging: dmg + zip, `Serapi.icns`, `.command` launcher, platform-specific profile and extension-less Mach-O sidecar; four Electron contract guards PASS, packaged sidecar ping/version PASS on Python 3.14.10.
 
 ## Only remaining
 
@@ -25,6 +26,7 @@ Branch: `electron-migration` (main untouched)
 3. Validate real save → confirm → reload; session expiry, tracking, read-only.
 4. Validate SSO popups, cookies across restart, refresh injection.
 5. Validate tray / close-to-tray / second-instance on a normal desktop.
+6. Validate unsigned macOS dmg/zip first launch, Gatekeeper flow, and signing/notarization needs.
 
 PyQt/Qt source is intentionally kept in this branch as the legacy fallback and
 test baseline. The packaged Electron artifact does not depend on it.
@@ -53,7 +55,18 @@ npm run dist:zip
 npm start -- --no-sandbox
 ```
 
-This machine needs `SERAPI_DISABLE_SINGLE_INSTANCE=1` for capture/dev because
+Development on macOS:
+
+```bash
+python3 -m venv .venv314
+.venv314/bin/python3 -m pip install pyinstaller
+cd electron
+npm install
+npm start               # no --no-sandbox / singleton workaround needed
+npm run dist:mac
+```
+
+This Windows machine needs `SERAPI_DISABLE_SINGLE_INSTANCE=1` for capture/dev because
 the LocalAppData singleton lock file is denied by ACLs.
 
 ## Safety

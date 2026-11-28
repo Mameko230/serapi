@@ -1,5 +1,23 @@
 # 真机冒烟结果
 
+## 2026-11-28 · Electron 迁移分支 · macOS arm64 宿主
+
+- 环境：Apple silicon 本机；Electron 30.5.1、Node 24、Python 3.14.10。全部使用合成 fixture，未访问真实 memoQ 服务器，未记录 URL/账号/项目/正文。
+- 产物：`Serapi-0.1.0-arm64-mac.dmg` 与 `Serapi-0.1.0-arm64-mac.zip`（未签名，非 universal）。
+- 离线守卫：`tests/run_all.py --full` 75/75；`npm test` 4/4（host / platform paths / sidecar / packaging）。
+
+| 项 | 结果 |
+|---|---|
+| M1 dmg + zip 构建 | 通过（arm64；打包 sidecar 是无扩展名 Mach-O，不是 `.exe`） |
+| M2 打包版启动 | 通过（`dist/mac-arm64/Serapi.app` 工作区渲染；sidecar ping/version 成功，Python 3.14.10，版本 1.2.2） |
+| M3 源码 `npm start` + 合成 Engine fixture | 通过（sidecar ping、`bridge-ready`、`ENGINE_SMOKE: ready`；profile 在 `~/Library/Application Support/Serapi`） |
+| M4 Gatekeeper / 安装到 `/Applications` | 待用户真机（构建未签名） |
+| M5 单实例 / 托盘 / 第二实例聚焦 | 待用户真机（窗口与托盘截图模式只能验证不崩溃） |
+| M6 真实 memoQ 登录、cookie 持久化、页面形状 | 待真机验证（合成 fixture 不代表真实页面） |
+| M7 真实写回、确认、会话过期、跟踪修改 | 待真机验证（写策略仅离线验证） |
+
+守卫：`electron/platform-paths.js` + `electron/tests/platform-paths.test.js` 固定平台路径；`electron/tests/packaging-contract.js` 固定 mac target、icon、arm64 产物名与 `.command` 启动器；`electron/tests/sidecar-contract.js` 覆盖 sidecar 协议；`electron/tests/host-contract.js` 覆盖宿主接线。
+
 ## 2026-11-27 · 新版编辑器 · 1.2.2
 
 - 环境：维护者自有测试实例；测试文档包含长文档与真实 Tag 行；未共享服务器/账号。
