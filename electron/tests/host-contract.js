@@ -28,6 +28,23 @@ assert.match(main, /engine:hide/, 'main exposes engine:hide IPC');
 assert.match(main, /persist:serapi/, 'both views use the persisted profile');
 assert.match(main, /getUserDataPath/, 'host chooses a platform-appropriate profile path');
 assert.match(main, /SERAPI_CAPTURE/, 'capture hook exists');
+// macOS reopens a running app through 'activate' (the OS forbids a real second
+// instance), so a hidden window must be shown there, not just re-created.
+// Bodies are sliced per handler: a loose regex would match the neighbouring
+// 'second-instance' showWindow() and pass even when 'activate' only recreates.
+const handlerBody = (name) => {
+  const after = main.split(`app.on('${name}'`)[1] || '';
+  return after.split("app.on('")[0];
+};
+const activateBody = handlerBody('activate');
+assert.ok(activateBody.length > 0, "main registers an 'activate' handler");
+assert.match(activateBody, /showWindow\(\)/,
+  "'activate' shows the hidden window again on macOS reopen");
+assert.match(handlerBody('second-instance'), /showWindow\(\)/,
+  "'second-instance' shows the hidden window again");
+const showWindowBody = main.split('function showWindow()')[1].split('\nfunction ')[0];
+assert.match(showWindowBody, /app\.focus\(\{ steal: true \}\)/,
+  'showWindow brings the macOS app forward');
 assert.match(preload, /contextBridge\.exposeInMainWorld\('serapiHost'/, 'workspace host API is exposed');
 assert.match(preload, /showEngine/, 'host API can show the engine view');
 assert.match(preload, /loadEngine/, 'host API can load a memoQ URL');

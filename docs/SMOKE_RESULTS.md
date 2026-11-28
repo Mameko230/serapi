@@ -11,12 +11,19 @@
 | M1 dmg + zip 构建 | 通过（arm64；打包 sidecar 是无扩展名 Mach-O，不是 `.exe`） |
 | M2 打包版启动 | 通过（`dist/mac-arm64/Serapi.app` 工作区渲染；sidecar ping/version 成功，Python 3.14.10，版本 1.2.2） |
 | M3 源码 `npm start` + 合成 Engine fixture | 通过（sidecar ping、`bridge-ready`、`ENGINE_SMOKE: ready`；profile 在 `~/Library/Application Support/Serapi`） |
-| M4 Gatekeeper / 安装到 `/Applications` | 待用户真机（构建未签名） |
-| M5 单实例 / 托盘 / 第二实例聚焦 | 待用户真机（窗口与托盘截图模式只能验证不崩溃） |
+| M4 Gatekeeper / 安装到 `/Applications` | 通过（用户真机：dmg 拖入 `/Applications` 后可启动；本机构建未打 quarantine 标记，因此 Gatekeeper 拦截未触发） |
+| M5 单实例 / 托盘 / 第二实例聚焦 | 第二轮通过（首轮真机不通过，已修，见下）；关窗隐藏后重新打开可唤回窗口，仍是单进程 |
 | M6 真实 memoQ 登录、cookie 持久化、页面形状 | 待真机验证（合成 fixture 不代表真实页面） |
 | M7 真实写回、确认、会话过期、跟踪修改 | 待真机验证（写策略仅离线验证） |
 
 守卫：`electron/platform-paths.js` + `electron/tests/platform-paths.test.js` 固定平台路径；`electron/tests/packaging-contract.js` 固定 mac target、icon、arm64 产物名与 `.command` 启动器；`electron/tests/sidecar-contract.js` 覆盖 sidecar 协议；`electron/tests/host-contract.js` 覆盖宿主接线。
+
+### M5 首轮失败与修复
+
+- 现象（用户真机）：关窗后菜单栏图标在，双击 App 不出现第二个 Dock 图标，但窗口也不回来。
+- 原因：macOS 由系统保证单实例，再次打开运行中的 App 不会起第二个进程、也不发 `second-instance`，只发 `activate`；旧代码在 `activate` 里只在窗口数为 0 时建窗，而关闭只是隐藏，窗口仍存在，于是什么也没做。
+- 修复：`activate` 改为建窗或 `showWindow()`；`showWindow()` 在 darwin 上补 `app.focus({ steal: true })`；`second-instance` 同样只唤回窗口、不再强制切回工作区。`electron/tests/host-contract.js` 新增三条守卫（按 handler 体切片断言，避免匹配到相邻 handler）。
+- 复现与验证：旧构建关窗后 `open -a` 窗口数保持 0；新构建 `1 → 关窗 0 → open -a 1`，进程仍只有 1 个。真机双击复测待用户确认。
 
 ## 2026-11-27 · 新版编辑器 · 1.2.2
 

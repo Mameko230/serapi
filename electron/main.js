@@ -342,6 +342,11 @@ function showWindow() {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
+  // macOS needs the app itself brought forward; on Windows/Linux the window
+  // focus above is enough and stealing app focus would fight the OS.
+  if (process.platform === 'darwin') {
+    try { app.focus({ steal: true }); } catch (_err) {}
+  }
 }
 
 function showWorkspace() {
@@ -552,7 +557,12 @@ app.whenReady().then(() => {
     console.error('[serapi] global shortcut failed:', err);
   }
   app.on('activate', () => {
+    // macOS single-instance is enforced by the OS: launching the app again
+    // while it runs does not spawn a second process and does not fire
+    // 'second-instance', it just activates this one. Closing the window only
+    // hides it, so a reopen has to show it back or the app looks dead.
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    else showWindow();
   });
 });
 
@@ -560,7 +570,9 @@ app.on('window-all-closed', () => {
   // Keep the host alive in the tray; explicit Quit is the only exit.
 });
 app.on('second-instance', () => {
-  showWorkspace();
+  // Launching again means "bring it back", not "reset my view": keep whatever
+  // the window showed before it was hidden.
+  showWindow();
 });
 app.on('will-quit', () => {
   if (fallbackLocked) {
