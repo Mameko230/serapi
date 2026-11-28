@@ -12,7 +12,7 @@
 | M2 打包版启动 | 通过（`dist/mac-arm64/Serapi.app` 工作区渲染；sidecar ping/version 成功，Python 3.14.10，版本 1.2.2） |
 | M3 源码 `npm start` + 合成 Engine fixture | 通过（sidecar ping、`bridge-ready`、`ENGINE_SMOKE: ready`；profile 在 `~/Library/Application Support/Serapi`） |
 | M4 Gatekeeper / 安装到 `/Applications` | 通过（用户真机：dmg 拖入 `/Applications` 后可启动；本机构建未打 quarantine 标记，因此 Gatekeeper 拦截未触发） |
-| M5 单实例 / 托盘 / 第二实例聚焦 | 第二轮通过（首轮真机不通过，已修，见下）；关窗隐藏后重新打开可唤回窗口，仍是单进程 |
+| M5 单实例 / 托盘 / 第二实例聚焦 | 第二轮通过（首轮真机不通过，已修，见下）；关窗隐藏后重新打开可唤回窗口，仍是单进程；Dock / 菜单栏 / 窗口内品牌统一为上游绿色标识 |
 | M6 真实 memoQ 登录、cookie 持久化、页面形状 | 待真机验证（合成 fixture 不代表真实页面） |
 | M7 真实写回、确认、会话过期、跟踪修改 | 待真机验证（写策略仅离线验证） |
 
@@ -23,7 +23,14 @@
 - 现象（用户真机）：关窗后菜单栏图标在，双击 App 不出现第二个 Dock 图标，但窗口也不回来。
 - 原因：macOS 由系统保证单实例，再次打开运行中的 App 不会起第二个进程、也不发 `second-instance`，只发 `activate`；旧代码在 `activate` 里只在窗口数为 0 时建窗，而关闭只是隐藏，窗口仍存在，于是什么也没做。
 - 修复：`activate` 改为建窗或 `showWindow()`；`showWindow()` 在 darwin 上补 `app.focus({ steal: true })`；`second-instance` 同样只唤回窗口、不再强制切回工作区。`electron/tests/host-contract.js` 新增三条守卫（按 handler 体切片断言，避免匹配到相邻 handler）。
-- 复现与验证：旧构建关窗后 `open -a` 窗口数保持 0；新构建 `1 → 关窗 0 → open -a 1`，进程仍只有 1 个。真机双击复测待用户确认。
+- 复现与验证：旧构建关窗后 `open -a` 窗口数保持 0；新构建 `1 → 关窗 0 → open -a 1`，进程仍只有 1 个。真机双击复测已确认窗口能唤回。
+
+### M5 第二轮：图标两套（用户真机发现）
+
+- 现象：菜单栏图标与 Dock 图标是两个不同图形（旧的绿/黄 vs 紫蓝），界面里左上角品牌标记又是绿/黄。
+- 原因：仓库里存在两套 artwork。绿/黄是 Serapi 真正的标识：`workspace/icon-a.svg`（界面品牌与设计原型共用）与上游 `icon-32/64/256.png`（Mameko230 的 `f775021`）。紫色 `Serapi.icns` 是 Mac 层提交 `44ea038` 自己带进来的，不属于上游标识。
+- 修复：`Serapi.icns` 改为从 `workspace/icon-a.svg` 重生成（16…1024 全尺寸 iconset → `iconutil`），`tray-mac-22/44.png` 同源重导出；Windows 仍用上游 `icon-32.png`。这样 Dock、菜单栏、窗口内品牌三处同源，不会再分叉。生成步骤写进 `electron/README.md` 的 Icon assets 节。
+- 之前那轮把方向弄反了（把托盘改去迁就紫色 icns），已改正：错的是 bundle 图标，不是托盘。
 
 ## 2026-11-27 · 新版编辑器 · 1.2.2
 

@@ -169,6 +169,43 @@ resources/
 └─ app.asar                workspace/engine/main/preload
 ```
 
+### Icon assets
+
+There is one Serapi mark: `workspace/icon-a.svg` (the same file the in-app brand
+and the design prototype use). Everything else is derived from it, so the Dock
+icon, the menu bar icon and the brand inside the window cannot drift apart:
+
+| file | derived from | used by |
+|---|---|---|
+| `assets/Serapi.icns` | `icon-a.svg` at 16…1024 | macOS bundle icon (`build.mac.icon`) |
+| `assets/tray-mac-22.png`, `tray-mac-44.png` | same, at 22 and 44 px | macOS status item |
+| `assets/icon-32.png`, `icon-64.png`, `icon-256.png` | upstream raster set | Windows tray + Windows packaging |
+
+Regenerating the macOS icons after an artwork change (repo-root `.venv314` has
+PyQt6, which renders the SVG):
+
+```bash
+.venv314/bin/python3 - <<'PY'
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QGuiApplication, QImage, QPainter
+from PyQt6.QtSvg import QSvgRenderer
+import sys
+app = QGuiApplication(sys.argv[:1])
+r = QSvgRenderer('electron/workspace/icon-a.svg')
+for size in (16, 32, 64, 128, 256, 512, 1024, 22, 44):
+    img = QImage(size, size, QImage.Format.Format_ARGB32)
+    img.fill(Qt.GlobalColor.transparent)
+    p = QPainter(img); r.render(p); p.end()
+    img.save(f'/tmp/icon-{size}.png', 'PNG')
+PY
+# build the iconset (16…512 plus @2x) and convert it
+then: iconutil -c icns /tmp/Serapi.iconset -o electron/assets/Serapi.icns
+```
+
+Do not add a second artwork set: the earlier macOS bundle icon was a different
+design, and having two identities in one binary is what made the tray and the
+Dock icon disagree.
+
 The Windows NSIS portable target is currently blocked by an NSIS mmap
 failure; use the zip target for now.
 

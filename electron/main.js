@@ -359,9 +359,23 @@ function showEngine() {
   setEngineVisible(true);
 }
 
+function trayIcon() {
+  // macOS draws the status item at 22pt. Both files below are the Serapi mark
+  // rendered from workspace/icon-a.svg, the same artwork the bundle icon and the
+  // in-app brand use, so nothing here can drift into a second identity.
+  // Windows keeps the original 32px tile, which matches its app icon.
+  if (process.platform !== 'darwin') {
+    return nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon-32.png'));
+  }
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray-mac-22.png'));
+  const hi = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray-mac-44.png'));
+  if (!hi.isEmpty()) icon.addRepresentation({ scaleFactor: 2, buffer: hi.toPNG() });
+  return icon;
+}
+
 function createTray() {
   try {
-    const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon-32.png'));
+    const icon = trayIcon();
     tray = new Tray(icon);
     tray.setToolTip('Serapi');
     tray.setContextMenu(Menu.buildFromTemplate([

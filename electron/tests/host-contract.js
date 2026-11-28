@@ -104,6 +104,16 @@ assert.match(main, /requestSingleInstanceLock/, 'host owns a single-instance loc
 assert.match(main, /new Tray/, 'host creates a system tray');
 assert.match(main, /globalShortcut/, 'host owns a global workspace shortcut');
 assert.ok(fs.existsSync(path.join(root, 'assets', 'icon-32.png')), 'tray icon exists');
+// macOS status item must use the same artwork as the bundle icon and the in-app brand
+// (a second artwork set reads as two different products).
+assert.ok(fs.existsSync(path.join(root, 'assets', 'tray-mac-22.png')), 'macOS tray icon (1x) exists');
+assert.ok(fs.existsSync(path.join(root, 'assets', 'tray-mac-44.png')), 'macOS tray icon (2x) exists');
+const trayIconBody = (main.split('function trayIcon()')[1] || '').split('\nfunction ')[0];
+assert.ok(trayIconBody.length > 0, 'main has a trayIcon() helper');
+assert.match(trayIconBody, /platform !== 'darwin'/,
+  'windows keeps the original tray artwork');
+assert.match(trayIconBody, /tray-mac-22\.png/, 'darwin tray uses the app artwork');
+assert.match(trayIconBody, /scaleFactor: 2/, 'darwin tray ships a Retina representation');
 assert.match(preload, /onEngineEvent/, 'preload exposes Engine event forwarding');
 assert.match(main, /engine:event/, 'main forwards Engine events to the workspace');
 assert.match(workspaceJs, /tmHitsPoll/, 'TM/TB polling is wired through engine API');
