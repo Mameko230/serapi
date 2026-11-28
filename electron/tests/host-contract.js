@@ -40,8 +40,8 @@ const activateBody = handlerBody('activate');
 assert.ok(activateBody.length > 0, "main registers an 'activate' handler");
 assert.match(activateBody, /showWindow\(\)/,
   "'activate' shows the hidden window again on macOS reopen");
-assert.match(handlerBody('second-instance'), /showWindow\(\)/,
-  "'second-instance' shows the hidden window again");
+assert.match(handlerBody('second-instance'), /showWorkspace\(\)/,
+  "'second-instance' keeps the baseline behaviour: focus and return to the workspace");
 const showWindowBody = main.split('function showWindow()')[1].split('\nfunction ')[0];
 assert.match(showWindowBody, /app\.focus\(\{ steal: true \}\)/,
   'showWindow brings the macOS app forward');

@@ -584,9 +584,7 @@ app.on('window-all-closed', () => {
   // Keep the host alive in the tray; explicit Quit is the only exit.
 });
 app.on('second-instance', () => {
-  // Launching again means "bring it back", not "reset my view": keep whatever
-  // the window showed before it was hidden.
-  showWindow();
+  showWorkspace();
 });
 app.on('will-quit', () => {
   if (fallbackLocked) {

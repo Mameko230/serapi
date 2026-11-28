@@ -22,7 +22,7 @@
 
 - 现象（用户真机）：关窗后菜单栏图标在，双击 App 不出现第二个 Dock 图标，但窗口也不回来。
 - 原因：macOS 由系统保证单实例，再次打开运行中的 App 不会起第二个进程、也不发 `second-instance`，只发 `activate`；旧代码在 `activate` 里只在窗口数为 0 时建窗，而关闭只是隐藏，窗口仍存在，于是什么也没做。
-- 修复：`activate` 改为建窗或 `showWindow()`；`showWindow()` 在 darwin 上补 `app.focus({ steal: true })`；`second-instance` 同样只唤回窗口、不再强制切回工作区。`electron/tests/host-contract.js` 新增三条守卫（按 handler 体切片断言，避免匹配到相邻 handler）。
+- 修复：`activate` 改为建窗或 `showWindow()`；`showWindow()` 在 darwin 上补 `app.focus({ steal: true })`。`second-instance` 保持基线不变（仍是 `showWorkspace()`，Windows 行为零变化）——macOS 从 Finder 重开根本不会触发它，改它只是越界。`electron/tests/host-contract.js` 新增守卫（按 handler 体切片断言，避免匹配到相邻 handler）。
 - 复现与验证：旧构建关窗后 `open -a` 窗口数保持 0；新构建 `1 → 关窗 0 → open -a 1`，进程仍只有 1 个。真机双击复测已确认窗口能唤回。
 
 ### M5 第二轮：图标两套（用户真机发现）
