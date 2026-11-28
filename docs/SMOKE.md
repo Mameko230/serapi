@@ -73,7 +73,7 @@
 | M2 | 从 `dist/mac-arm64/Serapi.app` 启动 | 工作区渲染，打包 sidecar ping/version 成功，日志无真实 URL/账号/正文 | ☑ 本机离线 |
 | M3 | 合成 Engine fixture + `npm start` | `bridge-ready`、`ENGINE_SMOKE: ready`；profile 写入 `~/Library/Application Support/Serapi` | ☑ 本机离线 |
 | M4 | 首次打开 dmg/zip 解压的 `.app` | Gatekeeper 未签名提示可控；右键 → 打开后可启动 | ☑ 用户真机 |
-| M5 | 单实例、托盘、关窗隐藏、第二实例聚焦 | 与 Windows 行为一致；关窗隐藏后重新打开能唤回窗口，不起第二个进程 | ☑ 修复后本机等价复测；待用户双击确认 |
+| M5 | 单实例、托盘、关窗隐藏、第二实例聚焦 | 与 Windows 行为一致；关窗隐藏后重新打开能唤回窗口，不起第二个进程 | ☑ 用户真机（首轮不通过，修复后复测通过） |
 | M6 | 官方 memoQ 登录页 → 打开测试文档 | 登录态与 cookie 持久化；刷新/软导航后 bridge 重新注入；`listRows`/`readSegment`/`tmHits` 形状正确 | ☐ 待真机验证 |
 | M7 | 保存 → 确认 → 刷新回读 | 写策略通过后才写；会话过期/跟踪修改/只读/锁定按预期拒绝；原生状态与左栏一致 | ☐ 待真机验证 |
 
