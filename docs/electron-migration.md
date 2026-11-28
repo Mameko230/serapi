@@ -173,6 +173,16 @@ Electron main
 - 分发 zip：`dist/Serapi-0.1.0-win.zip`（约 111MB，未签名，含 `run-serapi.cmd`）；
 - NSIS portable 目标在本机因 NSIS mmap 失败，暂用 zip；签名/安装器后续处理。
 
+**macOS 打包骨架（2026-11-28）**
+
+- `electron-builder` 新增 arm64 的 dmg + zip target 与 `Serapi.icns`；产物名带架构，暂不做 universal。
+- `electron/platform-paths.js` 统一 Windows / macOS / Linux 的 profile 与单实例锁路径；macOS 使用 `~/Library/Application Support/Serapi`。
+- sidecar 按平台命名：Windows `serapi-sidecar.exe`，macOS 无扩展名 Mach-O；`build-sidecar.cjs` 用 `python -m PyInstaller` 和 `path.delimiter`，不再写死 Windows `Scripts\pyinstaller.exe`。
+- 源码开发自动识别 `.venv314/bin/python3`；本机用 Python 3.14.10 构建并冒烟通过（sidecar ping/version、工作区渲染、合成 fixture `bridge-ready`）。
+- `start-serapi.command` 为 Finder 启动器；`npm start` 在 macOS 不需要 `--no-sandbox` 或单实例降级开关。
+- 守卫：`tests/run_all.py --full` 75/75、`npm test` 4/4、新增 M1–M7 冒烟步骤与 `SMOKE_RESULTS.md`。
+- **待真机验证**：未签名 dmg/zip 的 Gatekeeper 首次打开、单实例/托盘交互、真实 memoQ 登录与写回；签名/公证尚未做。
+
 **宿主壳能力（2026-11-28）**
 
 - 单实例锁：`requestSingleInstanceLock`；第二个实例聚焦并回到工作区；

@@ -1,5 +1,20 @@
 # 更新记录
 
+## 未发布（Electron 迁移分支）
+
+### 新增
+
+- macOS arm64 Electron 打包：`dist:mac:dir` / `dist:mac`，产出未签名 dmg + zip 和 `Serapi.app`。
+- 平台路径层：Windows 保持 `%LOCALAPPDATA%\Serapi`，macOS 使用 `~/Library/Application Support/Serapi`，Linux 使用 XDG 配置目录；单实例锁路径同步切换。
+- sidecar 按平台命名与构建：Windows `serapi-sidecar.exe`，macOS 无扩展名 Mach-O；PyInstaller 数据分隔符取 `path.delimiter`，源码开发自动识别 `.venv314/bin/python3`。
+- `start-serapi.command` + `Serapi.icns`，`npm start` 在 macOS 不再需要 Windows 的 `--no-sandbox` / 单实例降级开关。
+
+### 守卫
+
+- `tests/run_all.py --full` 75/75；`npm test` 4/4（宿主、平台路径、sidecar、打包契约）。
+- 打包版 sidecar ping/version 通过（Python 3.14.10）；合成 Engine fixture 的 `bridge-ready` 与 `ENGINE_SMOKE: ready` 通过。
+- 新增 M1–M7 macOS 冒烟步骤；真实 memoQ 登录、写回、单实例/托盘交互仍列在 [SMOKE_RESULTS.md](SMOKE_RESULTS.md) 待验证。
+
 ## 1.2.2（2026-11-27）
 
 ### 修复

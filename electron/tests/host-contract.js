@@ -26,8 +26,25 @@ assert.match(main, /BrowserView/, 'main creates BrowserViews');
 assert.match(main, /engine:show/, 'main exposes engine:show IPC');
 assert.match(main, /engine:hide/, 'main exposes engine:hide IPC');
 assert.match(main, /persist:serapi/, 'both views use the persisted profile');
-assert.match(main, /process\.env\.LOCALAPPDATA/, 'profile avoids roaming AppData');
+assert.match(main, /getUserDataPath/, 'host chooses a platform-appropriate profile path');
 assert.match(main, /SERAPI_CAPTURE/, 'capture hook exists');
+// macOS reopens a running app through 'activate' (the OS forbids a real second
+// instance), so a hidden window must be shown there, not just re-created.
+// Bodies are sliced per handler: a loose regex would match the neighbouring
+// 'second-instance' showWindow() and pass even when 'activate' only recreates.
+const handlerBody = (name) => {
+  const after = main.split(`app.on('${name}'`)[1] || '';
+  return after.split("app.on('")[0];
+};
+const activateBody = handlerBody('activate');
+assert.ok(activateBody.length > 0, "main registers an 'activate' handler");
+assert.match(activateBody, /showWindow\(\)/,
+  "'activate' shows the hidden window again on macOS reopen");
+assert.match(handlerBody('second-instance'), /showWorkspace\(\)/,
+  "'second-instance' keeps the baseline behaviour: focus and return to the workspace");
+const showWindowBody = main.split('function showWindow()')[1].split('\nfunction ')[0];
+assert.match(showWindowBody, /app\.focus\(\{ steal: true \}\)/,
+  'showWindow brings the macOS app forward');
 assert.match(preload, /contextBridge\.exposeInMainWorld\('serapiHost'/, 'workspace host API is exposed');
 assert.match(preload, /showEngine/, 'host API can show the engine view');
 assert.match(preload, /loadEngine/, 'host API can load a memoQ URL');
@@ -87,6 +104,16 @@ assert.match(main, /requestSingleInstanceLock/, 'host owns a single-instance loc
 assert.match(main, /new Tray/, 'host creates a system tray');
 assert.match(main, /globalShortcut/, 'host owns a global workspace shortcut');
 assert.ok(fs.existsSync(path.join(root, 'assets', 'icon-32.png')), 'tray icon exists');
+// macOS status item must use the same artwork as the bundle icon and the in-app brand
+// (a second artwork set reads as two different products).
+assert.ok(fs.existsSync(path.join(root, 'assets', 'tray-mac-22.png')), 'macOS tray icon (1x) exists');
+assert.ok(fs.existsSync(path.join(root, 'assets', 'tray-mac-44.png')), 'macOS tray icon (2x) exists');
+const trayIconBody = (main.split('function trayIcon()')[1] || '').split('\nfunction ')[0];
+assert.ok(trayIconBody.length > 0, 'main has a trayIcon() helper');
+assert.match(trayIconBody, /platform !== 'darwin'/,
+  'windows keeps the original tray artwork');
+assert.match(trayIconBody, /tray-mac-22\.png/, 'darwin tray uses the app artwork');
+assert.match(trayIconBody, /scaleFactor: 2/, 'darwin tray ships a Retina representation');
 assert.match(preload, /onEngineEvent/, 'preload exposes Engine event forwarding');
 assert.match(main, /engine:event/, 'main forwards Engine events to the workspace');
 assert.match(workspaceJs, /tmHitsPoll/, 'TM/TB polling is wired through engine API');

@@ -6,12 +6,14 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/host-contract.js && node tests/sidecar-contract.js && node tests/packaging-contract.js",
+    "test": "node tests/host-contract.js && node tests/platform-paths.test.js && node tests/sidecar-contract.js && node tests/packaging-contract.js",
     "capture": "electron .",
     "build:sidecar": "node scripts/build-sidecar.cjs",
     "dist:dir": "electron-builder --dir",
     "dist": "electron-builder --win portable",
-    "dist:zip": "electron-builder --win zip"
+    "dist:zip": "electron-builder --win zip",
+    "dist:mac:dir": "npm run build:sidecar && electron-builder --mac --dir",
+    "dist:mac": "npm run build:sidecar && electron-builder --mac dmg zip"
   },
   "devDependencies": {
     "electron": "30.5.1",
@@ -27,6 +29,7 @@
     "asar": true,
     "files": [
       "main.js",
+      "platform-paths.js",
       "preload.js",
       "engine-preload.js",
       "bridge-inject.js",
@@ -53,13 +56,22 @@
       "target": [
         "portable"
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "extraFiles": [
+        {
+          "from": "extra/run-serapi.cmd",
+          "to": "run-serapi.cmd"
+        }
+      ]
     },
-    "extraFiles": [
-      {
-        "from": "extra/run-serapi.cmd",
-        "to": "run-serapi.cmd"
-      }
-    ]
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/Serapi.icns",
+      "category": "public.app-category.productivity",
+      "artifactName": "${productName}-${version}-${arch}-mac.${ext}"
+    }
   }
 }

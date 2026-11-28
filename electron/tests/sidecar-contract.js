@@ -3,15 +3,22 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { getVenvPythonPath } = require('../platform-paths');
 
 const root = path.join(__dirname, '..');
 const sidecar = path.join(root, 'sidecar.py');
 const candidates = [
   process.env.SERAPI_PYTHON,
-  path.join(root, '..', '.venv314', 'Scripts', 'python.exe'),
-  'python',
+  getVenvPythonPath(path.join(root, '..'), process.platform),
+  process.platform === 'win32' ? 'python' : 'python3',
+  process.platform === 'win32' ? 'python3' : 'python',
 ].filter(Boolean);
-const python = candidates.find((candidate) => candidate === 'python' || fs.existsSync(candidate));
+const python = candidates.find((candidate) => {
+  if (candidate === 'python' || candidate === 'python3') {
+    return spawnSync(candidate, ['--version'], { stdio: 'ignore' }).status === 0;
+  }
+  return fs.existsSync(candidate);
+});
 assert.ok(python, 'no Python interpreter found (set SERAPI_PYTHON)');
 
 const tmpDir = fs.mkdtempSync(path.join(root, '.sidecar-test-'));

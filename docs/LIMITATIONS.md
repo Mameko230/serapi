@@ -2,8 +2,12 @@
 
 ## 平台
 
-- 只在 Windows 10/11 + README 中列出的依赖组合上验证；其他环境需自行实测。
+- PyQt 版只在 Windows 10/11 + README 中列出的依赖组合上验证；其他环境需自行实测。
 - Windows 上默认关闭 QtWebEngine Chromium sandbox（部分账户下 sandbox 起不来会白屏）。需要恢复时设置 `SERAPI_ENABLE_WEBENGINE_SANDBOX=1`。
+- Electron 迁移分支已可在 macOS arm64（Apple silicon）上完成源码启动和 dmg/zip 打包：`npm start`、离线契约测试、合成 Engine fixture、打包版 sidecar ping/version 均已通过；见 [SMOKE_RESULTS.md](SMOKE_RESULTS.md)。
+- macOS 产物目前仅 arm64、未签名，首次打开可能需要右键 → 打开；universal 二进制、Developer ID 签名与公证尚未做。
+- macOS 的 Chromium profile 在 `~/Library/Application Support/Serapi`，兼容配置仍在 `~/.memodesk/app.json`；Windows 旧路径不存在时按空配置处理，不迁移密码或登录态。
+- 真实 memoQ 登录、cookie 持久化、项目/文档读取及写回在 macOS 上仍**待真机验证**；合成 fixture 通过不代表真实页面形状已验证。
 
 ## 桥接与 memoQ 页面
 
